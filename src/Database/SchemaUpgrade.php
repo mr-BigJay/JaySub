@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
 
     public static function apply(PDO $pdo): void
     {
@@ -39,6 +39,23 @@ final class SchemaUpgrade
                     "UPDATE customers SET service_status = 'active', vpn_enabled = 1 WHERE service_status = 'exhausted'"
                 );
                 self::writeVersion($pdo, 4);
+                $current = 4;
+            }
+            if ($current < 5) {
+                self::addColumnIfMissing($pdo, 'customers', 'usage_view_token', 'VARCHAR(64) NULL');
+                try {
+                    $pdo->exec('CREATE UNIQUE INDEX uq_customers_usage_view_token ON customers (usage_view_token)');
+                } catch (\Throwable) {
+                    // index may already exist
+                }
+                $ids = $pdo->query(
+                    "SELECT id FROM customers WHERE usage_view_token IS NULL OR usage_view_token = ''"
+                )->fetchAll(\PDO::FETCH_COLUMN);
+                $upd = $pdo->prepare('UPDATE customers SET usage_view_token = :t WHERE id = :id');
+                foreach ($ids as $cid) {
+                    $upd->execute(['t' => bin2hex(random_bytes(32)), 'id' => (int) $cid]);
+                }
+                self::writeVersion($pdo, 5);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());

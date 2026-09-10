@@ -43,6 +43,19 @@ function app_encryption(array $config): Encryption
 }
 
 /** @param array<string, mixed> $config */
+/** @param array<string, mixed> $config */
+function app_base_url(array $config): string
+{
+    $url = trim((string) ($config['app']['url'] ?? ''));
+    if ($url === '') {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        return $scheme . '://' . $host;
+    }
+    return rtrim($url, '/');
+}
+
+/** @param array<string, mixed> $config */
 function app_telegram(array $config): TelegramService
 {
     static $instance = null;
@@ -167,6 +180,46 @@ if ($uri === '/login' && $method === 'POST') {
 if ($uri === '/logout') {
     AuthService::logout();
     Response::redirect('/login');
+}
+
+if (preg_match('#^/u/([a-f0-9]{64})$#i', $uri, $m) && $method === 'GET') {
+    $customer = CustomerService::findByUsageViewToken($m[1]);
+    if ($customer === null) {
+        http_response_code(404);
+        echo 'لینک نامعتبر یا غیرفعال است.';
+        return;
+    }
+    $cid = (int) $customer['id'];
+    $sub = CustomerService::activeSubscription($cid);
+    if ($sub === null) {
+        Response::html(Layout::publicUsagePage('مصرف سرویس', Layout::card('<p class="muted">سرویس فعالی ثبت نشده است.</p>')));
+        return;
+    }
+    $upload = (int) $sub['used_upload_bytes'];
+    $download = (int) $sub['used_download_bytes'];
+    $total = $upload + $download;
+    $quota = (int) $sub['quota_bytes'];
+    $pct = Format::percent($total, $quota);
+    $remaining = max(0, $quota - $total);
+    $endsAt = $sub['ends_at'] ?? null;
+    $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
+    $statusKey = (string) $customer['service_status'];
+    if ($sub['status'] === 'exhausted' || ($quota > 0 && $pct >= 100)) {
+        $statusKey = 'exhausted';
+    }
+    $name = htmlspecialchars((string) $customer['name'], ENT_QUOTES, 'UTF-8');
+    $body = '<p class="customer-greeting">مصرف سرویس <strong>' . $name . '</strong></p>'
+        . Layout::usageProgress((float) $total, (float) $quota, $pct)
+        . Layout::card('
+            <div class="data-card-row"><span>سقف حجم</span><span>' . Format::bytesToGb($quota) . '</span></div>
+            <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::bytesToGb($total) . '</span></div>
+            <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb($remaining) . '</span></div>
+            <div class="data-card-row"><span>انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
+            <div class="data-card-row"><span>وضعیت</span><span>' . serviceStatusBadge($statusKey) . '</span></div>
+        ', 'وضعیت اشتراک')
+        . '<p class="muted" style="margin-top:1rem;text-align:center">به‌روزرسانی هر حدود یک دقیقه</p>';
+    Response::html(Layout::publicUsagePage('مصرف سرویس', $body));
+    return;
 }
 
 if ($uri === '/dashboard' && $method === 'GET') {
@@ -792,6 +845,8 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
     $sub = CustomerService::activeSubscription($id);
     $used = $sub ? (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'] : 0;
     $quota = $sub ? (int) $sub['quota_bytes'] : 0;
+    $usageToken = CustomerService::ensureUsageViewToken($id);
+    $usageViewUrl = app_base_url($config) . '/u/' . $usageToken;
     $panels = PanelService::forCustomer($id);
 
     $flashHtml = '';
@@ -822,19 +877,20 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
         ' . Layout::card($panelRows ?: '<p class="muted">پنلی ثبت نشده</p>', 'پنل‌های 3X-UI') . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/panels/new">افزودن پنل</a></p>
         ' . Layout::card('
-            <div class="data-card-row"><span>سقف حجم</span><span>' . Format::bytesToGb($quota) . '</span></div>
             <div class="data-card-row"><span>مصرف ثبت‌شده</span><span>' . Format::bytesToGb($used) . '</span></div>
             <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $used)) . '</span></div>
-            <form class="stack" method="post" action="/admin/customers/' . $id . '/adjust-quota" style="margin-top:1rem">' . Csrf::field() . '
-            <label>تغییر سقف (GB)</label>
-            <input name="delta_gb" type="number" step="0.1" placeholder="مثلاً 100 یا -50">
-            <p class="muted form-hint">عدد <strong>مثبت</strong> = افزایش سقف · عدد <strong>منفی</strong> = کاهش سقف (مصرف واقعی عوض نمی‌شود).</p>
-            <div class="form-actions-row">
-                <button class="btn btn-primary" type="submit" name="quick" value="add10">+۱۰ GB</button>
-                <button class="btn btn-secondary" type="submit" name="quick" value="sub10">−۱۰ GB</button>
-                <button class="btn btn-primary" type="submit">اعمال</button>
-            </div>
-            </form>', 'مدیریت حجم') . '
+            <form class="stack" method="post" action="/admin/customers/' . $id . '/set-quota" style="margin-top:1rem">' . Csrf::field() . '
+            <label>سقف حجم (GB)</label>
+            <input name="quota_gb" type="number" step="0.1" min="0" required value="' . ($quota > 0 ? htmlspecialchars(Format::bytesToGbNumber($quota), ENT_QUOTES, 'UTF-8') : '0') . '">
+            <p class="muted form-hint">عدد نهایی سقف را وارد کنید و ذخیره کنید. مصرف واقعی از 3x-ui جدا است و با این فیلد عوض نمی‌شود.</p>
+            <button class="btn btn-primary" type="submit">ذخیره سقف حجم</button>
+            </form>', 'مدیریت حجم')
+        . Layout::copyLinkField(
+            'customer-usage-link',
+            $usageViewUrl,
+            'لینک مشاهده مصرف برای مشتری',
+            'این لینک را برای کاربر بفرستید — بدون نام کاربری و رمز، فقط مشاهدهٔ مصرف.'
+        ) . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/sync">هم‌اکنون Sync</a></p>';
     adminPage('مدیریت مشتری', 'users', $body);
 }
@@ -867,25 +923,19 @@ if (preg_match('#^/admin/customers/(\d+)/add-quota$#', $uri, $m) && $method === 
     Response::redirect('/admin/customers/' . $id);
 }
 
-if (preg_match('#^/admin/customers/(\d+)/adjust-quota$#', $uri, $m) && $method === 'POST') {
+if (preg_match('#^/admin/customers/(\d+)/set-quota$#', $uri, $m) && $method === 'POST') {
     requireAdmin();
     requireCsrf();
     $id = (int) $m[1];
-    $quick = $_POST['quick'] ?? '';
-    if ($quick === 'add10') {
-        $delta = 10.0;
-    } elseif ($quick === 'sub10') {
-        $delta = -10.0;
-    } else {
-        $delta = (float) ($_POST['delta_gb'] ?? 0);
-        if ($delta == 0.0) {
-            Session::set('flash_admin', 'مقدار تغییر سقف را وارد کنید (مثبت یا منفی).');
-            Response::redirect('/admin/customers/' . $id);
-        }
-    }
     try {
-        CustomerService::adjustQuota($id, $delta, app_encryption($config), app_telegram($config), AuthService::adminId());
-        Session::set('flash_admin_ok', 'سقف حجم به‌روز شد.');
+        CustomerService::setQuotaCeiling(
+            $id,
+            (float) ($_POST['quota_gb'] ?? 0),
+            app_encryption($config),
+            app_telegram($config),
+            AuthService::adminId()
+        );
+        Session::set('flash_admin_ok', 'سقف حجم ذخیره شد.');
     } catch (\Throwable $e) {
         Session::set('flash_admin', $e->getMessage());
     }

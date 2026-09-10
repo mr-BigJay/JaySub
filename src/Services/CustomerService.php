@@ -90,8 +90,50 @@ final class CustomerService
             }
         }
         $customerId = (int) $pdo->lastInsertId();
+        self::ensureUsageViewToken($customerId);
         AuditLogService::log('admin', $adminId, 'customer_created', 'customer', $customerId);
         return $customerId;
+    }
+
+    public static function ensureUsageViewToken(int $customerId): string
+    {
+        $customer = self::findById($customerId);
+        if ($customer === null) {
+            throw new \RuntimeException('Customer not found');
+        }
+        $existing = trim((string) ($customer['usage_view_token'] ?? ''));
+        if ($existing !== '') {
+            return $existing;
+        }
+        $token = bin2hex(random_bytes(32));
+        try {
+            Database::pdo()->prepare('UPDATE customers SET usage_view_token = :t WHERE id = :id')
+                ->execute(['t' => $token, 'id' => $customerId]);
+        } catch (\PDOException $e) {
+            if (!str_contains($e->getMessage(), 'usage_view_token')) {
+                throw $e;
+            }
+        }
+        return $token;
+    }
+
+    /** @return array<string, mixed>|null */
+    public static function findByUsageViewToken(string $token): ?array
+    {
+        $token = trim($token);
+        if ($token === '' || strlen($token) > 64) {
+            return null;
+        }
+        try {
+            $stmt = Database::pdo()->prepare(
+                'SELECT * FROM customers WHERE usage_view_token = :t AND is_active = 1 LIMIT 1'
+            );
+            $stmt->execute(['t' => $token]);
+            $row = $stmt->fetch();
+            return $row === false ? null : $row;
+        } catch (\PDOException) {
+            return null;
+        }
     }
 
     /** @param array<string, mixed> $service */
@@ -171,6 +213,20 @@ final class CustomerService
         if ($deltaGb == 0.0) {
             throw new \RuntimeException('مقدار تغییر حجم نمی‌تواند صفر باشد');
         }
+        $sub = self::activeSubscription($customerId);
+        if ($sub === null) {
+            throw new \RuntimeException('اشتراک فعالی برای این کاربر نیست — ابتدا راه‌اندازی سرویس');
+        }
+        $currentGb = self::bytesToGb((int) $sub['quota_bytes']);
+        self::setQuotaCeiling($customerId, $currentGb + $deltaGb, $encryption, $telegram, $adminId);
+    }
+
+    /** Sets absolute quota ceiling (GB). Does not reset measured usage from XUI. */
+    public static function setQuotaCeiling(int $customerId, float $quotaGb, Encryption $encryption, TelegramService $telegram, ?int $adminId = null): void
+    {
+        if ($quotaGb < 0) {
+            throw new \RuntimeException('سقف حجم نمی‌تواند منفی باشد');
+        }
         $pdo = Database::pdo();
         $pdo->beginTransaction();
         try {
@@ -184,9 +240,10 @@ final class CustomerService
             }
             $subId = (int) $subscription['id'];
             $oldQuota = (int) $subscription['quota_bytes'];
-            $newQuota = max(0, $oldQuota + self::gbToBytes($deltaGb));
+            $newQuota = self::gbToBytes($quotaGb);
             $used = (int) $subscription['used_upload_bytes'] + (int) $subscription['used_download_bytes'];
             $exhausted = $newQuota > 0 && $used >= $newQuota;
+            $increased = $newQuota > $oldQuota;
 
             $pdo->prepare(
                 'UPDATE subscriptions SET quota_bytes = :q, status = :st WHERE id = :id'
@@ -196,7 +253,7 @@ final class CustomerService
                 'id' => $subId,
             ]);
 
-            if ($deltaGb > 0 && !$exhausted) {
+            if ($increased && !$exhausted) {
                 $pdo->prepare('UPDATE customers SET vpn_enabled = 1, service_status = \'active\' WHERE id = :id')
                     ->execute(['id' => $customerId]);
                 $pdo->prepare('DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN (\'warning_1\', \'warning_2\', \'limit_reached\')')
@@ -248,8 +305,8 @@ final class CustomerService
             }
 
             $pdo->commit();
-            AuditLogService::log('admin', $adminId, 'quota_adjusted', 'customer', $customerId, [
-                'delta_gb' => $deltaGb,
+            AuditLogService::log('admin', $adminId, 'quota_ceiling_set', 'customer', $customerId, [
+                'quota_gb' => $quotaGb,
                 'old_quota_bytes' => $oldQuota,
                 'new_quota_bytes' => $newQuota,
             ]);

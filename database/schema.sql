@@ -22,6 +22,7 @@ CREATE TABLE customers (
     password_hash VARCHAR(255) NOT NULL,
     mobile VARCHAR(20) NULL,
     telegram_chat_id VARCHAR(64) NULL,
+    usage_view_token VARCHAR(64) NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     vpn_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '0 when quota exhausted, web panel stays active',
     warning1_percent TINYINT UNSIGNED NOT NULL DEFAULT 80,

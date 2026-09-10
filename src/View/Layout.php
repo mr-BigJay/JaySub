@@ -178,6 +178,44 @@ HTML;
         return '<div class="traffic-chart">' . $bars . '</div>';
     }
 
+    public static function copyLinkField(string $inputId, string $url, string $title, string $hint): string
+    {
+        $e = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+        $body = '<p class="muted sub-link-hint">' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . '</p>
+            <div class="sub-link-row">
+                <input type="text" readonly class="sub-link-input" id="' . htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8') . '" value="' . $e . '">
+                <button type="button" class="btn btn-primary btn-copy" data-copy-target="' . htmlspecialchars($inputId, ENT_QUOTES, 'UTF-8') . '">کپی</button>
+            </div>';
+        return self::card($body, $title);
+    }
+
+    public static function publicUsagePage(string $title, string $content): string
+    {
+        $t = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $criticalCss = self::CRITICAL_CSS;
+        $cssHref = Assets::url('css/app.css');
+        $jsSrc = Assets::url('js/app.js');
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{$t}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+    {$criticalCss}
+    <link rel="stylesheet" href="{$cssHref}">
+</head>
+<body class="theme-jaysub customer-app public-usage-page">
+<main class="customer-main">{$content}</main>
+<script src="{$jsSrc}" defer></script>
+</body>
+</html>
+HTML;
+    }
+
     public static function subscriptionLinkCard(?string $url): string
     {
         if ($url === null || $url === '') {

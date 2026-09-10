@@ -26,4 +26,7 @@ assertEq($r2['base_down'], 250, 'base down after reset');
 assertEq($r2['total_up'], 160, 'total up after reset');
 assertEq($r2['total_down'], 270, 'total down after reset');
 
+assertEq(TrafficCounter::effectiveUpload(0, 1_000_000_000, 1_000_000_000), 0, 'baseline zero effective');
+assertEq(TrafficCounter::effectiveUpload(0, 1_000_100_000, 1_000_000_000), 100_000, 'delta after baseline');
+
 echo "TrafficCounterTest OK\n";

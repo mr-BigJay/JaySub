@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS customers (
     mobile VARCHAR(20) NULL,
     notes TEXT NULL,
     subscription_link VARCHAR(512) NULL,
+    usage_view_token VARCHAR(64) NULL,
     telegram_chat_id VARCHAR(64) NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     vpn_enabled TINYINT(1) NOT NULL DEFAULT 1,
