@@ -906,3 +906,228 @@ form.stack select {
     radial-gradient(ellipse 80% 60% at 50% 100%, rgba(37, 99, 235, 0.22), transparent 70%),
     radial-gradient(ellipse 60% 40% at 20% 100%, rgba(139, 92, 246, 0.18), transparent 65%);
 }
+
+/* Admin dashboard — neon mockup */
+.admin-main:has(.admin-dash-page) {
+  background:
+    radial-gradient(ellipse 90% 50% at 100% 0%, rgba(0, 210, 255, 0.06), transparent 55%),
+    radial-gradient(ellipse 70% 40% at 0% 100%, rgba(157, 80, 187, 0.08), transparent 50%),
+    var(--bg);
+}
+.admin-dash-page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding-bottom: 0.5rem;
+}
+.admin-dash-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.admin-dash-title { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.admin-dash-menu {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 210, 255, 0.25);
+  background: rgba(10, 14, 33, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.12);
+}
+.admin-dash-menu span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  background: #94a3b8;
+  border-radius: 2px;
+}
+
+.admin-dash-hero {
+  background: linear-gradient(145deg, rgba(0, 210, 255, 0.06), rgba(17, 24, 39, 0.95));
+  border-color: rgba(0, 210, 255, 0.18);
+  box-shadow: 0 0 24px rgba(0, 210, 255, 0.08);
+  margin-bottom: 0.85rem;
+}
+.admin-dash-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.admin-dash-hero-label {
+  flex: 1;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+.admin-dash-globe,
+.admin-dash-mini-chart {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 210, 255, 0.1);
+  color: #35c5f2;
+  border: 1px solid rgba(0, 210, 255, 0.2);
+}
+.admin-dash-globe svg,
+.admin-dash-mini-chart svg { width: 18px; height: 18px; }
+.admin-dash-mini-chart { margin-right: auto; background: transparent; border: none; color: #64748b; }
+.admin-dash-hero-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #35c5f2;
+  text-shadow: 0 0 20px rgba(53, 197, 242, 0.45);
+  margin: 0.25rem 0 0.85rem;
+  letter-spacing: -0.02em;
+}
+.admin-dash-periods {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+.admin-dash-period {
+  text-align: center;
+  padding: 0.45rem 0.35rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(8, 12, 20, 0.5);
+}
+.admin-dash-period.active {
+  border-color: rgba(0, 210, 255, 0.55);
+  box-shadow: 0 0 14px rgba(0, 210, 255, 0.25);
+  background: rgba(0, 210, 255, 0.08);
+}
+.adp-label { display: block; font-size: 0.72rem; color: #94a3b8; }
+.adp-val { display: block; font-size: 0.78rem; font-weight: 600; margin-top: 0.15rem; }
+
+.admin-dash-chart { height: 110px; margin-top: 0.25rem; }
+.admin-dash-chart .chart-bar {
+  background: linear-gradient(180deg, #35c5f2, #2563eb);
+  box-shadow: 0 0 10px rgba(53, 197, 242, 0.35);
+}
+.admin-dash-chart .chart-lbl { font-size: 0.58rem; }
+
+.admin-dash-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+.admin-dash-stat {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.85rem 0.75rem;
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ads-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 210, 255, 0.1);
+  color: #35c5f2;
+  border: 1px solid rgba(0, 210, 255, 0.15);
+}
+.ads-icon svg { width: 18px; height: 18px; }
+.ads-body { min-width: 0; flex: 1; }
+.ads-label { font-size: 0.72rem; color: #94a3b8; margin-bottom: 0.2rem; }
+.ads-value-row { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.ads-value { font-size: 1.35rem; font-weight: 700; line-height: 1.1; }
+.ads-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.62rem;
+  color: #6ee7b7;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+}
+.ads-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
+}
+
+.admin-dash-quick-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+  flex-wrap: wrap;
+}
+.admin-dash-quick-head h3 { margin: 0; font-size: 0.92rem; font-weight: 600; }
+.admin-dash-quick-head p { margin: 0; font-size: 0.72rem; }
+
+.admin-dash-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+.admin-dash-action {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 0.65rem;
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.admin-dash-action:hover {
+  border-color: rgba(0, 210, 255, 0.35);
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.1);
+}
+.admin-dash-action.accent {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #9d50bb, #2563eb);
+  border: none;
+  box-shadow: 0 0 20px rgba(157, 80, 187, 0.45);
+  color: #fff;
+}
+.admin-dash-action.accent .ada-chevron { color: rgba(255, 255, 255, 0.7); }
+.admin-dash-action.accent .ada-icon {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.ada-chevron {
+  font-size: 1.1rem;
+  color: #64748b;
+  margin-right: auto;
+  line-height: 1;
+}
+.ada-label { font-size: 0.8rem; font-weight: 500; flex: 1; text-align: right; }
+.ada-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 210, 255, 0.08);
+  border: 1px solid rgba(0, 210, 255, 0.15);
+  color: #35c5f2;
+}
+.ada-icon svg { width: 16px; height: 16px; }
