@@ -172,6 +172,31 @@ form.stack button { margin-top: 1rem; width: 100%; }
   border: 1px solid var(--surface2);
 }
 .login-box h1 { margin: 0 0 1.25rem; font-size: 1.25rem; text-align: center; }
+.login-box .login-hint { font-size: 0.8rem; text-align: center; margin: 0 0 1rem; line-height: 1.5; }
+.login-box .login-hint a { color: var(--primary); text-decoration: none; }
+.login-box form.login-form label {
+  display: block;
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.login-box form.login-form input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--surface2);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+}
+.login-box form.login-form button {
+  display: block;
+  width: 100%;
+  margin-top: 1.25rem;
+}
 
 .panel-list .row {
   display: flex;

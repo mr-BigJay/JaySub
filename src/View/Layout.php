@@ -45,10 +45,35 @@ HTML;
         return '<section class="card">' . $h . $body . '</section>';
     }
 
+    public static function publicHomePage(): string
+    {
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>پنل مشتریان VPN</title>
+    <link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body class="login customer">
+<div class="login-box">
+    <h1>پنل مشتریان VPN</h1>
+    <p class="muted" style="text-align:center;margin-bottom:1.25rem">برای مشاهده مصرف و وضعیت سرویس وارد شوید.</p>
+    <a class="btn primary" href="/login" style="display:block;width:100%">ورود مشتری</a>
+</div>
+</body>
+</html>
+HTML;
+    }
+
     public static function loginPage(string $title, string $action, string $variant): string
     {
         $csrf = Csrf::field();
         $t = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $adminHint = $variant === 'admin'
+            ? '<p class="muted login-hint">فقط مدیر سرویس. مشتریان: <a href="/">صفحه ورود مشتری</a></p>'
+            : '<p class="muted login-hint">مشاهده مصرف و وضعیت سرویس VPN</p>';
         return <<<HTML
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -61,12 +86,13 @@ HTML;
 <body class="login {$variant}">
 <div class="login-box">
     <h1>{$t}</h1>
-    <form method="post" action="{$action}">
+    {$adminHint}
+    <form class="stack login-form" method="post" action="{$action}">
         {$csrf}
-        <label>نام کاربری</label>
-        <input type="text" name="username" required autocomplete="username">
-        <label>رمز عبور</label>
-        <input type="password" name="password" required autocomplete="current-password">
+        <label for="login-username">نام کاربری</label>
+        <input id="login-username" type="text" name="username" required autocomplete="username">
+        <label for="login-password">رمز عبور</label>
+        <input id="login-password" type="password" name="password" required autocomplete="current-password">
         <button type="submit" class="btn primary">ورود</button>
     </form>
 </div>

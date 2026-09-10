@@ -344,6 +344,8 @@ cat > "$CREDENTIALS_FILE" <<CREDS
 JaySub install summary ($(date -Iseconds))
 Domain: ${DOMAIN}
 Admin URL: ${APP_URL}/admin/login
+Customer public URL: ${APP_URL}/
+Customer login URL: ${APP_URL}/login
 Admin user: admin
 Admin password: ${ADMIN_PASS}
 MySQL user: vpn_panel

@@ -6,15 +6,9 @@ try {
     $config = require dirname(__DIR__) . '/src/bootstrap.php';
 } catch (Throwable $e) {
     http_response_code(500);
-    $debug = is_file(dirname(__DIR__) . '/config/config.php')
-        && (bool) (require dirname(__DIR__) . '/config/config.php')['app']['debug'];
     header('Content-Type: text/plain; charset=utf-8');
     echo "JaySub bootstrap error.\n";
-    if ($debug) {
-        echo $e->getMessage();
-    } else {
-        echo "Run on server: bash /var/www/vpn-panel/scripts/doctor\n";
-    }
+    echo "Run on server: bash /var/www/vpn-panel/scripts/doctor\n";
     exit;
 }
 
@@ -417,7 +411,10 @@ if ($uri === '/api/customer/dashboard' && $method === 'GET') {
 }
 
 if ($uri === '/' && $method === 'GET') {
-    Response::redirect(AuthService::customerId() ? '/dashboard' : '/login');
+    if (AuthService::customerId()) {
+        Response::redirect('/dashboard');
+    }
+    Response::html(Layout::publicHomePage());
 }
 
 http_response_code(404);
