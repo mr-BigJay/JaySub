@@ -82,8 +82,13 @@ if ($uri === '/login' && $method === 'GET') {
 
 if ($uri === '/login' && $method === 'POST') {
     requireCsrf();
-    $ok = AuthService::loginCustomer(trim($_POST['username'] ?? ''), $_POST['password'] ?? '', $maxAttempts, $lockout);
-    Response::redirect($ok ? '/dashboard' : '/login?e=1');
+    try {
+        $ok = AuthService::loginCustomer(trim($_POST['username'] ?? ''), $_POST['password'] ?? '', $maxAttempts, $lockout);
+        Response::redirect($ok ? '/dashboard' : '/login?e=1');
+    } catch (Throwable $e) {
+        error_log('JaySub customer login: ' . $e->getMessage());
+        Response::redirect('/login?e=1');
+    }
 }
 
 if ($uri === '/logout') {
@@ -159,8 +164,13 @@ if ($uri === '/admin/login' && $method === 'GET') {
 
 if ($uri === '/admin/login' && $method === 'POST') {
     requireCsrf();
-    $ok = AuthService::loginAdmin(trim($_POST['username'] ?? ''), $_POST['password'] ?? '', $maxAttempts, $lockout);
-    Response::redirect($ok ? '/admin/dashboard' : '/admin/login?e=1');
+    try {
+        $ok = AuthService::loginAdmin(trim($_POST['username'] ?? ''), $_POST['password'] ?? '', $maxAttempts, $lockout);
+        Response::redirect($ok ? '/admin/dashboard' : '/admin/login?e=1');
+    } catch (Throwable $e) {
+        error_log('JaySub admin login: ' . $e->getMessage());
+        Response::redirect('/admin/login?e=1');
+    }
 }
 
 if ($uri === '/admin/logout') {
@@ -171,14 +181,21 @@ if ($uri === '/admin/logout') {
 if ($uri === '/admin/dashboard' && $method === 'GET') {
     requireAdmin();
     $pdo = Database::pdo();
-    $stats = [
-        'customers' => (int) $pdo->query('SELECT COUNT(*) FROM customers')->fetchColumn(),
-        'active' => (int) $pdo->query("SELECT COUNT(*) FROM customers WHERE is_active = 1 AND service_status = 'active'")->fetchColumn(),
-        'exhausted' => (int) $pdo->query("SELECT COUNT(*) FROM customers WHERE service_status = 'exhausted'")->fetchColumn(),
-        'panels' => (int) $pdo->query('SELECT COUNT(*) FROM vpn_panels')->fetchColumn(),
-        'clients' => (int) $pdo->query('SELECT COUNT(*) FROM vpn_clients')->fetchColumn(),
-    ];
-    $traffic = (int) $pdo->query('SELECT COALESCE(SUM(used_upload_bytes + used_download_bytes),0) FROM subscriptions WHERE status IN (\'active\',\'exhausted\')')->fetchColumn();
+    try {
+        $stats = [
+            'customers' => (int) $pdo->query('SELECT COUNT(*) FROM customers')->fetchColumn(),
+            'active' => (int) $pdo->query("SELECT COUNT(*) FROM customers WHERE is_active = 1 AND service_status = 'active'")->fetchColumn(),
+            'exhausted' => (int) $pdo->query("SELECT COUNT(*) FROM customers WHERE service_status = 'exhausted'")->fetchColumn(),
+            'panels' => (int) $pdo->query('SELECT COUNT(*) FROM vpn_panels')->fetchColumn(),
+            'clients' => (int) $pdo->query('SELECT COUNT(*) FROM vpn_clients')->fetchColumn(),
+        ];
+        $traffic = (int) $pdo->query('SELECT COALESCE(SUM(used_upload_bytes + used_download_bytes),0) FROM subscriptions WHERE status IN (\'active\',\'exhausted\')')->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('JaySub admin dashboard: ' . $e->getMessage());
+        Response::html(Layout::render('داشبورد', Layout::card(
+            '<div class="alert error">دیتابیس آماده نیست. روی سرور: <code>php scripts/install.php</code></div>'
+        ), 'admin'));
+    }
 
     $body = '<div class="grid-2">
         <div class="kpi"><div class="label">مشتریان</div><div class="value">' . $stats['customers'] . '</div></div>

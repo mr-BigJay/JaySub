@@ -12,21 +12,30 @@ final class AuthService
 {
     public static function isRateLimited(string $type, string $username, string $ip, int $maxAttempts, int $lockoutMinutes): bool
     {
-        $stmt = Database::pdo()->prepare(
-            'SELECT COUNT(*) AS cnt FROM login_attempts
-             WHERE login_type = :t AND username = :u AND ip_address = :ip
-               AND success = 0 AND attempted_at > DATE_SUB(NOW(), INTERVAL :m MINUTE)'
-        );
-        $stmt->execute(['t' => $type, 'u' => $username, 'ip' => $ip, 'm' => $lockoutMinutes]);
-        $row = $stmt->fetch();
-        return (int) ($row['cnt'] ?? 0) >= $maxAttempts;
+        try {
+            $minutes = max(1, min(1440, $lockoutMinutes));
+            $stmt = Database::pdo()->prepare(
+                'SELECT COUNT(*) AS cnt FROM login_attempts
+                 WHERE login_type = :t AND username = :u AND ip_address = :ip
+                   AND success = 0 AND attempted_at > DATE_SUB(NOW(), INTERVAL ' . $minutes . ' MINUTE)'
+            );
+            $stmt->execute(['t' => $type, 'u' => $username, 'ip' => $ip]);
+            $row = $stmt->fetch();
+            return (int) ($row['cnt'] ?? 0) >= $maxAttempts;
+        } catch (\PDOException) {
+            return false;
+        }
     }
 
     public static function recordAttempt(string $type, string $username, string $ip, bool $success): void
     {
-        Database::pdo()->prepare(
-            'INSERT INTO login_attempts (login_type, username, ip_address, attempted_at, success) VALUES (:t, :u, :ip, NOW(), :s)'
-        )->execute(['t' => $type, 'u' => $username, 'ip' => $ip, 's' => $success ? 1 : 0]);
+        try {
+            Database::pdo()->prepare(
+                'INSERT INTO login_attempts (login_type, username, ip_address, attempted_at, success) VALUES (:t, :u, :ip, NOW(), :s)'
+            )->execute(['t' => $type, 'u' => $username, 'ip' => $ip, 's' => $success ? 1 : 0]);
+        } catch (\PDOException) {
+            // Table missing or DB error — do not block login
+        }
     }
 
     public static function loginAdmin(string $username, string $password, int $maxAttempts, int $lockoutMinutes): bool

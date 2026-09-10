@@ -74,6 +74,10 @@ HTML;
         $adminHint = $variant === 'admin'
             ? '<p class="muted login-hint">فقط مدیر سرویس. مشتریان: <a href="/">صفحه ورود مشتری</a></p>'
             : '<p class="muted login-hint">مشاهده مصرف و وضعیت سرویس VPN</p>';
+        $errorBanner = '';
+        if (!empty($_GET['e'])) {
+            $errorBanner = '<div class="alert error">ورود ناموفق بود. نام کاربری یا رمز اشتباه است، یا دیتابیس ناقص است (scripts/install.php).</div>';
+        }
         return <<<HTML
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -87,6 +91,7 @@ HTML;
 <div class="login-box">
     <h1>{$t}</h1>
     {$adminHint}
+    {$errorBanner}
     <form class="stack login-form" method="post" action="{$action}">
         {$csrf}
         <label for="login-username">نام کاربری</label>
