@@ -568,6 +568,50 @@ form.stack select {
 .sub-mgmt-panel-name { font-weight: 600; font-size: 0.88rem; }
 .sub-mgmt-panel-state { font-size: 0.78rem; color: var(--muted); }
 .sub-mgmt-panel-link { margin-right: auto; font-size: 0.75rem; }
+.sub-mgmt-panel-chip-link {
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sub-mgmt-panel-chip-link:hover {
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(139, 92, 246, 0.08);
+}
+.sub-mgmt-panel-cust { font-size: 0.72rem; margin-right: 0.25rem; }
+.sub-mgmt-chevron {
+  margin-right: auto;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: #a78bfa;
+  opacity: 0.85;
+}
+.sub-mgmt-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: -0.15rem 0 0.65rem;
+  padding: 0 0.15rem;
+}
+.sub-mgmt-panel-err { margin: -0.35rem 0 0.65rem; font-size: 0.75rem; word-break: break-word; }
+.sub-mgmt-menu-placeholder { width: 40px; height: 40px; visibility: hidden; }
+.sub-mgmt-panels-hero { margin-bottom: 0.85rem; }
+.sub-mgmt-connect-form label {
+  display: block;
+  margin: 0.65rem 0 0.3rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.sub-mgmt-connect-form input,
+.sub-mgmt-connect-form select {
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: inherit;
+}
+.sub-mgmt-connect-form select { margin-bottom: 0; }
 
 .sub-mgmt-usage-visual {
   display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;

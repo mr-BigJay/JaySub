@@ -521,6 +521,98 @@ HTML;
         </div>';
     }
 
+    /**
+     * @param list<array<string, mixed>> $panels
+     */
+    public static function adminXuiPanelsPage(
+        string $flashHtml,
+        string $csrfField,
+        string $customerOptionsHtml,
+        array $panels,
+    ): string {
+        $connected = 0;
+        foreach ($panels as $p) {
+            if (($p['connection_status'] ?? '') === 'connected') {
+                ++$connected;
+            }
+        }
+        $total = count($panels);
+
+        $panelChips = '';
+        foreach ($panels as $p) {
+            $conn = (string) ($p['connection_status'] ?? '');
+            $dot = match ($conn) {
+                'connected' => 'on',
+                'sync_error' => 'warn',
+                default => 'off',
+            };
+            $connLabel = $conn === 'connected' ? 'متصل' : ($conn === 'sync_error' ? 'خطای sync' : 'قطع');
+            $cust = htmlspecialchars((string) ($p['customer_username'] ?? ''), ENT_QUOTES, 'UTF-8');
+            $pid = (int) $p['id'];
+            $err = '';
+            if (!empty($p['last_error'])) {
+                $err = '<p class="muted sub-mgmt-panel-err">' . htmlspecialchars((string) $p['last_error'], ENT_QUOTES, 'UTF-8') . '</p>';
+            }
+            $panelChips .= '<a class="sub-mgmt-panel-chip sub-mgmt-panel-chip-link" href="/admin/panels/' . $pid . '/clients">
+                <span class="sub-mgmt-panel-dot ' . $dot . '"></span>
+                <span class="sub-mgmt-panel-name">' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</span>
+                <span class="sub-mgmt-panel-state">' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '</span>
+                <span class="sub-mgmt-panel-cust muted">' . $cust . '</span>
+                <span class="sub-mgmt-chevron" aria-hidden="true">‹</span>
+            </a>' . $err
+                . '<div class="sub-mgmt-panel-actions">
+                    <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/edit">ویرایش</a>
+                    <form method="post" action="/admin/panels/' . $pid . '/test" class="inline-form">' . $csrfField
+                . '<button type="submit" class="btn btn-sm btn-primary">تست</button></form>
+                </div>';
+        }
+        if ($panelChips === '') {
+            $panelChips = '<p class="muted sub-mgmt-empty">هنوز پنلی ثبت نشده — فرم پایین را پر کنید.</p>';
+        }
+
+        return '<div class="sub-mgmt-page">' . $flashHtml . '
+            <header class="sub-mgmt-toolbar">
+                <a class="sub-mgmt-back" href="/admin/dashboard" aria-label="بازگشت">←</a>
+                <h2 class="sub-mgmt-title">پنل‌های 3X-UI</h2>
+                <span class="sub-mgmt-menu sub-mgmt-menu-placeholder" aria-hidden="true"></span>
+            </header>
+
+            <section class="ui-card sub-mgmt-hero sub-mgmt-panels-hero">
+                <div class="sub-mgmt-hero-icon" aria-hidden="true">⬡</div>
+                <div class="sub-mgmt-hero-main">
+                    <h3 class="sub-mgmt-username">مدیریت پنل‌های XUI</h3>
+                    <p class="muted sub-mgmt-hero-sub">' . $connected . ' متصل از ' . $total . ' پنل ثبت‌شده</p>
+                </div>
+                <div class="sub-mgmt-days sub-mgmt-days-muted">
+                    <span class="sub-mgmt-days-label">MHSanaei / 3x-ui</span>
+                </div>
+            </section>
+
+            <section class="ui-card sub-mgmt-card">
+                <h2 class="card-title sub-mgmt-card-title"><span class="sub-mgmt-ico">⬡</span> پنل‌های ثبت‌شده</h2>
+                <div class="sub-mgmt-panels">' . $panelChips . '</div>
+            </section>
+
+            <section class="ui-card sub-mgmt-card">
+                <h2 class="card-title sub-mgmt-card-title"><span class="sub-mgmt-ico">＋</span> اتصال پنل جدید</h2>
+                <form class="stack sub-mgmt-connect-form" method="post" action="/admin/panels">' . $csrfField . '
+                    <label>مشتری (سرویس)</label>
+                    <select name="customer_id" required>' . $customerOptionsHtml . '</select>
+                    <label>نام پنل</label>
+                    <input name="name" required placeholder="مثلاً Bell1">
+                    <label>آدرس پنل</label>
+                    <input name="base_url" required placeholder="https://example.com:2415/SecretPath">
+                    <label>API Token</label>
+                    <input name="api_token" required autocomplete="off" placeholder="توکن از Panel settings → API Tokens">
+                    <div class="sub-mgmt-actions" style="margin-top:0.75rem">
+                        <button class="btn btn-primary block sub-mgmt-btn-primary" type="submit" name="action" value="save">ذخیره پنل</button>
+                        <button class="btn btn-secondary block" type="submit" name="action" value="save_test">ذخیره و تست اتصال</button>
+                    </div>
+                </form>
+            </section>
+        </div>';
+    }
+
     private static function statusPill(string $statusKey): string
     {
         $map = [

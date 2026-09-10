@@ -419,55 +419,13 @@ if ($uri === '/admin/panels' && $method === 'GET') {
         $flashHtml = '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
 
-    $addForm = '<form class="stack panel-connect-form" method="post" action="/admin/panels">' . Csrf::field() . '
-        <label>مشتری (سرویس)</label>
-        <select name="customer_id" required>' . $customerOptions . '</select>
-        <label>نام پنل</label>
-        <input name="name" required placeholder="مثلاً پنل اصلی / آلمان">
-        <label>آدرس پنل (Domain یا IP + پورت)</label>
-        <input name="base_url" required placeholder="https://bell.jay-force.ir:2415/GRgxVKeEuAUnoMwRYy">
-        <p class="muted form-hint">همان آدرسی که در مرورگر برای ورود به پنل می‌زنید، با <code>https://</code> یا <code>http://</code>، شامل پورت و <strong>مسیر امنیتی</strong> (مثلاً <code>/GRgxVKeEuAUnoMwRYy</code>) — بدون اسلش آخر و بدون <code>/panel/api/...</code>. توکن را از <strong>رابط وب</strong> بگیرید: ادمین → Panel settings → <strong>API Tokens</strong> → ایجاد و کپی (یک‌بار). دستور <code>x-ui setting -getApiToken</code> در نصب شما نیست؛ با <code>x-ui settings</code> فقط پورت و مسیر را می‌بینید. توکن را بدون پیشوند <code>Bearer</code> بچسبانید.</p>
-        <label>API Token</label>
-        <input name="api_token" required autocomplete="off" placeholder="Bearer token">
-        <div class="form-actions-row">
-            <button class="btn btn-primary" type="submit" name="action" value="save">ذخیره پنل</button>
-            <button class="btn btn-secondary" type="submit" name="action" value="save_test">ذخیره و تست اتصال</button>
-        </div>
-    </form>';
-
-    $listHtml = '';
-    if ($panels === []) {
-        $listHtml = '<p class="muted">هنوز پنلی ثبت نشده. فرم بالا را پر کنید.</p>';
-    } else {
-        $cards = '';
-        foreach ($panels as $p) {
-            $dot = match ($p['connection_status']) {
-                'connected' => '<span class="conn-dot on">●</span> متصل',
-                'sync_error' => '<span class="conn-dot warn">●</span> خطا',
-                default => '<span class="conn-dot off">●</span> قطع',
-            };
-            $err = $p['last_error'] ? '<p class="muted panel-err">' . htmlspecialchars((string) $p['last_error'], ENT_QUOTES, 'UTF-8') . '</p>' : '';
-            $cards .= '<article class="panel-list-card ui-card">
-                <div class="data-card-row"><span>نام</span><strong>' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</strong></div>
-                <div class="data-card-row"><span>آدرس</span><span class="mono">' . htmlspecialchars((string) $p['base_url'], ENT_QUOTES, 'UTF-8') . '</span></div>
-                <div class="data-card-row"><span>مشتری</span><span>' . htmlspecialchars((string) $p['customer_username'], ENT_QUOTES, 'UTF-8') . '</span></div>
-                <div class="data-card-row"><span>وضعیت</span><span>' . $dot . '</span></div>
-                ' . $err . '
-                <div class="panel-card-actions">
-                    <a class="btn btn-sm btn-secondary" href="/admin/panels/' . (int) $p['id'] . '/edit">ویرایش</a>
-                    <form method="post" action="/admin/panels/' . (int) $p['id'] . '/test" class="inline-form">' . Csrf::field()
-                . '<button type="submit" class="btn btn-sm btn-primary">تست اتصال</button></form>
-                    <a class="btn btn-sm btn-ghost" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a>
-                </div>
-            </article>';
-        }
-        $listHtml = '<div class="panel-list">' . $cards . '</div>';
-    }
-
-    $body = $flashHtml
-        . Layout::card($addForm, 'اتصال پنل 3X-UI (MHSanaei)')
-        . Layout::card($listHtml, 'پنل‌های ثبت‌شده');
-    adminPage('پنل‌های XUI', 'panels', $body);
+    $body = Layout::adminXuiPanelsPage(
+        $flashHtml,
+        Csrf::field(),
+        $customerOptions,
+        $panels,
+    );
+    adminPage('پنل‌های 3X-UI', 'panels', $body);
 }
 
 if ($uri === '/admin/panels' && $method === 'POST') {
