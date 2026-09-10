@@ -253,8 +253,10 @@ final class CustomerService
     {
         $stmt = Database::pdo()->prepare(
             'SELECT vp.id, vp.name,
-                COALESCE(SUM(vc.base_upload_bytes + vc.last_xui_upload), 0) AS upload_bytes,
-                COALESCE(SUM(vc.base_download_bytes + vc.last_xui_download), 0) AS download_bytes
+                COALESCE(SUM(GREATEST(0, CAST(vc.base_upload_bytes AS SIGNED) + CAST(vc.last_xui_upload AS SIGNED)
+                    - CAST(vc.xui_baseline_upload AS SIGNED))), 0) AS upload_bytes,
+                COALESCE(SUM(GREATEST(0, CAST(vc.base_download_bytes AS SIGNED) + CAST(vc.last_xui_download AS SIGNED)
+                    - CAST(vc.xui_baseline_download AS SIGNED))), 0) AS download_bytes
              FROM vpn_panels vp
              LEFT JOIN vpn_clients vc ON vc.panel_id = vp.id AND vc.customer_id = :cid
              WHERE vp.customer_id = :cid2 AND vp.is_active = 1

@@ -104,7 +104,10 @@ final class DashboardService
     {
         $rows = Database::pdo()->query(
             'SELECT vp.name,
-                COALESCE(SUM(vc.base_upload_bytes + vc.last_xui_upload + vc.base_download_bytes + vc.last_xui_download), 0) AS bytes
+                COALESCE(SUM(
+                    GREATEST(0, CAST(vc.base_upload_bytes AS SIGNED) + CAST(vc.last_xui_upload AS SIGNED) - CAST(vc.xui_baseline_upload AS SIGNED))
+                  + GREATEST(0, CAST(vc.base_download_bytes AS SIGNED) + CAST(vc.last_xui_download AS SIGNED) - CAST(vc.xui_baseline_download AS SIGNED))
+                ), 0) AS bytes
              FROM vpn_panels vp
              LEFT JOIN vpn_clients vc ON vc.panel_id = vp.id
              GROUP BY vp.id, vp.name

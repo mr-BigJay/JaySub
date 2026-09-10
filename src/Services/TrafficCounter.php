@@ -39,4 +39,21 @@ final class TrafficCounter
             'total_down' => $baseDown + $lastDown,
         ];
     }
+
+    /** Usage counted in JaySub (excludes XUI counter at first sync / baseline). */
+    public static function effectiveUpload(
+        int $baseUp,
+        int $lastUp,
+        int $baselineUp,
+    ): int {
+        return max(0, $baseUp + $lastUp - $baselineUp);
+    }
+
+    public static function effectiveDownload(
+        int $baseDown,
+        int $lastDown,
+        int $baselineDown,
+    ): int {
+        return max(0, $baseDown + $lastDown - $baselineDown);
+    }
 }

@@ -114,8 +114,22 @@ final class TrafficSyncService
             'SELECT * FROM vpn_clients WHERE panel_id = :panel_id AND xui_email = :email LIMIT 1'
         );
         $insertVc = $pdo->prepare(
-            'INSERT INTO vpn_clients (customer_id, panel_id, subscription_id, inbound_id, xui_email, uuid, protocol)
-             VALUES (:cid, :pid, :sid, :inbound, :email, :uuid, :protocol)'
+            'INSERT INTO vpn_clients (
+                customer_id, panel_id, subscription_id, inbound_id, xui_email, uuid, protocol,
+                xui_baseline_upload, xui_baseline_download, last_xui_upload, last_xui_download
+             ) VALUES (
+                :cid, :pid, :sid, :inbound, :email, :uuid, :protocol,
+                :bup, :bdown, :bup, :bdown
+             )'
+        );
+        $freezeBaseline = $pdo->prepare(
+            'UPDATE vpn_clients SET
+                xui_baseline_upload = :bup,
+                xui_baseline_download = :bdown,
+                last_xui_upload = :bup,
+                last_xui_download = :bdown,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id'
         );
         $upd = $pdo->prepare(
             'UPDATE vpn_clients SET
@@ -144,11 +158,21 @@ final class TrafficSyncService
                     'email' => $email,
                     'uuid' => $s['uuid'],
                     'protocol' => $s['protocol'],
+                    'bup' => $s['up'],
+                    'bdown' => $s['down'],
                 ]);
-                $selectVc->execute(['panel_id' => $panelId, 'email' => $email]);
-                $vc = $selectVc->fetch();
+                continue;
             }
-            if ($vc === false) {
+            $baselineUp = (int) ($vc['xui_baseline_upload'] ?? 0);
+            $baselineDown = (int) ($vc['xui_baseline_download'] ?? 0);
+            if ($baselineUp === 0 && $baselineDown === 0
+                && (int) $vc['last_xui_upload'] === 0 && (int) $vc['last_xui_download'] === 0
+                && ($s['up'] > 0 || $s['down'] > 0)) {
+                $freezeBaseline->execute([
+                    'bup' => $s['up'],
+                    'bdown' => $s['down'],
+                    'id' => $vc['id'],
+                ]);
                 continue;
             }
             $result = TrafficCounter::applyReading(
@@ -206,8 +230,10 @@ final class TrafficSyncService
              FROM (
                 SELECT
                     vc.xui_email,
-                    MAX(vc.base_upload_bytes + vc.last_xui_upload) AS up,
-                    MAX(vc.base_download_bytes + vc.last_xui_download) AS down
+                    MAX(GREATEST(0, CAST(vc.base_upload_bytes AS SIGNED) + CAST(vc.last_xui_upload AS SIGNED)
+                        - CAST(vc.xui_baseline_upload AS SIGNED))) AS up,
+                    MAX(GREATEST(0, CAST(vc.base_download_bytes AS SIGNED) + CAST(vc.last_xui_download AS SIGNED)
+                        - CAST(vc.xui_baseline_download AS SIGNED))) AS down
                 FROM vpn_clients vc
                 INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
                 WHERE vc.customer_id = :cid AND vc.subscription_id = :sid
