@@ -12,10 +12,13 @@ final class XuiClient
 {
     public function __construct(
         private readonly string $baseUrl,
-        private readonly string $apiToken,
+        string $apiToken,
         private readonly int $timeoutSeconds = 30,
     ) {
+        $this->apiToken = XuiToken::normalize($apiToken);
     }
+
+    private readonly string $apiToken;
 
     /** @return array{ok: bool, data?: mixed, error?: string, http_code?: int} */
     public function getServerStatus(): array
@@ -69,6 +72,8 @@ final class XuiClient
         $headers = [
             'Accept: application/json',
             'Authorization: Bearer ' . $this->apiToken,
+            // 3x-ui returns 401 for bad tokens when this is set; without it, empty 404 (not JSON).
+            'X-Requested-With: XMLHttpRequest',
         ];
         if ($body !== null) {
             $headers[] = 'Content-Type: application/json';
@@ -99,7 +104,11 @@ final class XuiClient
 
         $decoded = json_decode($response, true);
         if (!is_array($decoded)) {
-            return ['ok' => false, 'error' => 'Invalid JSON response', 'http_code' => $httpCode];
+            return [
+                'ok' => false,
+                'error' => $this->describeNonJsonResponse($httpCode, (string) $response),
+                'http_code' => $httpCode,
+            ];
         }
 
         if ($httpCode >= 400 || ($decoded['success'] ?? true) === false) {
@@ -108,5 +117,28 @@ final class XuiClient
         }
 
         return ['ok' => true, 'data' => $decoded, 'http_code' => $httpCode];
+    }
+
+    private function describeNonJsonResponse(int $httpCode, string $response): string
+    {
+        $body = trim($response);
+        if ($body === '') {
+            if ($httpCode === 401) {
+                return 'توکن API نامعتبر است (HTTP 401). در 3x-ui: Panel settings → API Tokens — توکن جدید با دسترسی Admin یا Node-sync بسازید و فقط خود توکن را بچسبانید (بدون Bearer).';
+            }
+            if ($httpCode === 403) {
+                return 'توکن API اجازهٔ این عملیات را ندارد (HTTP 403). برای JaySub توکن Admin یا Node-sync لازم است.';
+            }
+            if ($httpCode === 404) {
+                return 'پنل پاسخ JSON نداد (HTTP 404 خالی). معمولاً توکن اشتباه/منقضی است یا آدرس پنل نادرست — 3x-ui برای توکن نامعتبر گاهی 404 خالی برمی‌گرداند.';
+            }
+            return 'پاسخ خالی از پنل (HTTP ' . $httpCode . ')';
+        }
+        $snippet = mb_substr(preg_replace('/\s+/', ' ', $body) ?? $body, 0, 120);
+        if (stripos($body, '<!doctype') !== false || stripos($body, '<html') !== false) {
+            return 'به‌جای JSON صفحهٔ HTML برگشت (HTTP ' . $httpCode . '). آدرس پنل یا توکن را بررسی کنید.';
+        }
+
+        return 'پاسخ نامعتبر از پنل (HTTP ' . $httpCode . '): ' . $snippet;
     }
 }

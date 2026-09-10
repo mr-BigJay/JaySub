@@ -8,12 +8,14 @@ use App\Auth\AuthService;
 use App\Core\Database;
 use App\Core\Encryption;
 use App\Xui\XuiClient;
+use App\Xui\XuiToken;
 
 final class PanelService
 {
     public static function create(int $customerId, string $name, string $baseUrl, string $apiToken, Encryption $encryption, ?int $adminId = null): int
     {
         $baseUrl = rtrim(trim($baseUrl), '/');
+        $apiToken = XuiToken::normalize($apiToken);
         $stmt = Database::pdo()->prepare(
             'INSERT INTO vpn_panels (customer_id, name, base_url, api_token_encrypted) VALUES (:cid, :name, :url, :tok)'
         );
@@ -41,6 +43,7 @@ final class PanelService
     {
         $baseUrl = rtrim(trim($baseUrl), '/');
         if ($apiToken !== null && $apiToken !== '') {
+            $apiToken = XuiToken::normalize($apiToken);
             Database::pdo()->prepare(
                 'UPDATE vpn_panels SET name = :n, base_url = :u, api_token_encrypted = :t, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
             )->execute([

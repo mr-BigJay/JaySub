@@ -431,7 +431,7 @@ if ($uri === '/admin/panels' && $method === 'POST') {
         $cid,
         trim($_POST['name'] ?? ''),
         trim($_POST['base_url'] ?? ''),
-        $_POST['api_token'] ?? '',
+        trim((string) ($_POST['api_token'] ?? '')),
         app_encryption($config),
         AuthService::adminId()
     );

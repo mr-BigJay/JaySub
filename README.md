@@ -42,6 +42,8 @@ curl -sk -H "Authorization: Bearer YOUR_TOKEN" "https://YOUR_PANEL/panel/api/ser
 
 پاسخ JSON با `success: true` یعنی توکن و آدرس درست است.
 
+اگر JaySub می‌گوید **Invalid JSON** یا **پاسخ خالی (404)**، در 3x-ui معمولاً **توکن API اشتباه، حذف‌شده، یا با پیشوند اضافی `Bearer`** است؛ پنل عمداً بدنهٔ خالی برمی‌گرداند. توکن را از **API Tokens** دوباره بسازید (ترجیحاً **Admin** یا **Node-sync**). دو رکورد با یک آدرس ولی دو توکن مختلف می‌توانند یکی «متصل» و دیگری «خطا» باشد.
+
 ## نیازمندی‌ها
 
 - PHP 8.3+ (extensions: `pdo_mysql`, `openssl`, `curl`, `json`)
