@@ -12,6 +12,13 @@ final class Format
         return number_format($gb, $decimals, '.', '') . ' GB';
     }
 
+    /** e.g. "GB 1.32" for public usage mockup */
+    public static function gbPrefix(float $bytes, int $decimals = 2): string
+    {
+        $gb = $bytes / (1024 ** 3);
+        return 'GB ' . number_format($gb, $decimals, '.', '');
+    }
+
     public static function bytesToGbNumber(float $bytes): float
     {
         return round($bytes / (1024 ** 3), 2);

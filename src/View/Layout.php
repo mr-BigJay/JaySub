@@ -208,12 +208,132 @@ HTML;
     {$criticalCss}
     <link rel="stylesheet" href="{$cssHref}">
 </head>
-<body class="theme-jaysub customer-app public-usage-page">
-<main class="customer-main">{$content}</main>
+<body class="theme-jaysub customer-app public-usage-page usage-link-page">
+<main class="customer-main usage-view-shell">{$content}</main>
 <script src="{$jsSrc}" defer></script>
 </body>
 </html>
 HTML;
+    }
+
+    public static function publicUsageViewContent(
+        string $brandName,
+        float $usedBytes,
+        float $quotaBytes,
+        float $pct,
+        ?string $endsAt,
+        string $statusKey,
+    ): string {
+        $remaining = max(0.0, $quotaBytes - $usedBytes);
+        $pctDisplay = (int) round($pct);
+        $pctBar = min(100.0, $pct);
+        $expiryText = $endsAt ? self::formatUsageExpiry((string) $endsAt) : '—';
+        $brandEsc = htmlspecialchars($brandName, ENT_QUOTES, 'UTF-8');
+        $usedLabel = Format::gbPrefix($usedBytes);
+        $quotaSuffix = number_format($quotaBytes / (1024 ** 3), 2, '.', '') . ' GB';
+        $statusHtml = self::publicUsageStatusPill($statusKey);
+
+        return '<div class="usage-view-page">
+            <header class="uv-header">
+                <div class="uv-brand">
+                    <span class="uv-brand-name">' . $brandEsc . '</span>
+                    <span class="uv-signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                </div>
+                <p class="uv-section-label">مصرف سرویس</p>
+            </header>
+
+            <section class="uv-card uv-usage-card">
+                <div class="uv-usage-main">
+                    <div class="uv-donut" style="--pct:' . $pctBar . '">
+                        <span>' . $pctDisplay . '٪<br><small>از حجم کل</small></span>
+                    </div>
+                    <div class="uv-usage-text">
+                        <div class="uv-usage-label">مصرف:</div>
+                        <div class="uv-usage-values"><span class="uv-cyan">' . htmlspecialchars($usedLabel, ENT_QUOTES, 'UTF-8') . '</span> / ' . htmlspecialchars($quotaSuffix, ENT_QUOTES, 'UTF-8') . '</div>
+                        <p class="uv-usage-sub">مصرف کل سرویس</p>
+                    </div>
+                </div>
+                <div class="progress uv-progress"><span style="width:' . $pctBar . '%"></span></div>
+            </section>
+
+            <section class="uv-card uv-status-card">
+                <header class="uv-card-head">
+                    <h2 class="uv-card-title">وضعیت اشتراک</h2>
+                    <button type="button" class="uv-refresh" onclick="location.reload()" aria-label="به‌روزرسانی">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
+                    </button>
+                </header>
+                ' . self::publicUsageRow('سقف حجم', Format::gbPrefix($quotaBytes), 'db') . '
+                ' . self::publicUsageRow('مصرف‌شده', Format::gbPrefix($usedBytes), 'traffic') . '
+                ' . self::publicUsageRow('باقی‌مانده', Format::gbPrefix($remaining), 'clock', true) . '
+                ' . self::publicUsageRow('انقضا', $expiryText, 'calendar') . '
+                ' . self::publicUsageRow('وضعیت', $statusHtml, 'shield', false, true) . '
+            </section>
+
+            <footer class="uv-footer">
+                <span class="uv-rocket" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 16.5c4-4 6-9 6-9s5 5 9 6c0 0-5 1-9 6-4 5-6 9-6 9s-4-5-6-9z"/><path d="M9 15l-1 4 4-1"/></svg>
+                </span>
+                <p>به‌روزرسانی هر حدود یک دقیقه</p>
+            </footer>
+            <div class="uv-wave" aria-hidden="true"></div>
+        </div>';
+    }
+
+    private static function formatUsageExpiry(string $datetime): string
+    {
+        $ts = strtotime($datetime);
+        if ($ts === false) {
+            return htmlspecialchars($datetime, ENT_QUOTES, 'UTF-8');
+        }
+        return htmlspecialchars(date('Y/m/d', $ts), ENT_QUOTES, 'UTF-8');
+    }
+
+    private static function publicUsageStatusPill(string $statusKey): string
+    {
+        $map = [
+            'active' => ['فعال', ''],
+            'exhausted' => ['اتمام حجم', 'danger'],
+            'disabled' => ['غیرفعال', 'danger'],
+            'expired' => ['منقضی', 'danger'],
+            'warning' => ['هشدار', 'warn'],
+            'inactive' => ['غیرفعال', 'danger'],
+        ];
+        [$label, $tone] = $map[$statusKey] ?? ['نامشخص', 'warn'];
+        $cls = 'uv-status-pill' . ($tone !== '' ? ' ' . $tone : '');
+        return '<span class="' . $cls . '"><span class="uv-status-dot"></span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
+    }
+
+    private static function publicUsageRow(
+        string $label,
+        string $valueHtml,
+        string $icon,
+        bool $iconTeal = false,
+        bool $valueIsHtml = false,
+    ): string {
+        $value = $valueIsHtml
+            ? $valueHtml
+            : htmlspecialchars($valueHtml, ENT_QUOTES, 'UTF-8');
+        $iconCls = 'uv-row-icon' . ($iconTeal ? ' teal' : '');
+        return '<div class="uv-row">
+            <div class="uv-row-meta">
+                <span class="' . $iconCls . '">' . self::publicUsageIcon($icon) . '</span>
+                <span class="uv-row-label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>
+            </div>
+            <div class="uv-row-value">' . $value . '</div>
+        </div>';
+    }
+
+    private static function publicUsageIcon(string $kind): string
+    {
+        return match ($kind) {
+            'db' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
+            'traffic' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>',
+            'clock' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+            'calendar' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>',
+            'shield' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v6c0 5-3.5 8-8 8s-8-3-8-8V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg>',
+            default => '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>',
+        };
     }
 
     public static function subscriptionLinkCard(?string $url): string

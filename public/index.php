@@ -192,7 +192,7 @@ if (preg_match('#^/u/([a-f0-9]{64})$#i', $uri, $m) && $method === 'GET') {
     $cid = (int) $customer['id'];
     $sub = CustomerService::activeSubscription($cid);
     if ($sub === null) {
-        Response::html(Layout::publicUsagePage('مصرف سرویس', Layout::card('<p class="muted">سرویس فعالی ثبت نشده است.</p>')));
+        Response::html(Layout::publicUsagePage('مصرف سرویس', '<div class="usage-view-page"><p class="uv-empty muted">سرویس فعالی ثبت نشده است.</p></div>'));
         return;
     }
     $upload = (int) $sub['used_upload_bytes'];
@@ -200,24 +200,22 @@ if (preg_match('#^/u/([a-f0-9]{64})$#i', $uri, $m) && $method === 'GET') {
     $total = $upload + $download;
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
-    $remaining = max(0, $quota - $total);
     $endsAt = $sub['ends_at'] ?? null;
-    $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
     $statusKey = (string) $customer['service_status'];
     if ($sub['status'] === 'exhausted' || ($quota > 0 && $pct >= 100)) {
         $statusKey = 'exhausted';
     }
-    $name = htmlspecialchars((string) $customer['name'], ENT_QUOTES, 'UTF-8');
-    $body = '<p class="customer-greeting">مصرف سرویس <strong>' . $name . '</strong></p>'
-        . Layout::usageProgress((float) $total, (float) $quota, $pct)
-        . Layout::card('
-            <div class="data-card-row"><span>سقف حجم</span><span>' . Format::bytesToGb($quota) . '</span></div>
-            <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::bytesToGb($total) . '</span></div>
-            <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb($remaining) . '</span></div>
-            <div class="data-card-row"><span>انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
-            <div class="data-card-row"><span>وضعیت</span><span>' . serviceStatusBadge($statusKey) . '</span></div>
-        ', 'وضعیت اشتراک')
-        . '<p class="muted" style="margin-top:1rem;text-align:center">به‌روزرسانی هر حدود یک دقیقه</p>';
+    $brand = trim((string) ($customer['username'] ?? '')) !== ''
+        ? (string) $customer['username']
+        : (string) $customer['name'];
+    $body = Layout::publicUsageViewContent(
+        $brand,
+        (float) $total,
+        (float) $quota,
+        $pct,
+        $endsAt !== null && $endsAt !== '' ? (string) $endsAt : null,
+        $statusKey,
+    );
     Response::html(Layout::publicUsagePage('مصرف سرویس', $body));
     return;
 }
