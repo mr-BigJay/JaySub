@@ -518,6 +518,17 @@ if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET'
     if (!$panel) {
         Response::redirect('/admin/panels');
     }
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
     try {
         $clients = PanelService::discoverClients($pid, app_encryption($config));
     } catch (\Throwable $e) {
@@ -544,8 +555,19 @@ if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET'
             $action,
         ];
     }
-    $html = '<p class="muted">' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8') . '</p>'
-        . Layout::responsiveTable(['ایمیل', 'مصرف', 'وضعیت', ''], $tableRows)
+    $mappedCount = 0;
+    foreach ($clients as $c) {
+        if ($c['mapped']) {
+            $mappedCount++;
+        }
+    }
+    $intro = '<p class="muted">' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8')
+        . ' — کلاینت اختصاص‌داده‌شده: <strong>' . $mappedCount . '</strong></p>';
+    if ($mappedCount === 0 && $clients !== []) {
+        $intro .= '<p class="muted form-hint">روی «اختصاص» بزنید تا مصرف این ایمیل در JaySub شمارش شود.</p>';
+    }
+    $html = $flashHtml . $intro
+        . Layout::responsiveTable(['ایمیل', 'مصرف (3x-ui)', 'وضعیت', ''], $tableRows)
         . '<p><a href="/admin/panels">بازگشت به پنل‌ها</a></p>';
     adminPage('کلاینت‌های پنل', 'panels', Layout::card($html));
 }
@@ -558,14 +580,22 @@ if ($uri === '/admin/services' && $method === 'GET') {
         $used = (int) ($r['used_upload_bytes'] ?? 0) + (int) ($r['used_download_bytes'] ?? 0);
         $quota = (int) ($r['quota_bytes'] ?? 0);
         $pct = $quota > 0 ? Format::percent($used, $quota) : 0;
+        $clientCount = (int) ($r['client_count'] ?? 0);
+        $panelCount = (int) ($r['panel_count'] ?? 0);
+        $mapHint = '';
+        if ($panelCount > 0 && $clientCount === 0) {
+            $mapHint = ' <span class="muted" title="از پنل XUI کلاینت را اختصاص دهید">⚠ بدون کلاینت</span>';
+        }
         $tableRows[] = [
-            htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8') . $mapHint,
             Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota),
             $pct . '٪',
-            '<a class="btn btn-sm btn-primary" href="/admin/customers/' . (int) $r['id'] . '/service">راه‌اندازی</a>',
+            '<a class="btn btn-sm btn-primary" href="/admin/customers/' . (int) $r['id'] . '/service">راه‌اندازی</a>'
+                . ($panelCount > 0 ? ' <a class="btn btn-sm btn-ghost" href="/admin/panels">کلاینت‌ها</a>' : ''),
         ];
     }
-    adminPage('سرویس‌ها', 'services', Layout::card(Layout::responsiveTable(['کاربر', 'مصرف', '٪', ''], $tableRows)));
+    $hint = '<p class="muted form-hint">مصرف از 3x-ui فقط برای <strong>کلاینت‌های اختصاص‌داده‌شده</strong> جمع می‌شود: پنل‌های XUI → کلاینت‌ها → اختصاص. سپس Sync (هر دقیقه worker یا «هم‌اکنون Sync» در پروفایل کاربر).</p>';
+    adminPage('سرویس‌ها', 'services', $hint . Layout::card(Layout::responsiveTable(['کاربر', 'مصرف', '٪', ''], $tableRows)));
 }
 
 if ($uri === '/admin/reports' && $method === 'GET') {
@@ -727,6 +757,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
         <label>تاریخ انقضا</label><input name="ends_at" type="date" value="' . $endsVal . '">
         <label>Subscription Link</label><input name="subscription_link" value="' . $subLink . '" placeholder="https://...">
         <fieldset class="panel-pick"><legend>پنل‌های فعال برای این سرویس</legend>' . ($panelChecks ?: '<p class="muted">ابتدا از صفحه مشتری پنل XUI اضافه کنید.</p>') . '</fieldset>
+        <p class="muted form-hint">بعد از ذخیره: از <strong>پنل‌های XUI → کلاینت‌ها</strong> ایمیل هر کاربر VPN را «اختصاص» کنید؛ بدون آن مصرف همیشه صفر می‌ماند.</p>
         <button class="btn btn-primary" type="submit">ذخیره سرویس</button></form>
         <p style="margin-top:1rem"><a href="/admin/customers/' . $id . '">مدیریت پنل و کلاینت</a></p>';
     adminPage('راه‌اندازی سرویس', 'services', Layout::card($body));
@@ -837,14 +868,23 @@ if (preg_match('#^/admin/panels/(\d+)/assign$#', $uri, $m) && $method === 'POST'
     $stmt->execute(['id' => $pid]);
     $panel = $stmt->fetch();
     if ($panel) {
-        PanelService::assignClient(
-            $pid,
-            (int) $panel['customer_id'],
-            trim($_POST['email'] ?? ''),
-            (int) ($_POST['inbound_id'] ?? 0),
-            ($_POST['uuid'] ?? '') !== '' ? $_POST['uuid'] : null,
-            ($_POST['protocol'] ?? '') !== '' ? $_POST['protocol'] : null,
-        );
+        $cid = (int) $panel['customer_id'];
+        try {
+            PanelService::assignClient(
+                $pid,
+                $cid,
+                trim($_POST['email'] ?? ''),
+                (int) ($_POST['inbound_id'] ?? 0),
+                ($_POST['uuid'] ?? '') !== '' ? $_POST['uuid'] : null,
+                ($_POST['protocol'] ?? '') !== '' ? $_POST['protocol'] : null,
+            );
+            $sync = new TrafficSyncService(app_encryption($config), app_telegram($config));
+            $sync->syncPanel($pid);
+            $sync->aggregateCustomer($cid);
+            Session::set('flash_admin_ok', 'کلاینت اختصاص داده شد و مصرف به‌روز شد.');
+        } catch (\Throwable $e) {
+            Session::set('flash_admin', $e->getMessage());
+        }
     }
     Response::redirect('/admin/panels/' . $pid . '/clients');
 }

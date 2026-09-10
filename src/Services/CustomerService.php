@@ -149,12 +149,15 @@ final class CustomerService
     public static function setPanelActivation(int $customerId, array $activePanelIds): void
     {
         $pdo = Database::pdo();
-        $pdo->prepare('UPDATE vpn_panels SET is_active = 0 WHERE customer_id = :c')->execute(['c' => $customerId]);
-        if ($activePanelIds !== []) {
-            $placeholders = implode(',', array_fill(0, count($activePanelIds), '?'));
-            $stmt = $pdo->prepare("UPDATE vpn_panels SET is_active = 1 WHERE customer_id = ? AND id IN ($placeholders)");
-            $stmt->execute(array_merge([$customerId], $activePanelIds));
+        if ($activePanelIds === []) {
+            // فرم بدون تیک پنل نباید همه را غیرفعال کند — مصرف صفر می‌شود.
+            $pdo->prepare('UPDATE vpn_panels SET is_active = 1 WHERE customer_id = :c')->execute(['c' => $customerId]);
+            return;
         }
+        $pdo->prepare('UPDATE vpn_panels SET is_active = 0 WHERE customer_id = :c')->execute(['c' => $customerId]);
+        $placeholders = implode(',', array_fill(0, count($activePanelIds), '?'));
+        $stmt = $pdo->prepare("UPDATE vpn_panels SET is_active = 1 WHERE customer_id = ? AND id IN ($placeholders)");
+        $stmt->execute(array_merge([$customerId], $activePanelIds));
     }
 
     public static function addQuota(int $customerId, float $additionalGb, Encryption $encryption, TelegramService $telegram, ?int $adminId = null): void
