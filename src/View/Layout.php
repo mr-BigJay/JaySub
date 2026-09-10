@@ -67,7 +67,7 @@ HTML;
 HTML;
     }
 
-    public static function loginPage(string $title, string $action, string $variant): string
+    public static function loginPage(string $title, string $action, string $variant, ?string $errorMessage = null): string
     {
         $csrf = Csrf::field();
         $t = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
@@ -75,8 +75,8 @@ HTML;
             ? '<p class="muted login-hint">فقط مدیر سرویس. مشتریان: <a href="/">صفحه ورود مشتری</a></p>'
             : '<p class="muted login-hint">مشاهده مصرف و وضعیت سرویس VPN</p>';
         $errorBanner = '';
-        if (!empty($_GET['e'])) {
-            $errorBanner = '<div class="alert error">ورود ناموفق بود. نام کاربری یا رمز اشتباه است، یا دیتابیس ناقص است (scripts/install.php).</div>';
+        if ($errorMessage !== null && $errorMessage !== '') {
+            $errorBanner = '<div class="alert error">' . htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8') . '</div>';
         }
         return <<<HTML
 <!DOCTYPE html>

@@ -18,6 +18,7 @@ use App\Core\Encryption;
 use App\Core\Format;
 use App\Core\Response;
 use App\Core\Database;
+use App\Core\Session;
 use App\Services\CustomerService;
 use App\Services\PanelService;
 use App\Services\SettingsService;
