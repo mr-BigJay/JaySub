@@ -368,7 +368,7 @@ if ($uri === '/admin/panels' && $method === 'GET') {
         $flashHtml = '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
 
-    $addForm = Csrf::field() . '<form class="stack panel-connect-form" method="post" action="/admin/panels">
+    $addForm = '<form class="stack panel-connect-form" method="post" action="/admin/panels">' . Csrf::field() . '
         <label>مشتری (سرویس)</label>
         <select name="customer_id" required>' . $customerOptions . '</select>
         <label>نام پنل</label>
@@ -455,7 +455,7 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'GET') {
     if (!$panel) {
         Response::redirect('/admin/panels');
     }
-    $form = Csrf::field() . '<form class="stack" method="post" action="/admin/panels/' . $pid . '/edit">
+    $form = '<form class="stack" method="post" action="/admin/panels/' . $pid . '/edit">' . Csrf::field() . '
         <label>نام پنل</label><input name="name" required value="' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8') . '">
         <label>آدرس پنل</label><input name="base_url" required value="' . htmlspecialchars((string) $panel['base_url'], ENT_QUOTES, 'UTF-8') . '">
         <label>API Token (خالی = بدون تغییر)</label><input name="api_token" autocomplete="off" placeholder="توکن جدید">
@@ -639,8 +639,7 @@ if ($uri === '/admin/customers' && $method === 'GET') {
 
 if ($uri === '/admin/customers/new' && $method === 'GET') {
     requireAdmin();
-    $form = Csrf::field() . '
-    <form class="stack" method="post" action="/admin/customers/new">
+    $form = '<form class="stack" method="post" action="/admin/customers/new">' . Csrf::field() . '
         <label>نام کاربر</label><input name="name" required>
         <label>Username</label><input name="username" required autocomplete="off">
         <label>رمز عبور</label><input name="password" type="password" required>
@@ -706,7 +705,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
         <p class="muted">مصرف تجمیعی (پنل‌های فعال): <strong>' . Format::bytesToGb($used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>
         ' . ($breakRows ? Layout::card($breakRows, 'مصرف به تفکیک پنل (ادمین)') : '') . '
-        ' . Csrf::field() . '<form class="stack" method="post" action="/admin/customers/' . $id . '/service">
+        . '<form class="stack" method="post" action="/admin/customers/' . $id . '/service">' . Csrf::field() . '
         <label>حجم کل (GB)</label><input name="quota_gb" type="number" step="0.1" required value="' . ($quota > 0 ? Format::bytesToGbNumber($quota) : '20') . '">
         <label>هشدار در (٪)</label><input name="warning1_percent" type="number" value="' . (int) $customer['warning1_percent'] . '">
         <label>هشدار دوم (٪)</label><input name="warning2_percent" type="number" value="' . (int) $customer['warning2_percent'] . '">
@@ -764,7 +763,7 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
         <p class="muted">مصرف: ' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</p>
         ' . Layout::card($panelRows ?: '<p class="muted">پنلی ثبت نشده</p>', 'پنل‌های 3X-UI') . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/panels/new">افزودن پنل</a></p>
-        ' . Layout::card(Csrf::field() . '<form class="stack" method="post" action="/admin/customers/' . $id . '/add-quota">
+        ' . Layout::card('<form class="stack" method="post" action="/admin/customers/' . $id . '/add-quota">' . Csrf::field() . '
             <label>افزایش حجم (GB)</label><input name="gb" type="number" step="0.1" required>
             <button class="btn primary" type="submit">شارژ مجدد</button></form>', 'شارژ حجم') . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/sync">هم‌اکنون Sync</a></p>';
@@ -774,7 +773,7 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
 if (preg_match('#^/admin/customers/(\d+)/panels/new$#', $uri, $m) && $method === 'GET') {
     requireAdmin();
     $id = (int) $m[1];
-    $form = Csrf::field() . '<form class="stack" method="post" action="/admin/customers/' . $id . '/panels/new">
+    $form = '<form class="stack" method="post" action="/admin/customers/' . $id . '/panels/new">' . Csrf::field() . '
         <label>نام پنل</label><input name="name" required>
         <label>آدرس پنل (مثلاً https://panel.example.com)</label><input name="base_url" required>
         <label>API Token (Bearer)</label><input name="api_token" required autocomplete="off">
@@ -837,7 +836,7 @@ if (preg_match('#^/admin/panels/(\d+)/assign$#', $uri, $m) && $method === 'POST'
 if ($uri === '/admin/settings' && $method === 'GET') {
     requireAdmin();
     $token = SettingsService::get('telegram_bot_token', '');
-    $form = Csrf::field() . '<form class="stack" method="post" action="/admin/settings">
+    $form = '<form class="stack" method="post" action="/admin/settings">' . Csrf::field() . '
         <label>Telegram Bot Token</label>
         <input name="telegram_bot_token" value="' . htmlspecialchars($token ?? '', ENT_QUOTES, 'UTF-8') . '" autocomplete="off">
         <button class="btn primary" type="submit">ذخیره</button></form>';
