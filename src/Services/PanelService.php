@@ -116,4 +116,28 @@ final class PanelService
             'panel_id' => $panelId,
         ]);
     }
+
+    /** @return array{ok:bool,message:string} */
+    public static function testConnection(int $panelId, Encryption $encryption): array
+    {
+        $stmt = Database::pdo()->prepare('SELECT base_url, api_token_encrypted FROM vpn_panels WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $panelId]);
+        $panel = $stmt->fetch();
+        if ($panel === false) {
+            return ['ok' => false, 'message' => 'پنل یافت نشد'];
+        }
+        $xui = new XuiClient((string) $panel['base_url'], $encryption->decrypt((string) $panel['api_token_encrypted']));
+        $result = $xui->getServerStatus();
+        if ($result['ok'] ?? false) {
+            Database::pdo()->prepare(
+                "UPDATE vpn_panels SET connection_status = 'connected', last_error = NULL WHERE id = :id"
+            )->execute(['id' => $panelId]);
+            return ['ok' => true, 'message' => 'متصل'];
+        }
+        $err = (string) ($result['error'] ?? 'خطای اتصال');
+        Database::pdo()->prepare(
+            "UPDATE vpn_panels SET connection_status = 'sync_error', last_error = :e WHERE id = :id"
+        )->execute(['e' => $err, 'id' => $panelId]);
+        return ['ok' => false, 'message' => $err];
+    }
 }

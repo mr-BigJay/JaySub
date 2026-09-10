@@ -180,7 +180,9 @@ final class TrafficSyncService
             'SELECT
                 COALESCE(SUM(base_upload_bytes + last_xui_upload), 0) AS up,
                 COALESCE(SUM(base_download_bytes + last_xui_download), 0) AS down
-             FROM vpn_clients WHERE customer_id = :cid AND subscription_id = :sid'
+             FROM vpn_clients vc
+             INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
+             WHERE vc.customer_id = :cid AND vc.subscription_id = :sid'
         );
         $sum->execute(['cid' => $customerId, 'sid' => $subId]);
         $totals = $sum->fetch();

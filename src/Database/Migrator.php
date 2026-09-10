@@ -17,6 +17,7 @@ final class Migrator
     {
         $pdo = Database::pdo();
         if (self::isReady($pdo)) {
+            SchemaUpgrade::apply($pdo);
             self::applyAdminInitFile($pdo);
             return;
         }
@@ -34,6 +35,7 @@ final class Migrator
         }
         $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
         self::setSchemaVersion($pdo);
+        SchemaUpgrade::apply($pdo);
     }
 
     public static function isReady(PDO $pdo): bool

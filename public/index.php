@@ -29,6 +29,7 @@ use App\Services\PanelService;
 use App\Services\SettingsService;
 use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
+use App\Services\DashboardService;
 use App\View\Layout;
 
 /** @param array<string, mixed> $config */
@@ -96,11 +97,26 @@ function serviceStatusBadge(string $status): string
 {
     $map = [
         'active' => ['badge-success', 'فعال'],
-        'exhausted' => ['badge-danger', 'اتمام حجم'],
+        'exhausted' => ['badge-danger', 'قطع‌شده / اتمام حجم'],
+        'disabled' => ['badge-danger', 'غیرفعال'],
+        'expired' => ['badge-danger', 'منقضی'],
+        'warning' => ['badge-warning', 'هشدار مصرف'],
         'inactive' => ['badge-danger', 'غیرفعال'],
     ];
     [$cls, $label] = $map[$status] ?? ['badge-warning', $status];
     return '<span class="badge ' . $cls . '">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
+}
+
+function alertTypeLabel(string $type): string
+{
+    return match ($type) {
+        'warning_1' => 'رسیدن به آستانه هشدار ۱',
+        'warning_2' => 'رسیدن به آستانه هشدار ۲',
+        'limit_reached' => 'اتمام حجم سرویس',
+        'quota_recharged' => 'شارژ مجدد حجم',
+        'service_restored' => 'بازگردانی سرویس',
+        default => $type,
+    };
 }
 
 function requireAdmin(): void
@@ -159,7 +175,7 @@ if ($uri === '/dashboard' && $method === 'GET') {
     $customer = CustomerService::findById($cid);
     $sub = CustomerService::activeSubscription($cid);
     if (!$customer || !$sub) {
-        customerPage('داشبورد', 'home', Layout::card('<p class="muted">اطلاعات سرویس یافت نشد. با پشتیبانی تماس بگیرید.</p>'));
+        customerPage('داشبورد', 'home', Layout::card('<p class="muted">سرویس فعالی برای حساب شما ثبت نشده است.</p>'));
         return;
     }
 
@@ -171,56 +187,37 @@ if ($uri === '/dashboard' && $method === 'GET') {
     $remaining = max(0, $quota - $total);
     $vpnReady = (int) $customer['vpn_enabled'] === 1 && $sub['status'] === 'active' && $pct < 100;
     $dotClass = $vpnReady ? 'on' : 'off';
-    $connLabel = $vpnReady ? 'آماده اتصال' : 'قطع / غیرفعال';
+    $connLabel = $vpnReady ? 'فعال' : 'قطع‌شده';
 
     $endsAt = $sub['ends_at'] ?? null;
-    $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : 'نامحدود (حجمی)';
-    $planLabel = Format::bytesToGb($quota) . ' — اشتراک حجمی';
-
-    $statusBadge = serviceStatusBadge((string) $customer['service_status']);
+    $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
+    $statusKey = (string) $customer['service_status'];
     if ($sub['status'] === 'exhausted' || $pct >= 100) {
-        $statusBadge = serviceStatusBadge('exhausted');
+        $statusKey = 'exhausted';
     }
-
-    $panels = CustomerService::panelUsageBreakdown($cid);
-    $panelHtml = '';
-    foreach ($panels as $p) {
-        $pt = (int) $p['upload_bytes'] + (int) $p['download_bytes'];
-        $panelHtml .= '<div class="data-card-row"><span>' . htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesToGb($pt) . '</span></div>';
-    }
-
-    $lastSync = Database::pdo()->prepare('SELECT MAX(last_sync_at) AS t FROM vpn_panels WHERE customer_id = :c');
-    $lastSync->execute(['c' => $cid]);
-    $ls = $lastSync->fetch()['t'] ?? null;
-    $lastSyncText = $ls ? Format::jalaliOrGregorian($ls) : '—';
-
-    $progClass = $pct >= 90 ? 'danger' : ($pct >= 80 ? 'warn' : '');
+    $statusBadge = serviceStatusBadge($statusKey);
+    $subLink = DashboardService::subscriptionLinkForCustomer($cid);
     $userName = htmlspecialchars((string) $customer['name'], ENT_QUOTES, 'UTF-8');
 
     $body = '
     <p class="customer-greeting">سلام، <strong>' . $userName . '</strong></p>
     <section class="vpn-status-card">
         <span class="status-dot ' . $dotClass . '"></span>
-        <h2>اتصال VPN</h2>
-        <p>' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '</p>
-        <div class="quota-ring"><div>' . (100 - min(100, (int) round($pct))) . '٪<small>باقی‌مانده</small></div></div>
-        <p class="muted">' . Format::bytesToGb($remaining) . ' از ' . Format::bytesToGb($quota) . '</p>
+        <h2>وضعیت سرویس</h2>
+        <p>' . $statusBadge . ' · ' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '</p>
     </section>
+    ' . Layout::usageProgress((float) $total, (float) $quota, $pct) . '
     ' . Layout::card('
-        <div class="data-card-row"><span>نوع اشتراک</span><span>' . htmlspecialchars($planLabel, ENT_QUOTES, 'UTF-8') . '</span></div>
+        <div class="data-card-row"><span>حجم کل</span><span>' . Format::bytesToGb($quota) . '</span></div>
+        <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::bytesToGb($total) . '</span></div>
+        <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb($remaining) . '</span></div>
         <div class="data-card-row"><span>تاریخ انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
-        <div class="data-card-row"><span>وضعیت</span><span>' . $statusBadge . '</span></div>
-        <div class="progress ' . $progClass . '"><span style="width:' . $pct . '%"></span></div>
-        <p class="muted" style="text-align:center;font-size:0.85rem">' . $pct . '٪ مصرف · بروزرسانی ' . htmlspecialchars($lastSyncText, ENT_QUOTES, 'UTF-8') . '</p>
-    ', 'خلاصه اشتراک') . '
+    ', 'اشتراک من') . '
+    ' . Layout::subscriptionLinkCard($subLink) . '
     <div class="action-grid">
-        <a class="action-tile" href="/app/buy"><span class="at-ico">🛒</span><span>خرید اشتراک</span></a>
-        <a class="action-tile" href="/app/renew"><span class="at-ico">↻</span><span>تمدید اشتراک</span></a>
-        <a class="action-tile" href="/app/link"><span class="at-ico">🔗</span><span>لینک اتصال</span></a>
-        <a class="action-tile" href="/app/messages"><span class="at-ico">✉</span><span>پیام‌ها</span></a>
-    </div>
-    ' . ($panelHtml ? Layout::card($panelHtml, 'مصرف به تفکیک سرور') : '') . '
-    ';
+        <a class="action-tile" href="/app/subscription"><span class="at-ico">◈</span><span>جزئیات اشتراک</span></a>
+        <a class="action-tile" href="/app/profile"><span class="at-ico">👤</span><span>پروفایل</span></a>
+    </div>';
     customerPage('داشبورد', 'home', $body);
 }
 
@@ -228,42 +225,27 @@ if ($uri === '/dashboard' && $method === 'GET') {
 if ($uri === '/app/subscription' && $method === 'GET') {
     requireCustomer();
     $cid = AuthService::customerId();
+    $customer = CustomerService::findById($cid);
     $sub = CustomerService::activeSubscription($cid);
-    if (!$sub) {
-        customerPage('اشتراک من', 'subscription', Layout::card('<p class="muted">اشتراک فعالی ثبت نشده است.</p><a class="btn btn-primary block" href="/app/buy">خرید اشتراک</a>'));
+    if (!$sub || !$customer) {
+        customerPage('اشتراک من', 'subscription', Layout::card('<p class="muted">اشتراک فعالی ثبت نشده است.</p>'));
         return;
     }
     $total = (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'];
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $endsAt = $sub['ends_at'] ?? null;
-    $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : 'نامحدود';
-    $body = Layout::card('
+    $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
+    $body = Layout::usageProgress((float) $total, (float) $quota, $pct)
+        . Layout::card('
         <div class="data-card-row"><span>حجم کل</span><span>' . Format::bytesToGb($quota) . '</span></div>
-        <div class="data-card-row"><span>مصرف شده</span><span>' . Format::bytesToGb($total) . ' (' . $pct . '٪)</span></div>
+        <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::bytesToGb($total) . '</span></div>
+        <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $total)) . '</span></div>
         <div class="data-card-row"><span>انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
-        <div class="data-card-row"><span>وضعیت</span><span>' . serviceStatusBadge((string) $sub['status']) . '</span></div>
-        <p style="margin-top:1rem"><a class="btn btn-primary block" href="/app/renew">تمدید / افزایش حجم</a></p>
-    ', 'اشتراک فعال');
+        <div class="data-card-row"><span>وضعیت</span><span>' . serviceStatusBadge((string) $customer['service_status']) . '</span></div>
+    ', 'اشتراک فعال')
+        . Layout::subscriptionLinkCard(DashboardService::subscriptionLinkForCustomer($cid));
     customerPage('اشتراک من', 'subscription', $body);
-}
-
-if ($uri === '/app/buy' && $method === 'GET') {
-    customerPlaceholder('خرید اشتراک', 'subscription', 'لیست پلن‌ها و درگاه پرداخت به‌زودی فعال می‌شود.');
-}
-
-if ($uri === '/app/renew' && $method === 'GET') {
-    requireCustomer();
-    $cid = AuthService::customerId();
-    $sub = CustomerService::activeSubscription($cid);
-    $info = $sub
-        ? '<p class="muted">اشتراک فعلی: ' . Format::bytesToGb((int) $sub['quota_bytes']) . '</p>'
-        : '<p class="muted">اشتراک فعالی ندارید.</p>';
-    customerPage('تمدید اشتراک', 'subscription', Layout::card($info . '<div class="placeholder-page"><div class="big-ico">↻</div><p>تمدید آنلاین به‌زودی.</p><p class="muted">فعلاً از پشتیبانی درخواست تمدید کنید.</p><a class="btn btn-secondary block" href="/app/support">پشتیبانی</a></div>'));
-}
-
-if ($uri === '/app/messages' && $method === 'GET') {
-    customerPlaceholder('پیام‌ها', 'messages', 'پیام‌های سیستم و اعلان‌ها اینجا نمایش داده می‌شوند.');
 }
 
 if ($uri === '/app/profile' && $method === 'GET') {
@@ -273,49 +255,18 @@ if ($uri === '/app/profile' && $method === 'GET') {
     if (!$customer) {
         Response::redirect('/login');
     }
+    $mobile = htmlspecialchars((string) ($customer['mobile'] ?? '—'), ENT_QUOTES, 'UTF-8');
     $body = Layout::card('
         <div class="data-card-row"><span>نام</span><span>' . htmlspecialchars((string) $customer['name'], ENT_QUOTES, 'UTF-8') . '</span></div>
         <div class="data-card-row"><span>نام کاربری</span><span>' . htmlspecialchars((string) $customer['username'], ENT_QUOTES, 'UTF-8') . '</span></div>
+        <div class="data-card-row"><span>تماس</span><span>' . $mobile . '</span></div>
         <p style="margin-top:1.25rem"><a class="btn btn-secondary block" href="/logout">خروج از حساب</a></p>
     ', 'پروفایل');
-    customerPage('پروفایل', 'more', $body);
+    customerPage('پروفایل', 'profile', $body);
 }
 
-if ($uri === '/app/support' && $method === 'GET') {
-    customerPage('پشتیبانی', 'more', Layout::card('<p>برای تمدید، مشکل اتصال یا سوالات فنی با پشتیبانی تماس بگیرید.</p><p class="muted">اطلاعات تماس از طرف مدیر سرویس به شما اعلام می‌شود.</p>'));
-}
-
-if ($uri === '/app/link' && $method === 'GET') {
-    requireCustomer();
-    $cid = AuthService::customerId();
-    $stmt = Database::pdo()->prepare(
-        'SELECT vc.xui_email, vp.name AS panel_name FROM vpn_clients vc
-         JOIN vpn_panels vp ON vp.id = vc.panel_id WHERE vc.customer_id = :c LIMIT 20'
-    );
-    $stmt->execute(['c' => $cid]);
-    $clients = $stmt->fetchAll();
-    if ($clients === []) {
-        customerPage('لینک اتصال', 'home', Layout::card('<p class="muted">هنوز کلاینت VPN به حساب شما متصل نشده. با پشتیبانی تماس بگیرید.</p>'));
-        return;
-    }
-    $list = '';
-    foreach ($clients as $c) {
-        $list .= '<div class="data-card-row"><span>' . htmlspecialchars((string) $c['panel_name'], ENT_QUOTES, 'UTF-8') . '</span><span class="muted">' . htmlspecialchars((string) $c['xui_email'], ENT_QUOTES, 'UTF-8') . '</span></div>';
-    }
-    customerPage('لینک اتصال', 'home', Layout::card('<p class="muted">لینک اشتراک از پنل ۳X-UI (همان ایمیل کلاینت) در اپ VPN خود import کنید.</p>' . $list, 'کلاینت‌های شما'));
-}
-
-if ($uri === '/app/more' && $method === 'GET') {
-    requireCustomer();
-    $menu = '
-    <nav class="more-menu">
-        <a href="/app/profile">پروفایل</a>
-        <a href="/app/subscription">اشتراک‌های من</a>
-        <a href="/app/support">پشتیبانی</a>
-        <a href="/">درباره سرویس</a>
-        <a class="danger" href="/logout">خروج</a>
-    </nav>';
-    customerPage('بیشتر', 'more', Layout::card($menu));
+if (in_array($uri, ['/app/buy', '/app/renew', '/app/messages', '/app/more', '/app/support', '/app/link'], true) && $method === 'GET') {
+    Response::redirect('/dashboard');
 }
 
 // --- Admin ---
@@ -356,65 +307,178 @@ if ($uri === '/admin/logout') {
 
 if ($uri === '/admin/dashboard' && $method === 'GET') {
     requireAdmin();
-    $pdo = Database::pdo();
-    $stats = [
-        'customers' => (int) $pdo->query('SELECT COUNT(*) FROM customers')->fetchColumn(),
-        'active' => (int) $pdo->query("SELECT COUNT(*) FROM customers WHERE is_active = 1 AND service_status = 'active'")->fetchColumn(),
-        'exhausted' => (int) $pdo->query("SELECT COUNT(*) FROM customers WHERE service_status = 'exhausted'")->fetchColumn(),
-        'panels' => (int) $pdo->query('SELECT COUNT(*) FROM vpn_panels')->fetchColumn(),
-        'clients' => (int) $pdo->query('SELECT COUNT(*) FROM vpn_clients')->fetchColumn(),
-    ];
-    $traffic = (int) $pdo->query('SELECT COALESCE(SUM(used_upload_bytes + used_download_bytes),0) FROM subscriptions WHERE status IN (\'active\',\'exhausted\')')->fetchColumn();
+    $summary = DashboardService::adminSummary();
+    $periods = DashboardService::trafficPeriods();
+    $chart = DashboardService::trafficChartLastDays(7);
+    foreach ($chart as &$pt) {
+        $pt['label'] = substr($pt['label'], 5);
+    }
+    unset($pt);
 
-    $body = Layout::statGrid(
-        Layout::statCard('مشتریان', (string) $stats['customers'])
-        . Layout::statCard('فعال', (string) $stats['active'], 'tone-success')
-        . Layout::statCard('قطع‌شده', (string) $stats['exhausted'], 'tone-danger')
-        . Layout::statCard('پنل‌ها', (string) $stats['panels'])
-        . Layout::statCard('کلاینت‌ها', (string) $stats['clients'])
-        . Layout::statCard('مصرف کل', Format::bytesToGb($traffic))
+    $body = '
+    <section class="traffic-hero ui-card">
+        <div class="traffic-hero-label">مصرف کل اینترنت</div>
+        <div class="traffic-hero-value">' . Format::bytesAuto((float) $summary['total_traffic']) . '</div>
+        <div class="period-pills">
+            <span><b>امروز</b> ' . Format::bytesAuto((float) $periods['today']) . '</span>
+            <span><b>هفته</b> ' . Format::bytesAuto((float) $periods['week']) . '</span>
+            <span><b>ماه</b> ' . Format::bytesAuto((float) $periods['month']) . '</span>
+        </div>
+        ' . Layout::barChart($chart) . '
+    </section>
+    ' . Layout::statGrid(
+        Layout::statCard('کاربران کل', (string) $summary['customers'])
+        . Layout::statCard('کاربران فعال', (string) $summary['active'], 'tone-success')
+        . Layout::statCard('سرویس‌های فعال', (string) $summary['services'])
+        . Layout::statCard('پنل‌های متصل', (string) $summary['panels_connected'])
+    )
+    . Layout::hubGrid(
+        Layout::hubTile('/admin/customers/new', '＋', 'ایجاد کاربر', true)
+        . Layout::hubTile('/admin/panels', '⬡', 'پنل‌های XUI')
+        . Layout::hubTile('/admin/services', '◈', 'راه‌اندازی سرویس')
+        . Layout::hubTile('/admin/customers', '👤', 'کاربران')
+        . Layout::hubTile('/admin/reports', '📊', 'گزارش مصرف')
+        . Layout::hubTile('/admin/notifications', '🔔', 'اعلان‌ها')
+        . Layout::hubTile('/admin/settings', '⚙', 'تنظیمات')
+        . Layout::hubTile('/admin/customers', '🎧', 'پشتیبانی')
     );
     adminPage('داشبورد', 'dashboard', $body);
 }
 
-if ($uri === '/admin/subscriptions' && $method === 'GET') {
-    adminPlaceholder('اشتراک‌ها', 'subscriptions', 'مدیریت پلن‌ها و اشتراک‌های فعال مشتریان.');
+if ($uri === '/admin/panels' && $method === 'GET') {
+    requireAdmin();
+    $panels = DashboardService::allPanels();
+    $rows = [];
+    foreach ($panels as $p) {
+        $dot = match ($p['connection_status']) {
+            'connected' => '<span class="conn-dot on">●</span> متصل',
+            'sync_error' => '<span class="conn-dot warn">●</span> خطا',
+            default => '<span class="conn-dot off">●</span> قطع',
+        };
+        $rows[] = [
+            htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars((string) $p['base_url'], ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars((string) $p['customer_username'], ENT_QUOTES, 'UTF-8'),
+            $dot,
+            '<form method="post" action="/admin/panels/' . (int) $p['id'] . '/test" class="inline-form">' . Csrf::field()
+            . '<button type="submit" class="btn btn-sm btn-secondary">تست اتصال</button></form>
+            <a class="btn btn-sm btn-ghost" href="/admin/customers/' . (int) $p['customer_id'] . '">مشتری</a>',
+        ];
+    }
+    $html = '<p class="muted">اتصال از طریق API Token (Bearer) پنل MHSanaei/3x-ui. افزودن پنل از صفحهٔ هر مشتری.</p>'
+        . Layout::responsiveTable(['نام', 'آدرس', 'مشتری', 'وضعیت', ''], $rows);
+    adminPage('پنل‌های XUI', 'panels', Layout::card($html));
 }
 
-if ($uri === '/admin/sales' && $method === 'GET') {
-    adminPlaceholder('فروش', 'sales', 'خلاصه فروش و تراکنش‌های موفق.');
+if (preg_match('#^/admin/panels/(\d+)/test$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $result = PanelService::testConnection((int) $m[1], app_encryption($config));
+    Session::set('flash_admin', $result['message']);
+    Response::redirect('/admin/panels');
 }
 
-if ($uri === '/admin/payments' && $method === 'GET') {
-    adminPlaceholder('پرداخت‌ها', 'payments', 'وضعیت پرداخت‌ها و درگاه.');
-}
-
-if ($uri === '/admin/messages' && $method === 'GET') {
-    adminPlaceholder('پیام‌ها', 'messages', 'ارسال پیام و اعلان به مشتریان.');
-}
-
-if ($uri === '/admin/reports' && $method === 'GET') {
-    adminPlaceholder('گزارش‌ها', 'reports', 'نمودار مصرف، فروش و گزارش‌های دوره‌ای.');
-}
-
-if ($uri === '/admin/customers' && $method === 'GET') {
+if ($uri === '/admin/services' && $method === 'GET') {
     requireAdmin();
     $rows = CustomerService::listAll();
     $tableRows = [];
     foreach ($rows as $r) {
         $used = (int) ($r['used_upload_bytes'] ?? 0) + (int) ($r['used_download_bytes'] ?? 0);
         $quota = (int) ($r['quota_bytes'] ?? 0);
+        $pct = $quota > 0 ? Format::percent($used, $quota) : 0;
         $tableRows[] = [
-            htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8'),
             htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8'),
-            Format::bytesToGb($used),
-            Format::bytesToGb($quota),
+            Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota),
+            $pct . '٪',
+            '<a class="btn btn-sm btn-primary" href="/admin/customers/' . (int) $r['id'] . '/service">راه‌اندازی</a>',
+        ];
+    }
+    adminPage('سرویس‌ها', 'services', Layout::card(Layout::responsiveTable(['کاربر', 'مصرف', '٪', ''], $tableRows)));
+}
+
+if ($uri === '/admin/reports' && $method === 'GET') {
+    requireAdmin();
+    $periods = DashboardService::trafficPeriods();
+    $byPanel = DashboardService::trafficByPanel();
+    $panelRows = '';
+    $totalPanels = 0;
+    foreach ($byPanel as $p) {
+        $totalPanels += $p['bytes'];
+        $panelRows .= '<div class="data-card-row"><span>' . htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesAuto((float) $p['bytes']) . '</span></div>';
+    }
+    $users = CustomerService::listAll();
+    $userRows = '';
+    foreach ($users as $u) {
+        $used = (int) ($u['used_upload_bytes'] ?? 0) + (int) ($u['used_download_bytes'] ?? 0);
+        $userRows .= '<div class="data-card-row"><span>' . htmlspecialchars($u['username'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesAuto((float) $used) . '</span></div>';
+    }
+    $body = Layout::card('
+        <div class="data-card-row"><span>امروز</span><span>' . Format::bytesAuto((float) $periods['today']) . '</span></div>
+        <div class="data-card-row"><span>این هفته</span><span>' . Format::bytesAuto((float) $periods['week']) . '</span></div>
+        <div class="data-card-row"><span>این ماه</span><span>' . Format::bytesAuto((float) $periods['month']) . '</span></div>
+        <div class="data-card-row"><span>کل</span><span>' . Format::bytesAuto((float) $periods['total']) . '</span></div>
+    ', 'Total Traffic')
+        . Layout::card($panelRows . '<div class="data-card-row"><strong>جمع پنل‌ها</strong><strong>' . Format::bytesAuto((float) $totalPanels) . '</strong></div>', 'مصرف هر XUI')
+        . Layout::card($userRows, 'مصرف کاربران');
+    adminPage('گزارش مصرف', 'reports', $body);
+}
+
+if ($uri === '/admin/notifications' && $method === 'GET') {
+    requireAdmin();
+    $items = DashboardService::notifications(80);
+    $rows = [];
+    foreach ($items as $n) {
+        $rows[] = [
+            htmlspecialchars((string) $n['customer_username'], ENT_QUOTES, 'UTF-8'),
+            alertTypeLabel((string) $n['alert_type']),
+            Format::jalaliOrGregorian((string) $n['sent_at']),
+        ];
+    }
+    adminPage('اعلان‌ها', 'notifications', Layout::card(
+        $rows === [] ? '<p class="muted">هنوز اعلانی ثبت نشده. هشدارها پس از sync و رسیدن به آستانه در Telegram و اینجا ثبت می‌شوند.</p>'
+            : Layout::responsiveTable(['کاربر', 'رویداد', 'زمان'], $rows)
+    ));
+}
+
+if (in_array($uri, ['/admin/subscriptions', '/admin/sales', '/admin/payments', '/admin/messages'], true) && $method === 'GET') {
+    Response::redirect('/admin/services');
+}
+
+if ($uri === '/admin/customers' && $method === 'GET') {
+    requireAdmin();
+    $q = trim($_GET['q'] ?? '');
+    $statusFilter = trim($_GET['status'] ?? '');
+    $rows = CustomerService::listAll();
+    $tableRows = [];
+    foreach ($rows as $r) {
+        if ($q !== '' && stripos($r['username'] . $r['name'], $q) === false) {
+            continue;
+        }
+        if ($statusFilter !== '' && (string) $r['service_status'] !== $statusFilter) {
+            continue;
+        }
+        $used = (int) ($r['used_upload_bytes'] ?? 0) + (int) ($r['used_download_bytes'] ?? 0);
+        $quota = (int) ($r['quota_bytes'] ?? 0);
+        $pct = $quota > 0 ? Format::percent($used, $quota) . '٪' : '—';
+        $ends = $r['ends_at'] ?? null;
+        $expiry = $ends ? Format::jalaliOrGregorian((string) $ends) : '—';
+        $tableRows[] = [
+            htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8'),
+            Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota),
+            $pct,
+            $expiry,
             serviceStatusBadge((string) $r['service_status']),
             '<a class="btn btn-sm btn-secondary" href="/admin/customers/' . (int) $r['id'] . '">مدیریت</a>',
         ];
     }
-    $html = '<p class="toolbar"><a class="btn btn-primary" href="/admin/customers/new">مشتری جدید</a></p>'
-        . Layout::responsiveTable(['نام', 'کاربری', 'مصرف', 'حجم', 'وضعیت', ''], $tableRows);
+    $html = '<form class="toolbar filters" method="get" action="/admin/customers">
+        <input name="q" placeholder="جستجو..." value="' . htmlspecialchars($q, ENT_QUOTES, 'UTF-8') . '">
+        <select name="status"><option value="">همه وضعیت‌ها</option>
+        <option value="active"' . ($statusFilter === 'active' ? ' selected' : '') . '>فعال</option>
+        <option value="exhausted"' . ($statusFilter === 'exhausted' ? ' selected' : '') . '>قطع‌شده</option></select>
+        <button class="btn btn-secondary" type="submit">فیلتر</button></form>
+        <p class="toolbar"><a class="btn btn-primary" href="/admin/customers/new">ایجاد کاربر</a></p>'
+        . Layout::responsiveTable(['کاربر', 'مصرف', '٪', 'انقضا', 'وضعیت', ''], $tableRows);
     adminPage('کاربران', 'users', Layout::card($html));
 }
 
@@ -422,14 +486,15 @@ if ($uri === '/admin/customers/new' && $method === 'GET') {
     requireAdmin();
     $form = Csrf::field() . '
     <form class="stack" method="post" action="/admin/customers/new">
-        <label>نام</label><input name="name" required>
-        <label>نام کاربری</label><input name="username" required>
+        <label>نام کاربر</label><input name="name" required>
+        <label>Username</label><input name="username" required autocomplete="off">
         <label>رمز عبور</label><input name="password" type="password" required>
+        <label>شماره تماس</label><input name="mobile" type="tel">
+        <label>توضیحات</label><textarea name="notes" rows="3"></textarea>
         <label>Telegram Chat ID</label><input name="telegram_chat_id">
-        <label>حجم (GB)</label><input name="quota_gb" type="number" step="0.1" required value="100">
-        <label>هشدار ۱ (٪)</label><input name="warning1_percent" type="number" value="80">
-        <label>هشدار ۲ (٪)</label><input name="warning2_percent" type="number" value="90">
-        <button class="btn primary" type="submit">ذخیره</button>
+        <label><input type="checkbox" name="is_active" value="1" checked> حساب فعال</label>
+        <p class="muted">سرویس (حجم و پنل‌ها) در مرحلهٔ بعد از «راه‌اندازی سرویس» تنظیم می‌شود.</p>
+        <button class="btn btn-primary" type="submit">ایجاد کاربر</button>
     </form>';
     adminPage('مشتری جدید', 'users', Layout::card($form));
 }
@@ -438,18 +503,83 @@ if ($uri === '/admin/customers/new' && $method === 'POST') {
     requireAdmin();
     requireCsrf();
     try {
-        CustomerService::create([
+        $id = CustomerService::create([
             'name' => trim($_POST['name'] ?? ''),
             'username' => trim($_POST['username'] ?? ''),
             'password' => $_POST['password'] ?? '',
+            'mobile' => trim($_POST['mobile'] ?? '') ?: null,
+            'notes' => trim($_POST['notes'] ?? '') ?: null,
             'telegram_chat_id' => trim($_POST['telegram_chat_id'] ?? '') ?: null,
-            'warning1_percent' => (int) ($_POST['warning1_percent'] ?? 80),
-            'warning2_percent' => (int) ($_POST['warning2_percent'] ?? 90),
-        ], (float) ($_POST['quota_gb'] ?? 100), AuthService::adminId());
-        Response::redirect('/admin/customers');
+            'is_active' => isset($_POST['is_active']) ? 1 : 0,
+            'warning1_percent' => 80,
+            'warning2_percent' => 90,
+        ], 0, AuthService::adminId());
+        Response::redirect('/admin/customers/' . $id . '/service');
     } catch (\Throwable $e) {
         adminPage('خطا', 'users', Layout::card('<div class="alert alert-error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'));
     }
+}
+
+if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'GET') {
+    requireAdmin();
+    $id = (int) $m[1];
+    $customer = CustomerService::findById($id);
+    if (!$customer) {
+        Response::redirect('/admin/customers');
+    }
+    $sub = CustomerService::activeSubscription($id);
+    $panels = PanelService::forCustomer($id);
+    $breakdown = CustomerService::panelUsageBreakdown($id);
+    $used = $sub ? (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'] : 0;
+    $quota = $sub ? (int) $sub['quota_bytes'] : 0;
+    $panelChecks = '';
+    foreach ($panels as $p) {
+        $checked = (int) $p['is_active'] === 1 ? 'checked' : '';
+        $panelChecks .= '<label class="check-row"><input type="checkbox" name="panel_ids[]" value="' . (int) $p['id'] . '" ' . $checked . '> '
+            . htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8') . '</label>';
+    }
+    $breakRows = '';
+    foreach ($breakdown as $b) {
+        $t = (int) $b['upload_bytes'] + (int) $b['download_bytes'];
+        if ($t <= 0) {
+            continue;
+        }
+        $breakRows .= '<div class="data-card-row"><span>' . htmlspecialchars($b['name'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesToGb($t) . '</span></div>';
+    }
+    $endsVal = $sub && $sub['ends_at'] ? date('Y-m-d', strtotime((string) $sub['ends_at'])) : '';
+    $subLink = htmlspecialchars((string) ($customer['subscription_link'] ?? ''), ENT_QUOTES, 'UTF-8');
+    $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
+        <p class="muted">مصرف تجمیعی (پنل‌های فعال): <strong>' . Format::bytesToGb($used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>
+        ' . ($breakRows ? Layout::card($breakRows, 'مصرف به تفکیک پنل (ادمین)') : '') . '
+        ' . Csrf::field() . '<form class="stack" method="post" action="/admin/customers/' . $id . '/service">
+        <label>حجم کل (GB)</label><input name="quota_gb" type="number" step="0.1" required value="' . ($quota > 0 ? Format::bytesToGbNumber($quota) : '20') . '">
+        <label>هشدار در (٪)</label><input name="warning1_percent" type="number" value="' . (int) $customer['warning1_percent'] . '">
+        <label>هشدار دوم (٪)</label><input name="warning2_percent" type="number" value="' . (int) $customer['warning2_percent'] . '">
+        <label>تاریخ انقضا</label><input name="ends_at" type="date" value="' . $endsVal . '">
+        <label>Subscription Link</label><input name="subscription_link" value="' . $subLink . '" placeholder="https://...">
+        <fieldset class="panel-pick"><legend>پنل‌های فعال برای این سرویس</legend>' . ($panelChecks ?: '<p class="muted">ابتدا از صفحه مشتری پنل XUI اضافه کنید.</p>') . '</fieldset>
+        <button class="btn btn-primary" type="submit">ذخیره سرویس</button></form>
+        <p style="margin-top:1rem"><a href="/admin/customers/' . $id . '">مدیریت پنل و کلاینت</a></p>';
+    adminPage('راه‌اندازی سرویس', 'services', Layout::card($body));
+}
+
+if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $id = (int) $m[1];
+    $ends = trim($_POST['ends_at'] ?? '');
+    CustomerService::createOrUpdateService($id, [
+        'quota_gb' => (float) ($_POST['quota_gb'] ?? 0),
+        'warning1_percent' => (int) ($_POST['warning1_percent'] ?? 80),
+        'warning2_percent' => (int) ($_POST['warning2_percent'] ?? 90),
+        'ends_at' => $ends !== '' ? $ends . ' 23:59:59' : null,
+        'subscription_link' => trim($_POST['subscription_link'] ?? ''),
+    ], AuthService::adminId());
+    $panelIds = array_map('intval', $_POST['panel_ids'] ?? []);
+    CustomerService::setPanelActivation($id, $panelIds);
+    $sync = new TrafficSyncService(app_encryption($config), app_telegram($config));
+    $sync->aggregateCustomer($id);
+    Response::redirect('/admin/customers/' . $id . '/service');
 }
 
 if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {

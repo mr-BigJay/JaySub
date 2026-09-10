@@ -25,6 +25,21 @@ final class Format
         return min(100.0, round(($used / $quota) * 100, 1));
     }
 
+    public static function bytesAuto(float $bytes, int $decimals = 2): string
+    {
+        $units = [
+            1024 ** 4 => 'TB',
+            1024 ** 3 => 'GB',
+            1024 ** 2 => 'MB',
+        ];
+        foreach ($units as $size => $label) {
+            if ($bytes >= $size) {
+                return number_format($bytes / $size, $decimals, '.', '') . ' ' . $label;
+            }
+        }
+        return number_format($bytes / 1024, 1, '.', '') . ' KB';
+    }
+
     public static function jalaliOrGregorian(string $datetime): string
     {
         $ts = strtotime($datetime);

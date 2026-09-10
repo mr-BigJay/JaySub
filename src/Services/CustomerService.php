@@ -28,7 +28,7 @@ final class CustomerService
     {
         return Database::pdo()->query(
             'SELECT c.*,
-                s.quota_bytes, s.used_upload_bytes, s.used_download_bytes, s.status AS sub_status,
+                s.quota_bytes, s.used_upload_bytes, s.used_download_bytes, s.status AS sub_status, s.ends_at,
                 (SELECT COUNT(*) FROM vpn_panels vp WHERE vp.customer_id = c.id) AS panel_count,
                 (SELECT COUNT(*) FROM vpn_clients vc WHERE vc.customer_id = c.id) AS client_count
              FROM customers c
@@ -40,40 +40,97 @@ final class CustomerService
         )->fetchAll();
     }
 
-    public static function create(array $data, int $quotaGb, ?int $adminId = null): int
+    public static function create(array $data, float $quotaGb, ?int $adminId = null): int
+    {
+        $customerId = self::createUser($data, $adminId);
+        if ($quotaGb > 0) {
+            self::createOrUpdateService($customerId, [
+                'quota_gb' => $quotaGb,
+                'warning1_percent' => (int) ($data['warning1_percent'] ?? 80),
+                'warning2_percent' => (int) ($data['warning2_percent'] ?? 90),
+            ], $adminId);
+        }
+        return $customerId;
+    }
+
+    /** @param array<string, mixed> $data */
+    public static function createUser(array $data, ?int $adminId = null): int
     {
         $pdo = Database::pdo();
-        $pdo->beginTransaction();
-        try {
-            $stmt = $pdo->prepare(
-                'INSERT INTO customers (name, username, password_hash, mobile, telegram_chat_id, warning1_percent, warning2_percent)
-                 VALUES (:name, :username, :hash, :mobile, :tg, :w1, :w2)'
-            );
-            $stmt->execute([
-                'name' => $data['name'],
-                'username' => $data['username'],
-                'hash' => password_hash($data['password'], PASSWORD_DEFAULT),
-                'mobile' => $data['mobile'] ?? null,
-                'tg' => $data['telegram_chat_id'] ?? null,
-                'w1' => (int) ($data['warning1_percent'] ?? 80),
-                'w2' => (int) ($data['warning2_percent'] ?? 90),
-            ]);
-            $customerId = (int) $pdo->lastInsertId();
+        $stmt = $pdo->prepare(
+            'INSERT INTO customers (name, username, password_hash, mobile, telegram_chat_id, notes, warning1_percent, warning2_percent, is_active)
+             VALUES (:name, :username, :hash, :mobile, :tg, :notes, :w1, :w2, :active)'
+        );
+        $stmt->execute([
+            'name' => $data['name'],
+            'username' => $data['username'],
+            'hash' => password_hash($data['password'], PASSWORD_DEFAULT),
+            'mobile' => $data['mobile'] ?? null,
+            'tg' => $data['telegram_chat_id'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'w1' => (int) ($data['warning1_percent'] ?? 80),
+            'w2' => (int) ($data['warning2_percent'] ?? 90),
+            'active' => isset($data['is_active']) ? (int) $data['is_active'] : 1,
+        ]);
+        $customerId = (int) $pdo->lastInsertId();
+        AuditLogService::log('admin', $adminId, 'customer_created', 'customer', $customerId);
+        return $customerId;
+    }
 
+    /** @param array<string, mixed> $service */
+    public static function createOrUpdateService(int $customerId, array $service, ?int $adminId = null): void
+    {
+        $pdo = Database::pdo();
+        $quotaBytes = self::gbToBytes((float) ($service['quota_gb'] ?? 0));
+        $endsAt = $service['ends_at'] ?? null;
+        $subLink = $service['subscription_link'] ?? null;
+
+        if (isset($service['warning1_percent'], $service['warning2_percent'])) {
+            $pdo->prepare('UPDATE customers SET warning1_percent = :w1, warning2_percent = :w2 WHERE id = :id')
+                ->execute([
+                    'w1' => (int) $service['warning1_percent'],
+                    'w2' => (int) $service['warning2_percent'],
+                    'id' => $customerId,
+                ]);
+        }
+        if ($subLink !== null) {
+            $pdo->prepare('UPDATE customers SET subscription_link = :l WHERE id = :id')
+                ->execute(['l' => $subLink !== '' ? $subLink : null, 'id' => $customerId]);
+        }
+
+        $existing = self::activeSubscription($customerId);
+        if ($existing) {
             $pdo->prepare(
-                'INSERT INTO subscriptions (customer_id, quota_bytes, status, started_at)
-                 VALUES (:cid, :quota, \'active\', NOW())'
+                'UPDATE subscriptions SET quota_bytes = :q, ends_at = :e, status = \'active\' WHERE id = :id'
+            )->execute([
+                'q' => $quotaBytes > 0 ? $quotaBytes : (int) $existing['quota_bytes'],
+                'e' => $endsAt,
+                'id' => (int) $existing['id'],
+            ]);
+        } else {
+            $pdo->prepare(
+                'INSERT INTO subscriptions (customer_id, quota_bytes, status, started_at, ends_at)
+                 VALUES (:cid, :quota, \'active\', NOW(), :e)'
             )->execute([
                 'cid' => $customerId,
-                'quota' => self::gbToBytes($quotaGb),
+                'quota' => $quotaBytes,
+                'e' => $endsAt,
             ]);
+        }
+        $pdo->prepare('UPDATE customers SET service_status = \'active\', vpn_enabled = 1 WHERE id = :id')
+            ->execute(['id' => $customerId]);
+        AuditLogService::log('admin', $adminId, 'service_updated', 'customer', $customerId, $service);
+    }
 
-            $pdo->commit();
-            AuditLogService::log('admin', $adminId, 'customer_created', 'customer', $customerId);
-            return $customerId;
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
+    /** @param list<int> $activePanelIds */
+    public static function setPanelActivation(int $customerId, array $activePanelIds): void
+    {
+        $pdo = Database::pdo();
+        $pdo->prepare('UPDATE vpn_panels SET is_active = 0 WHERE customer_id = :c')->execute(['c' => $customerId]);
+        if ($activePanelIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($activePanelIds), '?'));
+            $stmt = $pdo->prepare("UPDATE vpn_panels SET is_active = 1 WHERE customer_id = ? AND id IN ($placeholders)");
+            $stmt->execute(array_merge([$customerId], $activePanelIds));
         }
     }
 
@@ -174,7 +231,7 @@ final class CustomerService
                 COALESCE(SUM(vc.base_download_bytes + vc.last_xui_download), 0) AS download_bytes
              FROM vpn_panels vp
              LEFT JOIN vpn_clients vc ON vc.panel_id = vp.id AND vc.customer_id = :cid
-             WHERE vp.customer_id = :cid2
+             WHERE vp.customer_id = :cid2 AND vp.is_active = 1
              GROUP BY vp.id, vp.name'
         );
         $stmt->execute(['cid' => $customerId, 'cid2' => $customerId]);

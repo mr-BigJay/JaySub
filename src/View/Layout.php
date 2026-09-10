@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\View;
 
 use App\Core\Csrf;
+use App\Core\Format;
 
 final class Layout
 {
@@ -14,20 +15,26 @@ final class Layout
     private const ADMIN_NAV = [
         'dashboard' => 'داشبورد',
         'users' => 'کاربران',
-        'subscriptions' => 'اشتراک‌ها',
-        'sales' => 'فروش',
-        'payments' => 'پرداخت‌ها',
-        'messages' => 'پیام‌ها',
-        'reports' => 'گزارش‌ها',
+        'panels' => 'پنل‌های XUI',
+        'services' => 'سرویس‌ها',
+        'reports' => 'گزارش مصرف',
+        'notifications' => 'اعلان‌ها',
         'settings' => 'تنظیمات',
+    ];
+
+    /** @var array<string, array{href: string, label: string, icon: string}> */
+    private const ADMIN_BOTTOM = [
+        'dashboard' => ['href' => '/admin/dashboard', 'label' => 'خانه', 'icon' => '⌂'],
+        'users' => ['href' => '/admin/customers', 'label' => 'کاربران', 'icon' => '👤'],
+        'reports' => ['href' => '/admin/reports', 'label' => 'گزارش', 'icon' => '📊'],
+        'settings' => ['href' => '/admin/settings', 'label' => 'تنظیمات', 'icon' => '⚙'],
     ];
 
     /** @var array<string, array{href: string, label: string, icon: string}> */
     private const CUSTOMER_NAV = [
         'home' => ['href' => '/dashboard', 'label' => 'داشبورد', 'icon' => '⌂'],
         'subscription' => ['href' => '/app/subscription', 'label' => 'اشتراک', 'icon' => '◈'],
-        'messages' => ['href' => '/app/messages', 'label' => 'پیام‌ها', 'icon' => '✉'],
-        'more' => ['href' => '/app/more', 'label' => 'بیشتر', 'icon' => '☰'],
+        'profile' => ['href' => '/app/profile', 'label' => 'پروفایل', 'icon' => '👤'],
     ];
 
     public static function admin(string $title, string $active, string $content): string
@@ -37,11 +44,10 @@ final class Layout
         $paths = [
             'dashboard' => '/admin/dashboard',
             'users' => '/admin/customers',
-            'subscriptions' => '/admin/subscriptions',
-            'sales' => '/admin/sales',
-            'payments' => '/admin/payments',
-            'messages' => '/admin/messages',
+            'panels' => '/admin/panels',
+            'services' => '/admin/services',
             'reports' => '/admin/reports',
+            'notifications' => '/admin/notifications',
             'settings' => '/admin/settings',
         ];
         foreach (self::ADMIN_NAV as $key => $label) {
@@ -49,11 +55,10 @@ final class Layout
             $cls = $key === $active ? 'active' : '';
             $navHtml .= '<a class="sidebar-link ' . $cls . '" href="' . $href . '"><span class="ico">' . self::adminIcon($key) . '</span>' . $label . '</a>';
         }
-        $mobileNav = '';
-        foreach (self::ADMIN_NAV as $key => $label) {
-            $href = $paths[$key] ?? '#';
+        $bottom = '';
+        foreach (self::ADMIN_BOTTOM as $key => $item) {
             $cls = $key === $active ? 'active' : '';
-            $mobileNav .= '<a class="' . $cls . '" href="' . $href . '">' . $label . '</a>';
+            $bottom .= '<a class="bottom-nav-item ' . $cls . '" href="' . $item['href'] . '"><span class="bn-icon">' . $item['icon'] . '</span><span>' . $item['label'] . '</span></a>';
         }
 
         $criticalCss = self::CRITICAL_CSS;
@@ -72,7 +77,7 @@ final class Layout
     {$criticalCss}
     <link rel="stylesheet" href="{$cssHref}">
 </head>
-<body class="theme-jaysub admin-app">
+<body class="theme-jaysub admin-app has-bottom-nav">
 <div class="admin-shell">
     <aside class="admin-sidebar">
         <div class="sidebar-brand">JaySub <span>ادمین</span></div>
@@ -84,10 +89,10 @@ final class Layout
             <button type="button" class="menu-toggle" aria-label="منو" onclick="document.body.classList.toggle('sidebar-open')">☰</button>
             <h1 class="page-title">{$t}</h1>
         </header>
-        <div class="admin-mobile-nav">{$mobileNav}</div>
-        <main class="admin-content">{$content}</main>
+        <main class="admin-content app-container">{$content}</main>
     </div>
 </div>
+<nav class="bottom-nav admin-bottom-nav">{$bottom}</nav>
 <script src="{$jsSrc}" defer></script>
 </body>
 </html>
@@ -142,6 +147,61 @@ HTML;
     public static function statCard(string $label, string $value, string $tone = ''): string
     {
         return '<div class="stat-card ' . $tone . '"><div class="stat-label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</div><div class="stat-value">' . $value . '</div></div>';
+    }
+
+    public static function hubTile(string $href, string $icon, string $label, bool $accent = false): string
+    {
+        $cls = 'action-tile hub-tile' . ($accent ? ' accent' : '');
+        return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '"><span class="at-ico">' . $icon . '</span><span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span></a>';
+    }
+
+    public static function hubGrid(string $tilesHtml): string
+    {
+        return '<div class="action-grid hub-grid">' . $tilesHtml . '</div>';
+    }
+
+    /** @param list<array{label:string,bytes:int}> $points */
+    public static function barChart(array $points): string
+    {
+        if ($points === []) {
+            return '<p class="muted chart-empty">هنوز دادهٔ مصرف ثبت نشده. پس از sync کارگر، نمودار پر می‌شود.</p>';
+        }
+        $max = max(array_column($points, 'bytes'));
+        if ($max <= 0) {
+            $max = 1;
+        }
+        $bars = '';
+        foreach ($points as $p) {
+            $h = max(4, (int) round(($p['bytes'] / $max) * 100));
+            $bars .= '<div class="chart-bar-wrap"><div class="chart-bar" style="height:' . $h . '%"></div><span class="chart-lbl">' . htmlspecialchars($p['label'], ENT_QUOTES, 'UTF-8') . '</span></div>';
+        }
+        return '<div class="traffic-chart">' . $bars . '</div>';
+    }
+
+    public static function subscriptionLinkCard(?string $url): string
+    {
+        if ($url === null || $url === '') {
+            return self::card('<p class="muted">لینک اشتراک هنوز توسط مدیر تنظیم نشده است.</p>', 'Subscription Link');
+        }
+        $e = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+        $body = '<p class="muted sub-link-hint">لینک را در اپ VPN خود Import کنید.</p>
+            <div class="sub-link-row">
+                <input type="text" readonly class="sub-link-input" id="subscription-link-field" value="' . $e . '">
+                <button type="button" class="btn btn-primary btn-copy" data-copy-target="subscription-link-field">Copy</button>
+            </div>';
+        return self::card($body, 'Subscription Link');
+    }
+
+    public static function usageProgress(float $used, float $quota, float $pct): string
+    {
+        $progClass = $pct >= 90 ? 'danger' : ($pct >= 80 ? 'warn' : '');
+        return '<div class="usage-progress-block">
+            <div class="usage-progress-head">
+                <span>مصرف: <strong>' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</strong></span>
+                <span class="usage-pct">' . $pct . '٪</span>
+            </div>
+            <div class="progress ' . $progClass . '" data-progress="' . $pct . '"><span style="width:' . $pct . '%"></span></div>
+        </div>';
     }
 
     /** @param list<array<string, string>> $rows */
@@ -276,11 +336,10 @@ HTML;
         return match ($key) {
             'dashboard' => '▣',
             'users' => '👤',
-            'subscriptions' => '◈',
-            'sales' => '₪',
-            'payments' => '💳',
-            'messages' => '✉',
+            'panels' => '⬡',
+            'services' => '◈',
             'reports' => '📊',
+            'notifications' => '🔔',
             'settings' => '⚙',
             default => '•',
         };
