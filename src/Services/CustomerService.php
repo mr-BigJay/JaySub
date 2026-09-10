@@ -162,6 +162,15 @@ final class CustomerService
 
     public static function addQuota(int $customerId, float $additionalGb, Encryption $encryption, TelegramService $telegram, ?int $adminId = null): void
     {
+        self::adjustQuota($customerId, $additionalGb, $encryption, $telegram, $adminId);
+    }
+
+    /** Positive = increase ceiling, negative = decrease. Does not change measured usage bytes. */
+    public static function adjustQuota(int $customerId, float $deltaGb, Encryption $encryption, TelegramService $telegram, ?int $adminId = null): void
+    {
+        if ($deltaGb == 0.0) {
+            throw new \RuntimeException('مقدار تغییر حجم نمی‌تواند صفر باشد');
+        }
         $pdo = Database::pdo();
         $pdo->beginTransaction();
         try {
@@ -171,70 +180,88 @@ final class CustomerService
             $sub->execute(['cid' => $customerId]);
             $subscription = $sub->fetch();
             if ($subscription === false) {
-                throw new \RuntimeException('No subscription found');
+                throw new \RuntimeException('اشتراک فعالی برای این کاربر نیست — ابتدا راه‌اندازی سرویس');
             }
             $subId = (int) $subscription['id'];
-            $addBytes = self::gbToBytes($additionalGb);
-            $newQuota = (int) $subscription['quota_bytes'] + $addBytes;
-
-            $pdo->prepare('UPDATE subscriptions SET quota_bytes = :q, status = \'active\' WHERE id = :id')
-                ->execute(['q' => $newQuota, 'id' => $subId]);
-            $pdo->prepare('UPDATE customers SET vpn_enabled = 1, service_status = \'active\' WHERE id = :id')
-                ->execute(['id' => $customerId]);
-
-            $pdo->prepare('DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN (\'warning_1\', \'warning_2\', \'limit_reached\')')
-                ->execute(['sid' => $subId]);
-
-            $clients = $pdo->prepare(
-                'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
-                 FROM vpn_clients vc INNER JOIN vpn_panels vp ON vp.id = vc.panel_id
-                 WHERE vc.customer_id = :cid AND vc.subscription_id = :sid AND vc.disabled_by_quota = 1'
-            );
-            $clients->execute(['cid' => $customerId, 'sid' => $subId]);
-            $rows = $clients->fetchAll();
-
-            /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
-            $byPanel = [];
-            foreach ($rows as $row) {
-                $pid = (int) $row['panel_id'];
-                if (!isset($byPanel[$pid])) {
-                    $byPanel[$pid] = [
-                        'base_url' => $row['base_url'],
-                        'token' => $row['api_token_encrypted'],
-                        'emails' => [],
-                    ];
-                }
-                $byPanel[$pid]['emails'][] = $row['xui_email'];
-            }
-
-            foreach ($byPanel as $panelId => $info) {
-                $xui = new \App\Xui\XuiClient($info['base_url'], $encryption->decrypt($info['token']));
-                $xui->bulkEnable($info['emails']);
-            }
-
-            $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid')
-                ->execute(['cid' => $customerId, 'sid' => $subId]);
-
-            $cust = self::findById($customerId);
-            if ($cust && !empty($cust['telegram_chat_id'])) {
-                $telegram->sendMessage((string) $cust['telegram_chat_id'], TelegramService::rechargeMessage((float) $newQuota));
-            }
+            $oldQuota = (int) $subscription['quota_bytes'];
+            $newQuota = max(0, $oldQuota + self::gbToBytes($deltaGb));
+            $used = (int) $subscription['used_upload_bytes'] + (int) $subscription['used_download_bytes'];
+            $exhausted = $newQuota > 0 && $used >= $newQuota;
 
             $pdo->prepare(
-                'INSERT INTO traffic_alerts (customer_id, subscription_id, alert_type, sent_at)
-                 VALUES (:c, :s, \'quota_recharged\', NOW())
-                 ON DUPLICATE KEY UPDATE sent_at = NOW()'
-            )->execute(['c' => $customerId, 's' => $subId]);
+                'UPDATE subscriptions SET quota_bytes = :q, status = :st WHERE id = :id'
+            )->execute([
+                'q' => $newQuota,
+                'st' => $exhausted ? 'exhausted' : 'active',
+                'id' => $subId,
+            ]);
+
+            if ($deltaGb > 0 && !$exhausted) {
+                $pdo->prepare('UPDATE customers SET vpn_enabled = 1, service_status = \'active\' WHERE id = :id')
+                    ->execute(['id' => $customerId]);
+                $pdo->prepare('DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN (\'warning_1\', \'warning_2\', \'limit_reached\')')
+                    ->execute(['sid' => $subId]);
+
+                $clients = $pdo->prepare(
+                    'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
+                     FROM vpn_clients vc INNER JOIN vpn_panels vp ON vp.id = vc.panel_id
+                     WHERE vc.customer_id = :cid AND vc.subscription_id = :sid AND vc.disabled_by_quota = 1'
+                );
+                $clients->execute(['cid' => $customerId, 'sid' => $subId]);
+                $rows = $clients->fetchAll();
+
+                /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
+                $byPanel = [];
+                foreach ($rows as $row) {
+                    $pid = (int) $row['panel_id'];
+                    if (!isset($byPanel[$pid])) {
+                        $byPanel[$pid] = [
+                            'base_url' => $row['base_url'],
+                            'token' => $row['api_token_encrypted'],
+                            'emails' => [],
+                        ];
+                    }
+                    $byPanel[$pid]['emails'][] = $row['xui_email'];
+                }
+
+                foreach ($byPanel as $info) {
+                    $xui = new \App\Xui\XuiClient($info['base_url'], $encryption->decrypt($info['token']));
+                    $xui->bulkEnable($info['emails']);
+                }
+
+                $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid')
+                    ->execute(['cid' => $customerId, 'sid' => $subId]);
+
+                $cust = self::findById($customerId);
+                if ($cust && !empty($cust['telegram_chat_id'])) {
+                    $telegram->sendMessage((string) $cust['telegram_chat_id'], TelegramService::rechargeMessage(self::bytesToGb($newQuota)));
+                }
+
+                $pdo->prepare(
+                    'INSERT INTO traffic_alerts (customer_id, subscription_id, alert_type, sent_at)
+                     VALUES (:c, :s, \'quota_recharged\', NOW())
+                     ON DUPLICATE KEY UPDATE sent_at = NOW()'
+                )->execute(['c' => $customerId, 's' => $subId]);
+            } elseif ($exhausted) {
+                $pdo->prepare('UPDATE customers SET service_status = \'exhausted\' WHERE id = :id')
+                    ->execute(['id' => $customerId]);
+            }
 
             $pdo->commit();
-            AuditLogService::log('admin', $adminId, 'quota_added', 'customer', $customerId, [
-                'additional_gb' => $additionalGb,
+            AuditLogService::log('admin', $adminId, 'quota_adjusted', 'customer', $customerId, [
+                'delta_gb' => $deltaGb,
+                'old_quota_bytes' => $oldQuota,
                 'new_quota_bytes' => $newQuota,
             ]);
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    public static function bytesToGb(int $bytes): float
+    {
+        return $bytes / (1024 * 1024 * 1024);
     }
 
     /** @return array<string, mixed>|null */

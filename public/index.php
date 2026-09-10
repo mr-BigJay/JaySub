@@ -794,6 +794,18 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
     $quota = $sub ? (int) $sub['quota_bytes'] : 0;
     $panels = PanelService::forCustomer($id);
 
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+
     $panelRows = '';
     foreach ($panels as $p) {
         $dot = match ($p['connection_status']) {
@@ -805,13 +817,24 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
             <a class="btn small secondary" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a></div>';
     }
 
-    $body = '<h3>' . htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8') . '</h3>
+    $body = $flashHtml . '<h3>' . htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8') . '</h3>
         <p class="muted">مصرف: ' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</p>
         ' . Layout::card($panelRows ?: '<p class="muted">پنلی ثبت نشده</p>', 'پنل‌های 3X-UI') . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/panels/new">افزودن پنل</a></p>
-        ' . Layout::card('<form class="stack" method="post" action="/admin/customers/' . $id . '/add-quota">' . Csrf::field() . '
-            <label>افزایش حجم (GB)</label><input name="gb" type="number" step="0.1" required>
-            <button class="btn primary" type="submit">شارژ مجدد</button></form>', 'شارژ حجم') . '
+        ' . Layout::card('
+            <div class="data-card-row"><span>سقف حجم</span><span>' . Format::bytesToGb($quota) . '</span></div>
+            <div class="data-card-row"><span>مصرف ثبت‌شده</span><span>' . Format::bytesToGb($used) . '</span></div>
+            <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $used)) . '</span></div>
+            <form class="stack" method="post" action="/admin/customers/' . $id . '/adjust-quota" style="margin-top:1rem">' . Csrf::field() . '
+            <label>تغییر سقف (GB)</label>
+            <input name="delta_gb" type="number" step="0.1" placeholder="مثلاً 100 یا -50">
+            <p class="muted form-hint">عدد <strong>مثبت</strong> = افزایش سقف · عدد <strong>منفی</strong> = کاهش سقف (مصرف واقعی عوض نمی‌شود).</p>
+            <div class="form-actions-row">
+                <button class="btn btn-primary" type="submit" name="quick" value="add10">+۱۰ GB</button>
+                <button class="btn btn-secondary" type="submit" name="quick" value="sub10">−۱۰ GB</button>
+                <button class="btn btn-primary" type="submit">اعمال</button>
+            </div>
+            </form>', 'مدیریت حجم') . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/sync">هم‌اکنون Sync</a></p>';
     adminPage('مدیریت مشتری', 'users', $body);
 }
@@ -840,7 +863,32 @@ if (preg_match('#^/admin/customers/(\d+)/add-quota$#', $uri, $m) && $method === 
     requireAdmin();
     requireCsrf();
     $id = (int) $m[1];
-    CustomerService::addQuota($id, (float) ($_POST['gb'] ?? 0), app_encryption($config), app_telegram($config), AuthService::adminId());
+    CustomerService::adjustQuota($id, (float) ($_POST['gb'] ?? 0), app_encryption($config), app_telegram($config), AuthService::adminId());
+    Response::redirect('/admin/customers/' . $id);
+}
+
+if (preg_match('#^/admin/customers/(\d+)/adjust-quota$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $id = (int) $m[1];
+    $quick = $_POST['quick'] ?? '';
+    if ($quick === 'add10') {
+        $delta = 10.0;
+    } elseif ($quick === 'sub10') {
+        $delta = -10.0;
+    } else {
+        $delta = (float) ($_POST['delta_gb'] ?? 0);
+        if ($delta == 0.0) {
+            Session::set('flash_admin', 'مقدار تغییر سقف را وارد کنید (مثبت یا منفی).');
+            Response::redirect('/admin/customers/' . $id);
+        }
+    }
+    try {
+        CustomerService::adjustQuota($id, $delta, app_encryption($config), app_telegram($config), AuthService::adminId());
+        Session::set('flash_admin_ok', 'سقف حجم به‌روز شد.');
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
     Response::redirect('/admin/customers/' . $id);
 }
 
