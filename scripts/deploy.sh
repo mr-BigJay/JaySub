@@ -10,7 +10,7 @@
 # Do NOT use: bash -c "$(curl ...)" or bash <(curl ...) — often breaks on VPS.
 set -euo pipefail
 
-DEPLOY_SCRIPT_VERSION="2026.03.26-interactive"
+DEPLOY_SCRIPT_VERSION="2026.03.26-finglish"
 
 # Read from terminal even when script is piped to bash
 read_tty() {
@@ -202,15 +202,6 @@ if ! command -v composer &>/dev/null; then
   curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 fi
 
-if [[ "$SKIP_MYSQL_INSTALL" -eq 0 ]]; then
-  echo "==> Configuring MySQL database..."
-  systemctl enable --now mysql 2>/dev/null || systemctl enable --now mariadb 2>/dev/null || true
-  mysql -e "CREATE DATABASE IF NOT EXISTS vpn_panel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-  mysql -e "CREATE USER IF NOT EXISTS 'vpn_panel'@'localhost' IDENTIFIED BY '${DB_PASS}';"
-  mysql -e "GRANT ALL PRIVILEGES ON vpn_panel.* TO 'vpn_panel'@'localhost';"
-  mysql -e "FLUSH PRIVILEGES;"
-fi
-
 echo "==> Deploying application to ${INSTALL_DIR}..."
 mkdir -p "$(dirname "$INSTALL_DIR")"
 if [[ -d "${INSTALL_DIR}/.git" ]]; then
@@ -226,7 +217,11 @@ fi
 
 composer install --no-dev --optimize-autoloader --no-interaction 2>/dev/null || true
 
-ENC_KEY="$(openssl rand -base64 32)"
+ENC_KEY=""
+if [[ -f "${INSTALL_DIR}/config/config.php" ]]; then
+  ENC_KEY=$(php -r "\$c=@include '${INSTALL_DIR}/config/config.php'; echo is_array(\$c)?(\$c['security']['encryption_key']??''):'';" 2>/dev/null || true)
+fi
+[[ -z "$ENC_KEY" ]] && ENC_KEY="$(openssl rand -base64 32)"
 APP_URL="http://${DOMAIN}"
 if [[ -n "$CERTBOT_EMAIL" && "$SKIP_SSL" -eq 0 ]]; then
   APP_URL="https://${DOMAIN}"
@@ -267,6 +262,18 @@ return [
     ],
 ];
 PHP
+
+if [[ "$SKIP_MYSQL_INSTALL" -eq 0 ]]; then
+  echo "==> Configuring MySQL database..."
+  systemctl enable --now mysql 2>/dev/null || systemctl enable --now mariadb 2>/dev/null || true
+  # Escape single quotes in password for SQL
+  DB_PASS_SQL="${DB_PASS//\'/\'\'}"
+  mysql -e "CREATE DATABASE IF NOT EXISTS vpn_panel CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  mysql -e "CREATE USER IF NOT EXISTS 'vpn_panel'@'localhost' IDENTIFIED BY '${DB_PASS_SQL}';"
+  mysql -e "ALTER USER 'vpn_panel'@'localhost' IDENTIFIED BY '${DB_PASS_SQL}';"
+  mysql -e "GRANT ALL PRIVILEGES ON vpn_panel.* TO 'vpn_panel'@'localhost';"
+  mysql -e "FLUSH PRIVILEGES;"
+fi
 
 php "${INSTALL_DIR}/scripts/install.php" "${ADMIN_PASS}"
 
