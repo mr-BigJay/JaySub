@@ -530,7 +530,7 @@ HTML;
             'expired' => ['sub-mgmt-pill danger', 'منقضی'],
             'warning' => ['sub-mgmt-pill warn', 'هشدار'],
             'inactive' => ['sub-mgmt-pill danger', 'غیرفعال'],
-        };
+        ];
         [$cls, $label] = $map[$statusKey] ?? ['sub-mgmt-pill warn', $statusKey];
         return '<span class="' . $cls . '"><span class="sub-mgmt-pill-dot"></span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
     }
