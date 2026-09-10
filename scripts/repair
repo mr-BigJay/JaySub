@@ -1,25 +1,39 @@
 #!/usr/bin/env bash
-# Repair database + permissions (bad az nasb-e nimeh-kar)
-#   curl -fsSL .../scripts/repair | bash
+# Yek khat: curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/repair | bash
 set -euo pipefail
 
+RAW_BASE="https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb"
+
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Lotfan ba root: curl .../repair | sudo bash"
+  echo "Lotfan ba root ejra konid."
   exit 1
 fi
 
 INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
 
 if [[ ! -d "$INSTALL_DIR" ]]; then
-  echo "Nasb peyda nashod. aval install konid:"
-  echo '  curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash'
+  echo "Peyda nashod $INSTALL_DIR — aval install:"
+  echo "  curl -fsSL ${RAW_BASE}/scripts/install | bash"
   exit 1
 fi
 
 cd "$INSTALL_DIR"
-git pull 2>/dev/null || true
+if [[ -d .git ]]; then
+  git pull --ff-only 2>/dev/null || git pull 2>/dev/null || true
+fi
 
-read -rsp "Ramz-e admin (admin user): " ADMIN_PASS </dev/tty
+# Agar file-ha roye server ghadimi ast, az GitHub download kon
+for f in scripts/ensure-database.sh scripts/verify-database.php scripts/install.php; do
+  if [[ ! -f "$f" ]]; then
+    echo "Download $f ..."
+    curl -fsSL "${RAW_BASE}/${f}" -o "$f"
+  fi
+done
+chmod +x scripts/ensure-database.sh 2>/dev/null || true
+
+echo ""
+echo "=== JaySub DB Repair ==="
+read -rsp "Ramz-e admin (user: admin): " ADMIN_PASS </dev/tty
 echo ""
 
 bash scripts/ensure-database.sh "$ADMIN_PASS"
@@ -30,7 +44,13 @@ mkdir -p storage/sessions logs
 chown -R "${WEB_USER}:${WEB_USER}" storage logs
 chmod -R 750 storage logs
 chmod 770 storage/sessions
-systemctl restart php8.3-fpm nginx 2>/dev/null || systemctl restart php8.2-fpm nginx 2>/dev/null || true
+
+systemctl restart php8.3-fpm 2>/dev/null || systemctl restart php8.2-fpm 2>/dev/null || true
+systemctl reload nginx 2>/dev/null || true
 
 export JAYSUB_INSTALL_DIR="$INSTALL_DIR"
-bash scripts/info
+if [[ -f scripts/info ]]; then bash scripts/info; fi
+
+echo ""
+echo "Alan: https://$(php -r "\$c=require 'config/config.php'; echo parse_url(\$c['app']['url'],PHP_URL_HOST);")/admin/login"
+echo "User: admin | Pass: (hamin ke zadid)"

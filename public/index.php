@@ -218,7 +218,7 @@ if ($uri === '/admin/dashboard' && $method === 'GET') {
     } catch (Throwable $e) {
         error_log('JaySub admin dashboard: ' . $e->getMessage());
         Response::html(Layout::render('داشبورد', Layout::card(
-            '<div class="alert error">دیتابیس آماده نیست. روی سرور: <code>php scripts/install.php</code></div>'
+            '<div class="alert error">دیتابیس آماده نیست.<br>روی سرور (root) این یک خط را بزنید:<br><code style="word-break:break-all">curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/repair | bash</code></div>'
         ), 'admin'));
     }
 

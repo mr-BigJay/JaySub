@@ -151,8 +151,8 @@ CREATE TABLE login_attempts (
     INDEX idx_login_attempts_lookup (login_type, username, ip_address, attempted_at)
 ) ENGINE=InnoDB;
 
--- Default admin: username admin / password Admin@12345 (change after install)
-INSERT INTO users (username, password_hash) VALUES
-('admin', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
+-- Admin user is created by scripts/install.php (password you set during install)
+INSERT IGNORE INTO users (username, password_hash, is_active) VALUES
+('admin', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1);
 
 SET FOREIGN_KEY_CHECKS = 1;
