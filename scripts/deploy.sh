@@ -70,71 +70,71 @@ EOF
 interactive_wizard() {
   echo ""
   echo "=============================================="
-  echo "  نصب خودکار پنل JaySub (VPN / 3X-UI)"
+  echo "  Nasb-e khodkar: JaySub panel (VPN / 3X-UI)"
   echo "=============================================="
   echo ""
 
   while [[ -z "$DOMAIN" ]]; do
-    read_tty -rp "دامنه پنل (مثال: panel.example.com): " DOMAIN
+    read_tty -rp "Domein-e panel (mesal: panel.example.com): " DOMAIN
     DOMAIN="$(echo "$DOMAIN" | tr -d '[:space:]')"
     if [[ -z "$DOMAIN" ]]; then
-      echo "دامنه الزامی است."
+      echo "Domein ejbari ast."
     fi
   done
 
   while [[ -z "$ADMIN_PASS" ]]; do
-    read_tty_secret -p "رمز ورود ادمین پنل (حداقل ۸ کاراکتر): " ADMIN_PASS
+    read_tty_secret -p "Ramz-e vorud-e admin (hadaghal 8 character): " ADMIN_PASS
     if [[ ${#ADMIN_PASS} -lt 8 ]]; then
-      echo "رمز باید حداقل ۸ کاراکتر باشد."
+      echo "Ramz bayad hadaghal 8 character bashad."
       ADMIN_PASS=""
       continue
     fi
     local confirm=""
-    read_tty_secret -p "تکرار رمز ادمین: " confirm
+    read_tty_secret -p "Tekrar-e ramz-e admin: " confirm
     if [[ "$ADMIN_PASS" != "$confirm" ]]; then
-      echo "رمزها یکسان نیستند."
+      echo "Ramzha yeksan nistand."
       ADMIN_PASS=""
     fi
   done
 
   echo ""
-  read_tty -rp "رمز دیتابیس MySQL را خودتان وارد می‌کنید؟ (y/N — در غیر این صورت تصادفی): " db_custom
+  read_tty -rp "Ramz-e database MySQL ro khodetun vared mikonid? (y/N — vagarna random): " db_custom
   if [[ "$db_custom" =~ ^[Yy]$ ]]; then
     while [[ -z "$DB_PASS" ]]; do
-      read_tty_secret -p "رمز MySQL برای کاربر vpn_panel: " DB_PASS
+      read_tty_secret -p "Ramz-e MySQL baraye user vpn_panel: " DB_PASS
       if [[ ${#DB_PASS} -lt 8 ]]; then
-        echo "حداقل ۸ کاراکتر."
+        echo "Hadaghal 8 character."
         DB_PASS=""
       fi
     done
   else
     DB_PASS="$(rand_pass)"
-    echo "رمز MySQL به‌صورت تصادفی ساخته شد (در پایان نمایش داده می‌شود)."
+    echo "Ramz-e MySQL be soorate random sakhte shod (payan-e nasb neshan dade mishavad)."
   fi
 
   echo ""
-  read_tty -rp "فعال‌سازی HTTPS با Let's Encrypt؟ (Y/n): " ssl_yn
+  read_tty -rp "Faal kardan-e HTTPS ba Let's Encrypt? (Y/n): " ssl_yn
   if [[ ! "$ssl_yn" =~ ^[Nn]$ ]]; then
     SKIP_SSL=0
     while [[ -z "$CERTBOT_EMAIL" ]]; do
-      read_tty -rp "ایمیل برای گواهی SSL: " CERTBOT_EMAIL
+      read_tty -rp "Email baraye SSL certificate: " CERTBOT_EMAIL
       CERTBOT_EMAIL="$(echo "$CERTBOT_EMAIL" | tr -d '[:space:]')"
     done
   else
     SKIP_SSL=1
     CERTBOT_EMAIL=""
-    echo "نصب فقط روی HTTP (پورت ۸۰)."
+    echo "Nasb faghat roye HTTP (port 80)."
   fi
 
   echo ""
-  echo "-------------- خلاصه --------------"
-  echo "دامنه:        $DOMAIN"
-  echo "مسیر نصب:     $INSTALL_DIR"
-  echo "SSL:          $([[ $SKIP_SSL -eq 0 ]] && echo "بله ($CERTBOT_EMAIL)" || echo "خیر")"
+  echo "-------------- Khulase --------------"
+  echo "Domein:       $DOMAIN"
+  echo "Masir nasb:   $INSTALL_DIR"
+  echo "SSL:          $([[ $SKIP_SSL -eq 0 ]] && echo "Bale ($CERTBOT_EMAIL)" || echo "Kheir")"
   echo "-----------------------------------"
-  read_tty -rp "شروع نصب؟ (Y/n): " go
+  read_tty -rp "Shoroo nasb? (Y/n): " go
   if [[ "$go" =~ ^[Nn]$ ]]; then
-    echo "لغو شد."
+    echo "Laghv shod."
     exit 0
   fi
   echo ""
@@ -163,6 +163,8 @@ if [[ "$(id -u)" -ne 0 ]]; then
   echo "Please run as root: sudo bash deploy.sh ..."
   exit 1
 fi
+
+echo "deploy.sh version: ${DEPLOY_SCRIPT_VERSION}"
 
 if [[ -z "$DOMAIN" ]]; then
   interactive_wizard

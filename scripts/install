@@ -8,13 +8,13 @@ GIT_BRANCH="${JAYSUB_BRANCH:-cursor/vpn-customer-panel-6abb}"
 INSTALLER_VERSION="3"
 
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "لطفاً با root اجرا کنید:"
+  echo "Lotfan ba root ejra konid:"
   echo "  curl -fsSL .../scripts/install | sudo bash"
   exit 1
 fi
 
 echo "JaySub installer v${INSTALLER_VERSION}"
-echo "در حال دریافت آخرین نسخه از GitHub (شاخه ${GIT_BRANCH})..."
+echo "Dar hal-e daryaft az GitHub (branch: ${GIT_BRANCH})..."
 
 WORK=""
 for dir in /tmp /root /var/tmp; do
@@ -24,12 +24,12 @@ for dir in /tmp /root /var/tmp; do
   fi
 done
 if [[ -z "$WORK" ]]; then
-  echo "خطا: مسیر موقت پیدا نشد."
+  echo "Khata: masir-e movaghat peyda nashod."
   exit 1
 fi
 
 if ! command -v git &>/dev/null; then
-  echo "نصب git..."
+  echo "Nasb-e git..."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq git ca-certificates
@@ -37,19 +37,19 @@ fi
 
 rm -rf "$WORK"
 if ! git clone --depth 1 --branch "$GIT_BRANCH" "$REPO_URL" "$WORK" 2>/dev/null; then
-  echo "خطا در git clone. بررسی کنید اینترنت و نام شاخه در دسترس باشد."
+  echo "Khata dar git clone. Internet va branch ro check konid."
   echo "Repo: $REPO_URL branch: $GIT_BRANCH"
   exit 1
 fi
 
 DEPLOY="${WORK}/scripts/deploy.sh"
 if [[ ! -f "$DEPLOY" ]]; then
-  echo "خطا: deploy.sh در مخزن پیدا نشد."
+  echo "Khata: deploy.sh dar repo peyda nashod."
   exit 1
 fi
 
 if ! grep -q 'interactive_wizard' "$DEPLOY"; then
-  echo "خطا: نسخه deploy.sh در مخزن قدیمی است. با پشتیبانی تماس بگیرید."
+  echo "Khata: noskhe-ye deploy.sh ghadimi ast. ba poshtibani tamas begirid."
   exit 1
 fi
 
