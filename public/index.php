@@ -640,14 +640,12 @@ if ($uri === '/admin/customers' && $method === 'GET') {
 if ($uri === '/admin/customers/new' && $method === 'GET') {
     requireAdmin();
     $form = '<form class="stack" method="post" action="/admin/customers/new">' . Csrf::field() . '
-        <label>نام کاربر</label><input name="name" required>
-        <label>Username</label><input name="username" required autocomplete="off">
-        <label>رمز عبور</label><input name="password" type="password" required>
+        <label>نام کاربری</label><input name="username" required autocomplete="off" placeholder="مثلاً user123">
         <label>شماره تماس</label><input name="mobile" type="tel">
         <label>توضیحات</label><textarea name="notes" rows="3"></textarea>
         <label>Telegram Chat ID</label><input name="telegram_chat_id">
         <label><input type="checkbox" name="is_active" value="1" checked> حساب فعال</label>
-        <p class="muted">سرویس (حجم و پنل‌ها) در مرحلهٔ بعد از «راه‌اندازی سرویس» تنظیم می‌شود.</p>
+        <p class="muted">مشتری از پنل لاگین نمی‌کند؛ فقط لینک اشتراک و مصرف در سرویس تنظیم می‌شود.</p>
         <button class="btn btn-primary" type="submit">ایجاد کاربر</button>
     </form>';
     adminPage('مشتری جدید', 'users', Layout::card($form));
@@ -657,10 +655,10 @@ if ($uri === '/admin/customers/new' && $method === 'POST') {
     requireAdmin();
     requireCsrf();
     try {
+        $username = trim($_POST['username'] ?? '');
         $id = CustomerService::create([
-            'name' => trim($_POST['name'] ?? ''),
-            'username' => trim($_POST['username'] ?? ''),
-            'password' => $_POST['password'] ?? '',
+            'name' => $username,
+            'username' => $username,
             'mobile' => trim($_POST['mobile'] ?? '') ?: null,
             'notes' => trim($_POST['notes'] ?? '') ?: null,
             'telegram_chat_id' => trim($_POST['telegram_chat_id'] ?? '') ?: null,

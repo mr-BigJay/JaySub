@@ -57,10 +57,14 @@ final class CustomerService
     public static function createUser(array $data, ?int $adminId = null): int
     {
         $pdo = Database::pdo();
+        $password = (string) ($data['password'] ?? '');
+        if ($password === '') {
+            $password = bin2hex(random_bytes(16));
+        }
         $params = [
             'name' => $data['name'],
             'username' => $data['username'],
-            'hash' => password_hash($data['password'], PASSWORD_DEFAULT),
+            'hash' => password_hash($password, PASSWORD_DEFAULT),
             'mobile' => $data['mobile'] ?? null,
             'tg' => $data['telegram_chat_id'] ?? null,
             'notes' => $data['notes'] ?? null,
