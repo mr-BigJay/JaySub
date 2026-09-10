@@ -48,4 +48,16 @@ final class Format
         }
         return date('Y/m/d H:i', $ts);
     }
+
+    public static function daysUntil(?string $datetime): ?int
+    {
+        if ($datetime === null || $datetime === '') {
+            return null;
+        }
+        $ts = strtotime($datetime);
+        if ($ts === false) {
+            return null;
+        }
+        return max(0, (int) floor(($ts - time()) / 86400));
+    }
 }

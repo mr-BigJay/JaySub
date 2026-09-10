@@ -866,45 +866,40 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
         $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
 
-    $panelRows = '';
-    foreach ($panels as $p) {
-        $dot = match ($p['connection_status']) {
-            'connected' => 'green',
-            'sync_error' => 'yellow',
-            default => 'red',
-        };
-        $panelRows .= '<div class="row"><span><span class="dot ' . $dot . '"></span> ' . htmlspecialchars($p['name'], ENT_QUOTES, 'UTF-8') . '</span>
-            <a class="btn small secondary" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a></div>';
+    $displayName = trim((string) ($customer['username'] ?? '')) !== ''
+        ? (string) $customer['username']
+        : (string) $customer['name'];
+    $statusKey = (string) ($customer['service_status'] ?? 'inactive');
+    if ($sub && ($sub['status'] ?? '') === 'exhausted') {
+        $statusKey = 'exhausted';
+    } elseif ($quota > 0 && $used >= $quota) {
+        $statusKey = 'exhausted';
     }
-
+    $heroSub = $statusKey === 'active'
+        ? 'اشتراک فعال و در حال استفاده'
+        : 'وضعیت سرویس را در پایین بررسی کنید';
+    $endsAt = $sub && !empty($sub['ends_at']) ? (string) $sub['ends_at'] : null;
     $quotaGbVal = $quota > 0
         ? htmlspecialchars((string) Format::bytesToGbNumber($quota), ENT_QUOTES, 'UTF-8')
         : '0';
-    $volumeForm = '<div class="data-card-row"><span>مصرف ثبت‌شده</span><span>' . Format::bytesToGb($used) . '</span></div>
-            <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $used)) . '</span></div>
-            <form class="stack" method="post" action="/admin/customers/' . $id . '/set-quota" style="margin-top:1rem">' . Csrf::field() . '
-            <label>سقف حجم (GB)</label>
-            <input name="quota_gb" type="number" step="0.1" min="0" required value="' . $quotaGbVal . '">
-            <p class="muted form-hint">عدد نهایی سقف را وارد کنید و ذخیره کنید. مصرف واقعی از 3x-ui جدا است و با این فیلد عوض نمی‌شود.</p>
-            <button class="btn btn-primary" type="submit">ذخیره سقف حجم</button>
-            </form>';
-    $usageLinkCard = $usageViewUrl !== ''
-        ? Layout::copyLinkField(
-            'customer-usage-link',
-            $usageViewUrl,
-            'لینک مشاهده مصرف برای مشتری',
-            'این لینک را برای کاربر بفرستید — بدون نام کاربری و رمز، فقط مشاهدهٔ مصرف.'
-        )
-        : Layout::card('<p class="muted">لینک مصرف پس از به‌روزرسانی دیتابیس (git pull + یک بار باز کردن پنل) فعال می‌شود.</p>', 'لینک مشاهده مصرف');
+    $subLink = trim((string) ($customer['subscription_link'] ?? ''));
 
-    $body = $flashHtml . '<h3>' . htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8') . '</h3>
-        <p class="muted">مصرف: ' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</p>
-        ' . Layout::card($panelRows ?: '<p class="muted">پنلی ثبت نشده</p>', 'پنل‌های 3X-UI') . '
-        <p><a class="btn secondary" href="/admin/customers/' . $id . '/panels/new">افزودن پنل</a></p>
-        ' . Layout::card($volumeForm, 'مدیریت حجم')
-        . $usageLinkCard . '
-        <p><a class="btn secondary" href="/admin/customers/' . $id . '/sync">هم‌اکنون Sync</a></p>';
-    adminPage('مدیریت مشتری', 'users', $body);
+    $body = Layout::adminCustomerManagePage(
+        $id,
+        $displayName,
+        $heroSub,
+        $statusKey,
+        $endsAt,
+        (float) $used,
+        (float) $quota,
+        $panels,
+        $subLink,
+        $usageViewUrl,
+        Csrf::field(),
+        $quotaGbVal,
+        $flashHtml,
+    );
+    adminPage('مدیریت اشتراک', 'users', $body);
 }
 
 if (preg_match('#^/admin/customers/(\d+)/panels/new$#', $uri, $m) && $method === 'GET') {

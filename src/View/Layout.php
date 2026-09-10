@@ -242,6 +242,179 @@ HTML;
         </div>';
     }
 
+    /**
+     * @param list<array{id:int,name:string,connection_status:string,is_active:int|string}> $panels
+     */
+    public static function adminCustomerManagePage(
+        int $customerId,
+        string $displayName,
+        string $subtitle,
+        string $statusKey,
+        ?string $endsAt,
+        float $usedBytes,
+        float $quotaBytes,
+        array $panels,
+        string $subscriptionLink,
+        string $usageViewUrl,
+        string $csrfField,
+        string $quotaGbValue,
+        string $flashHtml = '',
+    ): string {
+        $pct = Format::percent($usedBytes, $quotaBytes);
+        $remaining = max(0.0, $quotaBytes - $usedBytes);
+        $days = Format::daysUntil($endsAt);
+        $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
+        $daysHtml = $days !== null
+            ? '<div class="sub-mgmt-days"><span class="sub-mgmt-days-num">' . $days . '</span><span class="sub-mgmt-days-label">روز</span><span class="sub-mgmt-days-date">تا ' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>'
+            : '<div class="sub-mgmt-days sub-mgmt-days-muted"><span class="sub-mgmt-days-label">بدون تاریخ انقضا</span></div>';
+
+        $statusBadge = self::statusPill($statusKey);
+        $nameEsc = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
+        $subEsc = htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8');
+
+        $panelChips = '';
+        foreach ($panels as $p) {
+            $conn = (string) ($p['connection_status'] ?? '');
+            $isOn = (int) ($p['is_active'] ?? 0) === 1;
+            $dot = match ($conn) {
+                'connected' => 'on',
+                'sync_error' => 'warn',
+                default => 'off',
+            };
+            $connLabel = $conn === 'connected' ? 'متصل' : ($conn === 'sync_error' ? 'خطای sync' : 'قطع');
+            if (!$isOn) {
+                $connLabel = 'غیرفعال';
+                $dot = 'off';
+            }
+            $panelChips .= '<div class="sub-mgmt-panel-chip">
+                <span class="sub-mgmt-panel-dot ' . $dot . '"></span>
+                <span class="sub-mgmt-panel-name">' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</span>
+                <span class="sub-mgmt-panel-state">' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '</span>
+                <a class="sub-mgmt-panel-link" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a>
+            </div>';
+        }
+        if ($panelChips === '') {
+            $panelChips = '<p class="muted sub-mgmt-empty">پنلی ثبت نشده — از دکمهٔ پایین پنل اضافه کنید.</p>';
+        }
+
+        $usedGb = Format::bytesToGb($usedBytes);
+        $quotaGb = Format::bytesToGb($quotaBytes);
+        $remainGb = Format::bytesToGb($remaining);
+        $pctInt = (int) round($pct);
+        $progClass = $pct >= 90 ? 'danger' : ($pct >= 80 ? 'warn' : '');
+
+        $subLinkBlock = '';
+        if ($subscriptionLink !== '') {
+            $subEscLink = htmlspecialchars($subscriptionLink, ENT_QUOTES, 'UTF-8');
+            $subLinkBlock = '<section class="ui-card sub-mgmt-card">
+                <h2 class="card-title sub-mgmt-card-title"><span class="sub-mgmt-ico">🔗</span> لینک اشتراک</h2>
+                <p class="muted sub-link-hint">این لینک را در اپ VPN مشتری Import کنید.</p>
+                <div class="sub-link-row">
+                    <input type="text" readonly class="sub-link-input" id="admin-subscription-link" value="' . $subEscLink . '">
+                    <button type="button" class="btn btn-primary btn-copy" data-copy-target="admin-subscription-link">کپی</button>
+                </div>
+            </section>';
+        } else {
+            $subLinkBlock = '<section class="ui-card sub-mgmt-card"><h2 class="card-title">لینک اشتراک</h2><p class="muted">در <a href="/admin/customers/' . $customerId . '/service">راه‌اندازی سرویس</a> تنظیم کنید.</p></section>';
+        }
+
+        $usageLinkBlock = '';
+        if ($usageViewUrl !== '') {
+            $usageEsc = htmlspecialchars($usageViewUrl, ENT_QUOTES, 'UTF-8');
+            $usageLinkBlock = '<section class="ui-card sub-mgmt-card">
+                <h2 class="card-title sub-mgmt-card-title"><span class="sub-mgmt-ico">📊</span> لینک مشاهده مصرف</h2>
+                <p class="muted sub-link-hint">بدون ورود — فقط نمایش مصرف برای مشتری.</p>
+                <div class="sub-link-row">
+                    <input type="text" readonly class="sub-link-input" id="customer-usage-link" value="' . $usageEsc . '">
+                    <button type="button" class="btn btn-primary btn-copy" data-copy-target="customer-usage-link">کپی</button>
+                </div>
+            </section>';
+        }
+
+        $statusDetail = self::statusPill($statusKey);
+
+        return '<div class="sub-mgmt-page">' . $flashHtml . '
+            <header class="sub-mgmt-toolbar">
+                <a class="sub-mgmt-back" href="/admin/customers" aria-label="بازگشت">←</a>
+                <h2 class="sub-mgmt-title">مدیریت اشتراک</h2>
+                <a class="sub-mgmt-menu" href="/admin/customers/' . $customerId . '/service" title="تنظیمات سرویس">⋯</a>
+            </header>
+
+            <section class="ui-card sub-mgmt-hero">
+                <div class="sub-mgmt-hero-icon" aria-hidden="true">🛡</div>
+                <div class="sub-mgmt-hero-main">
+                    <div class="sub-mgmt-hero-head">
+                        <h3 class="sub-mgmt-username">' . $nameEsc . '</h3>
+                        ' . $statusBadge . '
+                    </div>
+                    <p class="muted sub-mgmt-hero-sub">' . $subEsc . '</p>
+                </div>
+                ' . $daysHtml . '
+            </section>
+
+            <section class="ui-card sub-mgmt-card">
+                <h2 class="card-title sub-mgmt-card-title"><span class="sub-mgmt-ico">⬡</span> پنل‌های 3X-UI</h2>
+                <div class="sub-mgmt-panels">' . $panelChips . '</div>
+            </section>
+
+            <section class="ui-card sub-mgmt-card sub-mgmt-usage">
+                <h2 class="card-title sub-mgmt-card-title"><span class="sub-mgmt-ico">🗄</span> مصرف حجم</h2>
+                <div class="sub-mgmt-usage-visual">
+                    <div class="usage-donut" style="--pct:' . $pct . '">
+                        <span>' . $pctInt . '٪<br><small>مصرف</small></span>
+                    </div>
+                    <div class="sub-mgmt-usage-bar-wrap">
+                        <div class="sub-mgmt-usage-bar-label">' . $usedGb . ' / ' . $quotaGb . '</div>
+                        <div class="progress sub-mgmt-bar ' . $progClass . '"><span style="width:' . min(100, $pct) . '%"></span></div>
+                    </div>
+                </div>
+                <div class="sub-mgmt-stats">
+                    <div class="sub-mgmt-stat"><span class="sub-mgmt-stat-label">مجموع حجم</span><span class="sub-mgmt-stat-val">' . $quotaGb . '</span></div>
+                    <div class="sub-mgmt-stat"><span class="sub-mgmt-stat-label">مصرف‌شده</span><span class="sub-mgmt-stat-val">' . $usedGb . '</span></div>
+                    <div class="sub-mgmt-stat"><span class="sub-mgmt-stat-label">باقی‌مانده</span><span class="sub-mgmt-stat-val">' . $remainGb . '</span></div>
+                </div>
+                <form class="sub-mgmt-quota-form" method="post" action="/admin/customers/' . $customerId . '/set-quota">' . $csrfField . '
+                    <label for="quota_gb_admin">سقف حجم (GB) — قابل ویرایش</label>
+                    <div class="sub-mgmt-quota-row">
+                        <input id="quota_gb_admin" name="quota_gb" type="number" step="0.1" min="0" required value="' . $quotaGbValue . '">
+                        <button class="btn btn-primary" type="submit">ذخیره سقف</button>
+                    </div>
+                    <p class="muted form-hint">مصرف واقعی از 3x-ui sync می‌شود؛ این فیلد فقط سقف را تعیین می‌کند.</p>
+                </form>
+            </section>
+
+            <section class="ui-card sub-mgmt-card sub-mgmt-details">
+                <h2 class="card-title">جزئیات اشتراک</h2>
+                <div class="sub-mgmt-detail-row"><span>نوع اشتراک</span><span>سرویس VPN</span></div>
+                <div class="sub-mgmt-detail-row"><span>تاریخ انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
+                <div class="sub-mgmt-detail-row"><span>وضعیت</span><span>' . $statusDetail . '</span></div>
+            </section>
+
+            ' . $subLinkBlock . '
+            ' . $usageLinkBlock . '
+
+            <div class="sub-mgmt-actions">
+                <a class="btn btn-primary block sub-mgmt-btn-primary" href="/admin/customers/' . $customerId . '/service">↻ تمدید / تنظیم سرویس</a>
+                <a class="btn btn-secondary block" href="/admin/customers/' . $customerId . '/sync">هم‌اکنون Sync مصرف</a>
+                <a class="btn btn-ghost block" href="/admin/customers/' . $customerId . '/panels/new">افزودن پنل 3X-UI</a>
+            </div>
+        </div>';
+    }
+
+    private static function statusPill(string $statusKey): string
+    {
+        $map = [
+            'active' => ['sub-mgmt-pill active', 'فعال'],
+            'exhausted' => ['sub-mgmt-pill danger', 'اتمام حجم'],
+            'disabled' => ['sub-mgmt-pill danger', 'غیرفعال'],
+            'expired' => ['sub-mgmt-pill danger', 'منقضی'],
+            'warning' => ['sub-mgmt-pill warn', 'هشدار'],
+            'inactive' => ['sub-mgmt-pill danger', 'غیرفعال'],
+        };
+        [$cls, $label] = $map[$statusKey] ?? ['sub-mgmt-pill warn', $statusKey];
+        return '<span class="' . $cls . '"><span class="sub-mgmt-pill-dot"></span>' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
+    }
+
     /** @param list<array<string, string>> $rows */
     public static function responsiveTable(array $headers, array $rows, string $mobileTitleKey = 'name'): string
     {
