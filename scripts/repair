@@ -21,6 +21,7 @@ mkdir -p storage/sessions
 echo -n "$ADMIN_PASS" > storage/.admin-init
 chmod 600 storage/.admin-init
 php scripts/install.php "$ADMIN_PASS"
+php -r "require 'src/bootstrap.php'; \App\Database\SchemaUpgrade::apply(\App\Core\Database::pdo()); echo 'schema ok\n';" 2>/dev/null || true
 
 WEB_USER=www-data
 id nginx &>/dev/null && WEB_USER=nginx

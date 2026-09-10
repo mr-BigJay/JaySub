@@ -57,11 +57,7 @@ final class CustomerService
     public static function createUser(array $data, ?int $adminId = null): int
     {
         $pdo = Database::pdo();
-        $stmt = $pdo->prepare(
-            'INSERT INTO customers (name, username, password_hash, mobile, telegram_chat_id, notes, warning1_percent, warning2_percent, is_active)
-             VALUES (:name, :username, :hash, :mobile, :tg, :notes, :w1, :w2, :active)'
-        );
-        $stmt->execute([
+        $params = [
             'name' => $data['name'],
             'username' => $data['username'],
             'hash' => password_hash($data['password'], PASSWORD_DEFAULT),
@@ -71,7 +67,24 @@ final class CustomerService
             'w1' => (int) ($data['warning1_percent'] ?? 80),
             'w2' => (int) ($data['warning2_percent'] ?? 90),
             'active' => isset($data['is_active']) ? (int) $data['is_active'] : 1,
-        ]);
+        ];
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO customers (name, username, password_hash, mobile, telegram_chat_id, notes, warning1_percent, warning2_percent, is_active)
+                 VALUES (:name, :username, :hash, :mobile, :tg, :notes, :w1, :w2, :active)'
+            );
+            $stmt->execute($params);
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), 'notes') || str_contains($e->getMessage(), 'Unknown column')) {
+                $stmt = $pdo->prepare(
+                    'INSERT INTO customers (name, username, password_hash, mobile, telegram_chat_id, warning1_percent, warning2_percent, is_active)
+                     VALUES (:name, :username, :hash, :mobile, :tg, :w1, :w2, :active)'
+                );
+                $stmt->execute($params);
+            } else {
+                throw $e;
+            }
+        }
         $customerId = (int) $pdo->lastInsertId();
         AuditLogService::log('admin', $adminId, 'customer_created', 'customer', $customerId);
         return $customerId;
@@ -94,8 +107,14 @@ final class CustomerService
                 ]);
         }
         if ($subLink !== null) {
-            $pdo->prepare('UPDATE customers SET subscription_link = :l WHERE id = :id')
-                ->execute(['l' => $subLink !== '' ? $subLink : null, 'id' => $customerId]);
+            try {
+                $pdo->prepare('UPDATE customers SET subscription_link = :l WHERE id = :id')
+                    ->execute(['l' => $subLink !== '' ? $subLink : null, 'id' => $customerId]);
+            } catch (\PDOException $e) {
+                if (!str_contains($e->getMessage(), 'subscription_link')) {
+                    throw $e;
+                }
+            }
         }
 
         $existing = self::activeSubscription($customerId);

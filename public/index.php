@@ -703,8 +703,8 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
     $endsVal = $sub && $sub['ends_at'] ? date('Y-m-d', strtotime((string) $sub['ends_at'])) : '';
     $subLink = htmlspecialchars((string) ($customer['subscription_link'] ?? ''), ENT_QUOTES, 'UTF-8');
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
-        <p class="muted">مصرف تجمیعی (پنل‌های فعال): <strong>' . Format::bytesToGb($used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>
-        ' . ($breakRows ? Layout::card($breakRows, 'مصرف به تفکیک پنل (ادمین)') : '') . '
+        <p class="muted">مصرف تجمیعی (پنل‌های فعال): <strong>' . Format::bytesToGb($used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
+        . ($breakRows ? Layout::card($breakRows, 'مصرف به تفکیک پنل (ادمین)') : '')
         . '<form class="stack" method="post" action="/admin/customers/' . $id . '/service">' . Csrf::field() . '
         <label>حجم کل (GB)</label><input name="quota_gb" type="number" step="0.1" required value="' . ($quota > 0 ? Format::bytesToGbNumber($quota) : '20') . '">
         <label>هشدار در (٪)</label><input name="warning1_percent" type="number" value="' . (int) $customer['warning1_percent'] . '">

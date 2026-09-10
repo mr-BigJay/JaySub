@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS customers (
     username VARCHAR(64) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     mobile VARCHAR(20) NULL,
+    notes TEXT NULL,
+    subscription_link VARCHAR(512) NULL,
     telegram_chat_id VARCHAR(64) NULL,
     is_active TINYINT(1) NOT NULL DEFAULT 1,
     vpn_enabled TINYINT(1) NOT NULL DEFAULT 1,

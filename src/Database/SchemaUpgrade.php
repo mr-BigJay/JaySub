@@ -12,18 +12,22 @@ final class SchemaUpgrade
 
     public static function apply(PDO $pdo): void
     {
-        $current = (int) $pdo->query(
-            "SELECT setting_value FROM system_settings WHERE setting_key = 'schema_version' LIMIT 1"
-        )->fetchColumn();
-        if ($current >= self::VERSION) {
-            return;
+        try {
+            $current = (int) $pdo->query(
+                "SELECT setting_value FROM system_settings WHERE setting_key = 'schema_version' LIMIT 1"
+            )->fetchColumn();
+            if ($current >= self::VERSION) {
+                return;
+            }
+            self::addColumnIfMissing($pdo, 'customers', 'notes', 'TEXT NULL');
+            self::addColumnIfMissing($pdo, 'customers', 'subscription_link', 'VARCHAR(512) NULL');
+            $pdo->prepare(
+                'INSERT INTO system_settings (setting_key, setting_value) VALUES (\'schema_version\', :v)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+            )->execute(['v' => (string) self::VERSION]);
+        } catch (\Throwable $e) {
+            error_log('JaySub SchemaUpgrade: ' . $e->getMessage());
         }
-        self::addColumnIfMissing($pdo, 'customers', 'notes', 'TEXT NULL');
-        self::addColumnIfMissing($pdo, 'customers', 'subscription_link', 'VARCHAR(512) NULL');
-        $pdo->prepare(
-            'INSERT INTO system_settings (setting_key, setting_value) VALUES (\'schema_version\', :v)
-             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
-        )->execute(['v' => (string) self::VERSION]);
     }
 
     private static function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void
