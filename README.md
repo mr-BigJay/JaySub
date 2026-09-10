@@ -33,10 +33,16 @@
 
 روی VPS با **root** یا `sudo` — در حین نصب از شما **دامنه، رمز ادمین، SSL و …** پرسیده می‌شود:
 
-**Nasb (root):**
+**Nasb kamel — yek khat (soal mide, DB + admin + nginx + SSL):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
+```
+
+**Faghat repair database (agar «دیتابیس آماده نیست»):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/repair | bash
 ```
 
 **Didan-e address panel + ramzha (har zaman, yek khat):**

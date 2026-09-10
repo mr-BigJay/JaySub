@@ -75,20 +75,32 @@ function requireCustomer(): void
 
 // --- Customer auth ---
 if ($uri === '/login' && $method === 'GET') {
+    if (isset($_GET['e'])) {
+        Response::redirect('/login');
+    }
     if (AuthService::customerId()) {
         Response::redirect('/dashboard');
     }
-    Response::html(Layout::loginPage('ورود مشتری', '/login', 'customer'));
+    $loginErr = Session::get('login_error_customer');
+    Session::remove('login_error_customer');
+    $msg = is_string($loginErr) ? $loginErr : null;
+    Response::html(Layout::loginPage('ورود مشتری', '/login', 'customer', $msg));
 }
 
 if ($uri === '/login' && $method === 'POST') {
     requireCsrf();
+    $failMsg = 'نام کاربری یا رمز اشتباه است.';
     try {
         $ok = AuthService::loginCustomer(trim($_POST['username'] ?? ''), $_POST['password'] ?? '', $maxAttempts, $lockout);
-        Response::redirect($ok ? '/dashboard' : '/login?e=1');
+        if ($ok) {
+            Response::redirect('/dashboard');
+        }
+        Session::set('login_error_customer', $failMsg);
+        Response::redirect('/login');
     } catch (Throwable $e) {
         error_log('JaySub customer login: ' . $e->getMessage());
-        Response::redirect('/login?e=1');
+        Session::set('login_error_customer', 'خطای سرور. روی VPS: bash scripts/reset-admin');
+        Response::redirect('/login');
     }
 }
 
@@ -157,20 +169,32 @@ if ($uri === '/dashboard' && $method === 'GET') {
 
 // --- Admin ---
 if ($uri === '/admin/login' && $method === 'GET') {
+    if (isset($_GET['e'])) {
+        Response::redirect('/admin/login');
+    }
     if (AuthService::adminId()) {
         Response::redirect('/admin/dashboard');
     }
-    Response::html(Layout::loginPage('ورود مدیریت', '/admin/login', 'admin'));
+    $loginErr = Session::get('login_error_admin');
+    Session::remove('login_error_admin');
+    $msg = is_string($loginErr) ? $loginErr : null;
+    Response::html(Layout::loginPage('ورود مدیریت', '/admin/login', 'admin', $msg));
 }
 
 if ($uri === '/admin/login' && $method === 'POST') {
     requireCsrf();
+    $failMsg = 'نام کاربری یا رمز اشتباه است. اگر مطمئنید: bash /var/www/vpn-panel/scripts/reset-admin \'RamzShoma\'';
     try {
         $ok = AuthService::loginAdmin(trim($_POST['username'] ?? ''), $_POST['password'] ?? '', $maxAttempts, $lockout);
-        Response::redirect($ok ? '/admin/dashboard' : '/admin/login?e=1');
+        if ($ok) {
+            Response::redirect('/admin/dashboard');
+        }
+        Session::set('login_error_admin', $failMsg);
+        Response::redirect('/admin/login');
     } catch (Throwable $e) {
         error_log('JaySub admin login: ' . $e->getMessage());
-        Response::redirect('/admin/login?e=1');
+        Session::set('login_error_admin', 'خطای دیتابیس. روی سرور: cd /var/www/vpn-panel && bash scripts/reset-admin');
+        Response::redirect('/admin/login');
     }
 }
 

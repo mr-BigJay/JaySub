@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Repair database + permissions (bad az nasb-e nimeh-kar)
+#   curl -fsSL .../scripts/repair | bash
+set -euo pipefail
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Lotfan ba root: curl .../repair | sudo bash"
+  exit 1
+fi
+
+INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
+
+if [[ ! -d "$INSTALL_DIR" ]]; then
+  echo "Nasb peyda nashod. aval install konid:"
+  echo '  curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash'
+  exit 1
+fi
+
+cd "$INSTALL_DIR"
+git pull 2>/dev/null || true
+
+read -rsp "Ramz-e admin (admin user): " ADMIN_PASS </dev/tty
+echo ""
+
+bash scripts/ensure-database.sh "$ADMIN_PASS"
+
+WEB_USER="www-data"
+if id nginx &>/dev/null; then WEB_USER="nginx"; fi
+mkdir -p storage/sessions logs
+chown -R "${WEB_USER}:${WEB_USER}" storage logs
+chmod -R 750 storage logs
+chmod 770 storage/sessions
+systemctl restart php8.3-fpm nginx 2>/dev/null || systemctl restart php8.2-fpm nginx 2>/dev/null || true
+
+export JAYSUB_INSTALL_DIR="$INSTALL_DIR"
+bash scripts/info
