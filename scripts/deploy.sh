@@ -275,13 +275,12 @@ if [[ "$SKIP_MYSQL_INSTALL" -eq 0 ]]; then
   mysql -e "FLUSH PRIVILEGES;"
 fi
 
-echo "==> Database schema + admin user..."
-bash "${INSTALL_DIR}/scripts/ensure-database.sh" "${ADMIN_PASS}"
-
-if ! php "${INSTALL_DIR}/scripts/verify-database.php"; then
-  echo "Khata: database setup namovafagh. deploy motavaghef shod."
-  exit 1
-fi
+echo "==> Database (auto migrator + admin)..."
+mkdir -p "${INSTALL_DIR}/storage/sessions"
+echo -n "${ADMIN_PASS}" > "${INSTALL_DIR}/storage/.admin-init"
+chmod 600 "${INSTALL_DIR}/storage/.admin-init"
+php "${INSTALL_DIR}/scripts/install.php" "${ADMIN_PASS}"
+php "${INSTALL_DIR}/scripts/verify-database.php"
 
 WEB_USER="www-data"
 if id nginx &>/dev/null; then

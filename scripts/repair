@@ -1,56 +1,31 @@
 #!/usr/bin/env bash
-# Yek khat: curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/repair | bash
+# curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/repair | bash
 set -euo pipefail
 
-RAW_BASE="https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb"
-
-if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Lotfan ba root ejra konid."
-  exit 1
-fi
-
 INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
-
-if [[ ! -d "$INSTALL_DIR" ]]; then
-  echo "Peyda nashod $INSTALL_DIR — aval install:"
-  echo "  curl -fsSL ${RAW_BASE}/scripts/install | bash"
-  exit 1
-fi
+[[ "$(id -u)" -eq 0 ]] || { echo "root lazem ast"; exit 1; }
+[[ -d "$INSTALL_DIR" ]] || { echo "aval: curl .../scripts/install | bash"; exit 1; }
 
 cd "$INSTALL_DIR"
-if [[ -d .git ]]; then
-  git pull --ff-only 2>/dev/null || git pull 2>/dev/null || true
-fi
+git pull 2>/dev/null || true
 
-# Agar file-ha roye server ghadimi ast, az GitHub download kon
-for f in scripts/ensure-database.sh scripts/verify-database.php scripts/install.php; do
-  if [[ ! -f "$f" ]]; then
-    echo "Download $f ..."
-    curl -fsSL "${RAW_BASE}/${f}" -o "$f"
-  fi
-done
-chmod +x scripts/ensure-database.sh 2>/dev/null || true
-
-echo ""
-echo "=== JaySub DB Repair ==="
-read -rsp "Ramz-e admin (user: admin): " ADMIN_PASS </dev/tty
+read -rsp "Ramz admin (user: admin): " ADMIN_PASS </dev/tty
 echo ""
 
-bash scripts/ensure-database.sh "$ADMIN_PASS"
+DB_PASS=$(php -r "\$c=require 'config/config.php'; echo \$c['database']['password'];")
+DB_PASS_SQL="${DB_PASS//\'/\'\'}"
+mysql -e "CREATE DATABASE IF NOT EXISTS vpn_panel; ALTER USER IF EXISTS 'vpn_panel'@'localhost' IDENTIFIED BY '${DB_PASS_SQL}';" 2>/dev/null || \
+mysql -e "CREATE DATABASE IF NOT EXISTS vpn_panel; CREATE USER IF NOT EXISTS 'vpn_panel'@'localhost' IDENTIFIED BY '${DB_PASS_SQL}'; GRANT ALL ON vpn_panel.* TO 'vpn_panel'@'localhost'; FLUSH PRIVILEGES;"
 
-WEB_USER="www-data"
-if id nginx &>/dev/null; then WEB_USER="nginx"; fi
-mkdir -p storage/sessions logs
-chown -R "${WEB_USER}:${WEB_USER}" storage logs
-chmod -R 750 storage logs
-chmod 770 storage/sessions
+mkdir -p storage/sessions
+echo -n "$ADMIN_PASS" > storage/.admin-init
+chmod 600 storage/.admin-init
+php scripts/install.php "$ADMIN_PASS"
 
-systemctl restart php8.3-fpm 2>/dev/null || systemctl restart php8.2-fpm 2>/dev/null || true
-systemctl reload nginx 2>/dev/null || true
+WEB_USER=www-data
+id nginx &>/dev/null && WEB_USER=nginx
+chown -R "$WEB_USER:$WEB_USER" storage logs 2>/dev/null || true
+systemctl restart php8.3-fpm nginx 2>/dev/null || true
 
-export JAYSUB_INSTALL_DIR="$INSTALL_DIR"
-if [[ -f scripts/info ]]; then bash scripts/info; fi
-
-echo ""
-echo "Alan: https://$(php -r "\$c=require 'config/config.php'; echo parse_url(\$c['app']['url'],PHP_URL_HOST);")/admin/login"
-echo "User: admin | Pass: (hamin ke zadid)"
+bash scripts/info 2>/dev/null || true
+echo "Tamam. safhe ro refresh konid."
