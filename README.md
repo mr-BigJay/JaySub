@@ -34,10 +34,16 @@
 روی VPS با **root** یا `sudo` — در حین نصب از شما **دامنه، رمز ادمین، SSL و …** پرسیده می‌شود:
 
 ```bash
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)"
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)
 ```
 
-> از `curl ... | bash` استفاده نکنید؛ با pipe ورودی تعاملی کار نمی‌کند. فرمت بالا درست است.
+یا (ساده‌تر برای کپی):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | sudo bash
+```
+
+> از `sudo bash -c "$(curl ...)"` استفاده **نکنید** — کوتیشن‌های داخل اسکریپت خراب می‌شود و نصب interactive کار نمی‌کند.
 
 اسکریپت نصب می‌کند: Nginx، PHP-FPM، MySQL، clone پروژه، دیتابیس، Cron worker، و در صورت انتخاب شما گواهی HTTPS.  
 رمزها در `storage/install-credentials.txt` ذخیره می‌شوند.

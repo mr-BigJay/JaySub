@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # JaySub installer — Ubuntu/Debian VPS (interactive or flags)
-# Interactive one-line (recommended):
-#   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)"
+#
+# Interactive one-line (use this — NOT bash -c "$(curl...)"; inner quotes break the script):
+#   sudo bash <(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)
+#
+# Alternative:
+#   curl -fsSL .../deploy.sh -o /tmp/jaysub-deploy.sh && sudo bash /tmp/jaysub-deploy.sh
 set -euo pipefail
 
 # Read from terminal even when script is piped to bash
@@ -50,11 +54,11 @@ Optional:
   --skip-ssl            Do not run certbot
   --skip-mysql-install  Assume MySQL already installed
 
-Interactive install (asks domain, passwords, SSL):
-  sudo bash -c "\$(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)"
+Interactive install:
+  sudo bash <(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)
 
-Non-interactive:
-  sudo bash -c "\$(curl -fsSL .../deploy.sh)" -s -- -d panel.example.com -a 'StrongPass123!' -e you@example.com
+Non-interactive (after saving script to a file):
+  sudo bash /tmp/jaysub-deploy.sh -d panel.example.com -a 'StrongPass123!' -e you@example.com
 EOF
 }
 

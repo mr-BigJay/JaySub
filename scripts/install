@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Short URL-friendly entry: curl .../scripts/install | sudo bash
+# Fetches full deploy.sh and runs it (safe for quoted content).
+set -euo pipefail
+DEPLOY_URL="${JAYSUB_DEPLOY_URL:-https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh}"
+TMP="$(mktemp /tmp/jaysub-deploy.XXXXXX.sh)"
+trap 'rm -f "$TMP"' EXIT
+curl -fsSL "$DEPLOY_URL" -o "$TMP"
+chmod +x "$TMP"
+exec bash "$TMP" "$@"
