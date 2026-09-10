@@ -564,7 +564,7 @@ if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET'
     $intro = '<p class="muted">' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8')
         . ' — کلاینت اختصاص‌داده‌شده: <strong>' . $mappedCount . '</strong></p>';
     if ($mappedCount === 0 && $clients !== []) {
-        $intro .= '<p class="muted form-hint">روی «اختصاص» بزنید تا مصرف این ایمیل در JaySub شمارش شود.</p>';
+        $intro .= '<p class="muted form-hint">کلاینت‌ها معمولاً بعد از worker/sync خودکار ثبت می‌شوند. «اختصاص» دستی فقط در صورت نیاز است.</p>';
     }
     $html = $flashHtml . $intro
         . Layout::responsiveTable(['ایمیل', 'مصرف (3x-ui)', 'وضعیت', ''], $tableRows)
@@ -584,7 +584,7 @@ if ($uri === '/admin/services' && $method === 'GET') {
         $panelCount = (int) ($r['panel_count'] ?? 0);
         $mapHint = '';
         if ($panelCount > 0 && $clientCount === 0) {
-            $mapHint = ' <span class="muted" title="از پنل XUI کلاینت را اختصاص دهید">⚠ بدون کلاینت</span>';
+            $mapHint = ' <span class="muted" title="بعد از sync worker کلاینت‌ها خودکار ثبت می‌شوند">(در انتظار sync)</span>';
         }
         $tableRows[] = [
             htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8') . $mapHint,
@@ -594,7 +594,7 @@ if ($uri === '/admin/services' && $method === 'GET') {
                 . ' <a class="btn btn-sm btn-ghost" href="/admin/customers/' . (int) $r['id'] . '">مدیریت</a>',
         ];
     }
-    $hint = '<p class="muted form-hint">مصرف از 3x-ui فقط برای <strong>کلاینت‌های اختصاص‌داده‌شده</strong> جمع می‌شود: پنل‌های XUI → کلاینت‌ها → اختصاص. سپس Sync (هر دقیقه worker یا «هم‌اکنون Sync» در پروفایل کاربر).</p>';
+    $hint = '<p class="muted form-hint">مصرف از 3x-ui به‌صورت خودکار برای <strong>همهٔ کلاینت‌های پنل‌های فعال</strong> جمع می‌شود (هر sync / worker). کلاینت جدید در XUI بدون کار دستی اضافه می‌شود.</p>';
     adminPage('سرویس‌ها', 'services', $hint . Layout::card(Layout::responsiveTable(['کاربر', 'مصرف', '٪', ''], $tableRows)));
 }
 
@@ -757,7 +757,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
         <label>تاریخ انقضا</label><input name="ends_at" type="date" value="' . $endsVal . '">
         <label>Subscription Link</label><input name="subscription_link" value="' . $subLink . '" placeholder="https://...">
         <fieldset class="panel-pick"><legend>پنل‌های فعال برای این سرویس</legend>' . ($panelChecks ?: '<p class="muted">ابتدا از صفحه مشتری پنل XUI اضافه کنید.</p>') . '</fieldset>
-        <p class="muted form-hint">بعد از ذخیره: از <strong>پنل‌های XUI → کلاینت‌ها</strong> ایمیل هر کاربر VPN را «اختصاص» کنید؛ بدون آن مصرف همیشه صفر می‌ماند.</p>
+        <p class="muted form-hint">پنل‌های فعال را تیک بزنید؛ مصرف همهٔ کلاینت‌های همان پنل در 3x-ui خودکار sync می‌شود.</p>
         <button class="btn btn-primary" type="submit">ذخیره سرویس</button></form>
         <p style="margin-top:1rem"><a href="/admin/customers/' . $id . '">مدیریت پنل و کلاینت</a></p>';
     adminPage('راه‌اندازی سرویس', 'services', Layout::card($body));

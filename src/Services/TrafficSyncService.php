@@ -102,18 +102,55 @@ final class TrafficSyncService
             }
         }
 
-        $mapped = $pdo->prepare(
-            'SELECT * FROM vpn_clients WHERE panel_id = :panel_id'
-        );
-        $mapped->execute(['panel_id' => $panelId]);
-        $vpnClients = $mapped->fetchAll();
+        $customerId = (int) $panel['customer_id'];
+        $subscription = CustomerService::activeSubscription($customerId);
+        if ($subscription === null) {
+            $this->markPanelError($panelId, 'اشتراک فعال برای مشتری ثبت نشده — ابتدا راه‌اندازی سرویس');
+            return;
+        }
+        $subId = (int) $subscription['id'];
 
-        foreach ($vpnClients as $vc) {
-            $email = $vc['xui_email'];
-            if (!isset($statsByEmail[$email])) {
+        $selectVc = $pdo->prepare(
+            'SELECT * FROM vpn_clients WHERE panel_id = :panel_id AND xui_email = :email LIMIT 1'
+        );
+        $insertVc = $pdo->prepare(
+            'INSERT INTO vpn_clients (customer_id, panel_id, subscription_id, inbound_id, xui_email, uuid, protocol)
+             VALUES (:cid, :pid, :sid, :inbound, :email, :uuid, :protocol)'
+        );
+        $upd = $pdo->prepare(
+            'UPDATE vpn_clients SET
+                base_upload_bytes = :base_up,
+                base_download_bytes = :base_down,
+                last_xui_upload = :last_up,
+                last_xui_download = :last_down,
+                enabled_in_xui = :enabled,
+                uuid = COALESCE(:uuid, uuid),
+                protocol = COALESCE(:protocol, protocol),
+                inbound_id = :inbound_id,
+                subscription_id = :sid,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id'
+        );
+
+        foreach ($statsByEmail as $email => $s) {
+            $selectVc->execute(['panel_id' => $panelId, 'email' => $email]);
+            $vc = $selectVc->fetch();
+            if ($vc === false) {
+                $insertVc->execute([
+                    'cid' => $customerId,
+                    'pid' => $panelId,
+                    'sid' => $subId,
+                    'inbound' => $s['inbound_id'],
+                    'email' => $email,
+                    'uuid' => $s['uuid'],
+                    'protocol' => $s['protocol'],
+                ]);
+                $selectVc->execute(['panel_id' => $panelId, 'email' => $email]);
+                $vc = $selectVc->fetch();
+            }
+            if ($vc === false) {
                 continue;
             }
-            $s = $statsByEmail[$email];
             $result = TrafficCounter::applyReading(
                 (int) $vc['base_upload_bytes'],
                 (int) $vc['base_download_bytes'],
@@ -121,20 +158,6 @@ final class TrafficSyncService
                 (int) $vc['last_xui_download'],
                 $s['up'],
                 $s['down'],
-            );
-
-            $upd = $pdo->prepare(
-                'UPDATE vpn_clients SET
-                    base_upload_bytes = :base_up,
-                    base_download_bytes = :base_down,
-                    last_xui_upload = :last_up,
-                    last_xui_download = :last_down,
-                    enabled_in_xui = :enabled,
-                    uuid = COALESCE(:uuid, uuid),
-                    protocol = COALESCE(:protocol, protocol),
-                    inbound_id = :inbound_id,
-                    updated_at = CURRENT_TIMESTAMP
-                 WHERE id = :id'
             );
             $upd->execute([
                 'base_up' => $result['base_up'],
@@ -145,6 +168,7 @@ final class TrafficSyncService
                 'uuid' => $s['uuid'],
                 'protocol' => $s['protocol'],
                 'inbound_id' => $s['inbound_id'],
+                'sid' => $subId,
                 'id' => $vc['id'],
             ]);
         }
@@ -176,13 +200,19 @@ final class TrafficSyncService
         }
 
         $subId = (int) $subscription['id'];
+        // Per-email MAX avoids double-count if the same XUI is registered on two panel rows.
         $sum = $pdo->prepare(
-            'SELECT
-                COALESCE(SUM(base_upload_bytes + last_xui_upload), 0) AS up,
-                COALESCE(SUM(base_download_bytes + last_xui_download), 0) AS down
-             FROM vpn_clients vc
-             INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
-             WHERE vc.customer_id = :cid AND vc.subscription_id = :sid'
+            'SELECT COALESCE(SUM(per_email.up), 0) AS up, COALESCE(SUM(per_email.down), 0) AS down
+             FROM (
+                SELECT
+                    vc.xui_email,
+                    MAX(vc.base_upload_bytes + vc.last_xui_upload) AS up,
+                    MAX(vc.base_download_bytes + vc.last_xui_download) AS down
+                FROM vpn_clients vc
+                INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
+                WHERE vc.customer_id = :cid AND vc.subscription_id = :sid
+                GROUP BY vc.xui_email
+             ) per_email'
         );
         $sum->execute(['cid' => $customerId, 'sid' => $subId]);
         $totals = $sum->fetch();

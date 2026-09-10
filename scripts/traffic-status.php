@@ -70,7 +70,7 @@ foreach ($customers as $c) {
         }
     }
     if ((int) $c['clients'] === 0 && (int) $c['panels'] > 0) {
-        echo "  => Assign clients: admin → پنل‌های XUI → کلاینت‌ها → اختصاص\n";
+        echo "  => Run: php worker/traffic_worker.php (auto-imports all XUI clients)\n";
     }
     echo "\n";
 }
