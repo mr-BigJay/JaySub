@@ -348,34 +348,189 @@ if ($uri === '/admin/dashboard' && $method === 'GET') {
 if ($uri === '/admin/panels' && $method === 'GET') {
     requireAdmin();
     $panels = DashboardService::allPanels();
-    $rows = [];
-    foreach ($panels as $p) {
-        $dot = match ($p['connection_status']) {
-            'connected' => '<span class="conn-dot on">●</span> متصل',
-            'sync_error' => '<span class="conn-dot warn">●</span> خطا',
-            default => '<span class="conn-dot off">●</span> قطع',
-        };
-        $rows[] = [
-            htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars((string) $p['base_url'], ENT_QUOTES, 'UTF-8'),
-            htmlspecialchars((string) $p['customer_username'], ENT_QUOTES, 'UTF-8'),
-            $dot,
-            '<form method="post" action="/admin/panels/' . (int) $p['id'] . '/test" class="inline-form">' . Csrf::field()
-            . '<button type="submit" class="btn btn-sm btn-secondary">تست اتصال</button></form>
-            <a class="btn btn-sm btn-ghost" href="/admin/customers/' . (int) $p['customer_id'] . '">مشتری</a>',
-        ];
+    $customers = CustomerService::listAll();
+    $customerOptions = '';
+    foreach ($customers as $c) {
+        $customerOptions .= '<option value="' . (int) $c['id'] . '">' . htmlspecialchars($c['username'] . ' — ' . $c['name'], ENT_QUOTES, 'UTF-8') . '</option>';
     }
-    $html = '<p class="muted">اتصال از طریق API Token (Bearer) پنل MHSanaei/3x-ui. افزودن پنل از صفحهٔ هر مشتری.</p>'
-        . Layout::responsiveTable(['نام', 'آدرس', 'مشتری', 'وضعیت', ''], $rows);
-    adminPage('پنل‌های XUI', 'panels', Layout::card($html));
+    if ($customerOptions === '') {
+        $customerOptions = '<option value="">ابتدا یک کاربر ایجاد کنید</option>';
+    }
+
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    $flashHtml = is_string($flash) && $flash !== ''
+        ? '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>'
+        : '';
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml = '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+
+    $addForm = Csrf::field() . '<form class="stack panel-connect-form" method="post" action="/admin/panels">
+        <label>مشتری (سرویس)</label>
+        <select name="customer_id" required>' . $customerOptions . '</select>
+        <label>نام پنل</label>
+        <input name="name" required placeholder="مثلاً پنل اصلی / آلمان">
+        <label>آدرس پنل (Domain یا IP + پورت)</label>
+        <input name="base_url" required placeholder="https://185.x.x.x:443 یا https://panel.example.com">
+        <p class="muted form-hint">در 3x-ui از منوی تنظیمات، API Token (Bearer) را کپی کنید.</p>
+        <label>API Token</label>
+        <input name="api_token" required autocomplete="off" placeholder="Bearer token">
+        <div class="form-actions-row">
+            <button class="btn btn-primary" type="submit" name="action" value="save">ذخیره پنل</button>
+            <button class="btn btn-secondary" type="submit" name="action" value="save_test">ذخیره و تست اتصال</button>
+        </div>
+    </form>';
+
+    $listHtml = '';
+    if ($panels === []) {
+        $listHtml = '<p class="muted">هنوز پنلی ثبت نشده. فرم بالا را پر کنید.</p>';
+    } else {
+        $cards = '';
+        foreach ($panels as $p) {
+            $dot = match ($p['connection_status']) {
+                'connected' => '<span class="conn-dot on">●</span> متصل',
+                'sync_error' => '<span class="conn-dot warn">●</span> خطا',
+                default => '<span class="conn-dot off">●</span> قطع',
+            };
+            $err = $p['last_error'] ? '<p class="muted panel-err">' . htmlspecialchars((string) $p['last_error'], ENT_QUOTES, 'UTF-8') . '</p>' : '';
+            $cards .= '<article class="panel-list-card ui-card">
+                <div class="data-card-row"><span>نام</span><strong>' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</strong></div>
+                <div class="data-card-row"><span>آدرس</span><span class="mono">' . htmlspecialchars((string) $p['base_url'], ENT_QUOTES, 'UTF-8') . '</span></div>
+                <div class="data-card-row"><span>مشتری</span><span>' . htmlspecialchars((string) $p['customer_username'], ENT_QUOTES, 'UTF-8') . '</span></div>
+                <div class="data-card-row"><span>وضعیت</span><span>' . $dot . '</span></div>
+                ' . $err . '
+                <div class="panel-card-actions">
+                    <a class="btn btn-sm btn-secondary" href="/admin/panels/' . (int) $p['id'] . '/edit">ویرایش</a>
+                    <form method="post" action="/admin/panels/' . (int) $p['id'] . '/test" class="inline-form">' . Csrf::field()
+                . '<button type="submit" class="btn btn-sm btn-primary">تست اتصال</button></form>
+                    <a class="btn btn-sm btn-ghost" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a>
+                </div>
+            </article>';
+        }
+        $listHtml = '<div class="panel-list">' . $cards . '</div>';
+    }
+
+    $body = $flashHtml
+        . Layout::card($addForm, 'اتصال پنل 3X-UI (MHSanaei)')
+        . Layout::card($listHtml, 'پنل‌های ثبت‌شده');
+    adminPage('پنل‌های XUI', 'panels', $body);
+}
+
+if ($uri === '/admin/panels' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $cid = (int) ($_POST['customer_id'] ?? 0);
+    if ($cid <= 0) {
+        Session::set('flash_admin', 'کاربر را انتخاب کنید.');
+        Response::redirect('/admin/panels');
+    }
+    $panelId = PanelService::create(
+        $cid,
+        trim($_POST['name'] ?? ''),
+        trim($_POST['base_url'] ?? ''),
+        $_POST['api_token'] ?? '',
+        app_encryption($config),
+        AuthService::adminId()
+    );
+    if (($_POST['action'] ?? '') === 'save_test') {
+        $result = PanelService::testConnection($panelId, app_encryption($config));
+        if ($result['ok']) {
+            Session::set('flash_admin_ok', 'پنل ذخیره شد. وضعیت: ' . $result['message']);
+        } else {
+            Session::set('flash_admin', 'پنل ذخیره شد اما تست ناموفق: ' . $result['message']);
+        }
+    } else {
+        Session::set('flash_admin_ok', 'پنل با موفقیت ذخیره شد.');
+    }
+    Response::redirect('/admin/panels');
+}
+
+if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'GET') {
+    requireAdmin();
+    $pid = (int) $m[1];
+    $panel = PanelService::findById($pid);
+    if (!$panel) {
+        Response::redirect('/admin/panels');
+    }
+    $form = Csrf::field() . '<form class="stack" method="post" action="/admin/panels/' . $pid . '/edit">
+        <label>نام پنل</label><input name="name" required value="' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8') . '">
+        <label>آدرس پنل</label><input name="base_url" required value="' . htmlspecialchars((string) $panel['base_url'], ENT_QUOTES, 'UTF-8') . '">
+        <label>API Token (خالی = بدون تغییر)</label><input name="api_token" autocomplete="off" placeholder="توکن جدید">
+        <button class="btn btn-primary" type="submit">ذخیره</button>
+        <a class="btn btn-secondary" href="/admin/panels">بازگشت</a>
+    </form>';
+    adminPage('ویرایش پنل', 'panels', Layout::card($form));
+}
+
+if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $pid = (int) $m[1];
+    $token = trim($_POST['api_token'] ?? '');
+    PanelService::update(
+        $pid,
+        trim($_POST['name'] ?? ''),
+        trim($_POST['base_url'] ?? ''),
+        $token !== '' ? $token : null,
+        app_encryption($config),
+        AuthService::adminId()
+    );
+    Session::set('flash_admin_ok', 'تغییرات پنل ذخیره شد.');
+    Response::redirect('/admin/panels');
 }
 
 if (preg_match('#^/admin/panels/(\d+)/test$#', $uri, $m) && $method === 'POST') {
     requireAdmin();
     requireCsrf();
     $result = PanelService::testConnection((int) $m[1], app_encryption($config));
-    Session::set('flash_admin', $result['message']);
+    if ($result['ok']) {
+        Session::set('flash_admin_ok', 'تست اتصال: ' . $result['message']);
+    } else {
+        Session::set('flash_admin', 'تست اتصال: ' . $result['message']);
+    }
     Response::redirect('/admin/panels');
+}
+
+if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET') {
+    requireAdmin();
+    $pid = (int) $m[1];
+    $panel = PanelService::findById($pid);
+    if (!$panel) {
+        Response::redirect('/admin/panels');
+    }
+    try {
+        $clients = PanelService::discoverClients($pid, app_encryption($config));
+    } catch (\Throwable $e) {
+        adminPage('خطا', 'panels', Layout::card('<div class="alert alert-error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'));
+        return;
+    }
+    $cid = (int) $panel['customer_id'];
+    $tableRows = [];
+    foreach ($clients as $c) {
+        $total = $c['up'] + $c['down'];
+        $action = '';
+        if (!$c['mapped']) {
+            $action = '<form method="post" action="/admin/panels/' . $pid . '/assign" class="inline-form">' . Csrf::field() .
+                '<input type="hidden" name="email" value="' . htmlspecialchars($c['email'], ENT_QUOTES, 'UTF-8') . '">
+                <input type="hidden" name="inbound_id" value="' . $c['inbound_id'] . '">
+                <input type="hidden" name="uuid" value="' . htmlspecialchars($c['uuid'] ?? '', ENT_QUOTES, 'UTF-8') . '">
+                <input type="hidden" name="protocol" value="' . htmlspecialchars($c['protocol'] ?? '', ENT_QUOTES, 'UTF-8') . '">
+                <button class="btn btn-sm btn-primary" type="submit">اختصاص</button></form>';
+        }
+        $tableRows[] = [
+            htmlspecialchars($c['email'], ENT_QUOTES, 'UTF-8'),
+            Format::bytesToGb($total),
+            ($c['enable'] ? 'فعال' : 'غیرفعال') . ($c['mapped'] ? ' · متصل' : ''),
+            $action,
+        ];
+    }
+    $html = '<p class="muted">' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8') . '</p>'
+        . Layout::responsiveTable(['ایمیل', 'مصرف', 'وضعیت', ''], $tableRows)
+        . '<p><a href="/admin/panels">بازگشت به پنل‌ها</a></p>';
+    adminPage('کلاینت‌های پنل', 'panels', Layout::card($html));
 }
 
 if ($uri === '/admin/services' && $method === 'GET') {
@@ -657,43 +812,6 @@ if (preg_match('#^/admin/customers/(\d+)/sync$#', $uri, $m) && $method === 'GET'
     }
     $sync->aggregateCustomer($id);
     Response::redirect('/admin/customers/' . $id);
-}
-
-if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET') {
-    requireAdmin();
-    $pid = (int) $m[1];
-    try {
-        $clients = PanelService::discoverClients($pid, app_encryption($config));
-    } catch (\Throwable $e) {
-        adminPage('خطا', 'users', Layout::card('<div class="alert alert-error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'));
-    }
-    $stmt = Database::pdo()->prepare('SELECT customer_id FROM vpn_panels WHERE id = :id');
-    $stmt->execute(['id' => $pid]);
-    $panel = $stmt->fetch();
-    $cid = (int) ($panel['customer_id'] ?? 0);
-
-    $tableRows = [];
-    foreach ($clients as $c) {
-        $total = $c['up'] + $c['down'];
-        $action = '';
-        if (!$c['mapped']) {
-            $action = '<form method="post" action="/admin/panels/' . $pid . '/assign" class="inline-form">' . Csrf::field() .
-                '<input type="hidden" name="email" value="' . htmlspecialchars($c['email'], ENT_QUOTES, 'UTF-8') . '">
-                <input type="hidden" name="inbound_id" value="' . $c['inbound_id'] . '">
-                <input type="hidden" name="uuid" value="' . htmlspecialchars($c['uuid'] ?? '', ENT_QUOTES, 'UTF-8') . '">
-                <input type="hidden" name="protocol" value="' . htmlspecialchars($c['protocol'] ?? '', ENT_QUOTES, 'UTF-8') . '">
-                <button class="btn btn-sm btn-primary" type="submit">اختصاص</button></form>';
-        }
-        $tableRows[] = [
-            htmlspecialchars($c['email'], ENT_QUOTES, 'UTF-8'),
-            Format::bytesToGb($total),
-            ($c['enable'] ? 'فعال' : 'غیرفعال') . ($c['mapped'] ? ' · متصل' : ''),
-            $action,
-        ];
-    }
-    $html = Layout::responsiveTable(['ایمیل', 'مصرف', 'وضعیت', ''], $tableRows)
-        . '<p class="muted"><a href="/admin/customers/' . $cid . '">بازگشت به مشتری</a></p>';
-    adminPage('کلاینت‌های پنل', 'users', Layout::card($html));
 }
 
 if (preg_match('#^/admin/panels/(\d+)/assign$#', $uri, $m) && $method === 'POST') {

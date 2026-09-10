@@ -28,6 +28,35 @@ final class PanelService
         return $id;
     }
 
+    /** @return array<string, mixed>|null */
+    public static function findById(int $id): ?array
+    {
+        $stmt = Database::pdo()->prepare('SELECT * FROM vpn_panels WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $row;
+    }
+
+    public static function update(int $panelId, string $name, string $baseUrl, ?string $apiToken, Encryption $encryption, ?int $adminId = null): void
+    {
+        $baseUrl = rtrim(trim($baseUrl), '/');
+        if ($apiToken !== null && $apiToken !== '') {
+            Database::pdo()->prepare(
+                'UPDATE vpn_panels SET name = :n, base_url = :u, api_token_encrypted = :t, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+            )->execute([
+                'n' => $name,
+                'u' => $baseUrl,
+                't' => $encryption->encrypt($apiToken),
+                'id' => $panelId,
+            ]);
+        } else {
+            Database::pdo()->prepare(
+                'UPDATE vpn_panels SET name = :n, base_url = :u, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+            )->execute(['n' => $name, 'u' => $baseUrl, 'id' => $panelId]);
+        }
+        AuditLogService::log('admin', $adminId, 'panel_updated', 'vpn_panel', $panelId);
+    }
+
     /** @return list<array<string, mixed>> */
     public static function forCustomer(int $customerId): array
     {
