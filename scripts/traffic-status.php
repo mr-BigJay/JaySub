@@ -8,9 +8,23 @@ declare(strict_types=1);
  *   php scripts/traffic-status.php --customer bellmobile
  */
 
+if (PHP_SAPI !== 'cli') {
+    fwrite(STDERR, "CLI only\n");
+    exit(1);
+}
+
+fwrite(STDOUT, "JaySub traffic-status…\n");
+fflush(STDOUT);
+
 require dirname(__DIR__) . '/vendor/autoload.php';
-$config = require dirname(__DIR__) . '/src/bootstrap.php';
-\App\Core\Database::init($config['database']);
+
+try {
+    $config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
+} catch (\Throwable $e) {
+    fwrite(STDERR, 'Bootstrap failed: ' . $e->getMessage() . "\n");
+    fwrite(STDERR, "Check MySQL in config/config.php (host, user, password). Test: mysql -h HOST -u USER -p DBNAME\n");
+    exit(1);
+}
 
 $filter = null;
 $argv = $_SERVER['argv'] ?? [];
@@ -61,14 +75,16 @@ foreach ($customers as $c) {
     echo "\n";
 }
 
-$lock = $config['worker']['lock_file'] ?? dirname(__DIR__) . '/storage/worker.lock';
 $log = dirname(__DIR__) . '/logs/worker.log';
 echo "Worker log: $log\n";
 if (is_readable($log)) {
-    $tail = trim((string) shell_exec('tail -n 2 ' . escapeshellarg($log) . ' 2>/dev/null'));
-    if ($tail !== '') {
-        echo "  last lines:\n    " . str_replace("\n", "\n    ", $tail) . "\n";
+    $lines = file($log, FILE_IGNORE_NEW_LINES);
+    if (is_array($lines) && $lines !== []) {
+        $tail = array_slice($lines, -2);
+        echo "  last lines:\n    " . implode("\n    ", $tail) . "\n";
     }
 } else {
-    echo "  (no log yet — ensure cron: * * * * * php worker/traffic_worker.php)\n";
+    echo "  (no log yet — ensure cron: * * * * * php " . dirname(__DIR__) . "/worker/traffic_worker.php)\n";
 }
+
+echo "Done.\n";

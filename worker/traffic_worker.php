@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$config = require dirname(__DIR__) . '/src/bootstrap.php';
+$config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
 
 use App\Core\Encryption;
 use App\Services\SettingsService;

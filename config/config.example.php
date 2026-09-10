@@ -12,6 +12,7 @@ return [
     'database' => [
         'host' => '127.0.0.1',
         'port' => 3306,
+        'connect_timeout' => 5,
         'name' => 'vpn_panel',
         'user' => 'vpn_panel',
         'password' => 'change_me',

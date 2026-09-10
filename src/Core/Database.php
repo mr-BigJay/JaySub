@@ -24,11 +24,15 @@ final class Database
             $dbConfig['name'],
             $dbConfig['charset'] ?? 'utf8mb4'
         );
-        self::$pdo = new PDO($dsn, $dbConfig['user'], $dbConfig['password'], [
+        $options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
+        ];
+        if (isset($dbConfig['connect_timeout'])) {
+            $options[PDO::MYSQL_ATTR_CONNECT_TIMEOUT] = max(1, (int) $dbConfig['connect_timeout']);
+        }
+        self::$pdo = new PDO($dsn, $dbConfig['user'], $dbConfig['password'], $options);
     }
 
     public static function pdo(): PDO
