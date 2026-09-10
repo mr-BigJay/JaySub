@@ -20,10 +20,12 @@ final class Session
             }
         }
         session_name($name);
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
         session_set_cookie_params([
             'lifetime' => 0,
             'path' => '/',
-            'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+            'secure' => $https,
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
