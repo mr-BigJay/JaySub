@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# JaySub 500 error diagnostic
+#   curl -fsSL .../scripts/doctor | bash
+#   ya: bash /var/www/vpn-panel/scripts/doctor
+set -euo pipefail
+
+INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
+cd "$INSTALL_DIR" 2>/dev/null || { echo "Khata: $INSTALL_DIR vojud nadarad"; exit 1; }
+
+echo "=== JaySub doctor ==="
+echo "Path: $INSTALL_DIR"
+echo ""
+
+echo "--- PHP ---"
+php -v | head -1
+for ext in pdo_mysql curl openssl mbstring json; do
+  if php -m 2>/dev/null | grep -qi "^${ext}$"; then
+    echo "  OK ext: $ext"
+  else
+    echo "  MISSING ext: $ext"
+  fi
+done
+
+echo ""
+echo "--- Config ---"
+if [[ -f config/config.php ]]; then
+  echo "  OK config/config.php"
+else
+  echo "  MISSING config/config.php"
+fi
+
+echo ""
+echo "--- Bootstrap test ---"
+php -r "
+try {
+  require 'src/bootstrap.php';
+  echo '  OK bootstrap + DB connect\n';
+  \$pdo = App\Core\Database::pdo();
+  \$t = \$pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+  echo '  Tables: ' . count(\$t) . '\n';
+  foreach (['users','customers','system_settings'] as \$need) {
+    echo (in_array(\$need, \$t, true) ? '  OK table ' : '  MISSING table ') . \$need . '\n';
+  }
+} catch (Throwable \$e) {
+  echo '  FAIL: ' . \$e->getMessage() . '\n';
+  exit(1);
+}
+" || true
+
+echo ""
+echo "--- Permissions ---"
+for d in storage storage/sessions logs; do
+  if [[ -d "$d" ]]; then
+    if [[ -w "$d" ]]; then
+      echo "  OK writable: $d"
+    else
+      echo "  NOT writable: $d  (fix: chown -R www-data:www-data storage logs)"
+    fi
+  else
+    echo "  MISSING dir: $d"
+    mkdir -p "$d" 2>/dev/null && echo "    created $d" || true
+  fi
+done
+
+echo ""
+echo "--- HTTP local ---"
+CODE=$(curl -s -o /tmp/jaysub-http.out -w '%{http_code}' -H 'Host: localhost' http://127.0.0.1/admin/login 2>/dev/null || echo "000")
+echo "  GET /admin/login -> HTTP $CODE"
+if [[ "$CODE" == "500" ]]; then
+  echo "  Body snippet:"
+  head -5 /tmp/jaysub-http.out 2>/dev/null | sed 's/^/    /'
+fi
+
+echo ""
+echo "--- PHP-FPM log (last 5) ---"
+for f in /var/log/php8.3-fpm.log /var/log/php8.2-fpm.log /var/log/nginx/error.log; do
+  if [[ -f "$f" ]]; then
+    echo "  $f:"
+    tail -5 "$f" | sed 's/^/    /'
+  fi
+done
+
+echo ""
+echo "--- Fix suggestions ---"
+echo "  git pull && php scripts/install.php 'AdminPass'"
+echo "  chown -R www-data:www-data storage logs"
+echo "  systemctl restart php8.3-fpm nginx"
+echo "  jaysub-info"

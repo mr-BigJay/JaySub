@@ -2,7 +2,21 @@
 
 declare(strict_types=1);
 
-$config = require dirname(__DIR__) . '/src/bootstrap.php';
+try {
+    $config = require dirname(__DIR__) . '/src/bootstrap.php';
+} catch (Throwable $e) {
+    http_response_code(500);
+    $debug = is_file(dirname(__DIR__) . '/config/config.php')
+        && (bool) (require dirname(__DIR__) . '/config/config.php')['app']['debug'];
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "JaySub bootstrap error.\n";
+    if ($debug) {
+        echo $e->getMessage();
+    } else {
+        echo "Run on server: bash /var/www/vpn-panel/scripts/doctor\n";
+    }
+    exit;
+}
 
 use App\Auth\AuthService;
 use App\Core\Csrf;
@@ -17,8 +31,26 @@ use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
 use App\View\Layout;
 
-$encryption = new Encryption($config['security']['encryption_key']);
-$telegram = new TelegramService(SettingsService::get('telegram_bot_token'));
+/** @param array<string, mixed> $config */
+function app_encryption(array $config): Encryption
+{
+    static $instance = null;
+    if ($instance === null) {
+        $instance = new Encryption((string) $config['security']['encryption_key']);
+    }
+    return $instance;
+}
+
+/** @param array<string, mixed> $config */
+function app_telegram(array $config): TelegramService
+{
+    static $instance = null;
+    if ($instance === null) {
+        $instance = new TelegramService(SettingsService::get('telegram_bot_token'));
+    }
+    return $instance;
+}
+
 $maxAttempts = (int) ($config['security']['login_max_attempts'] ?? 5);
 $lockout = (int) ($config['security']['login_lockout_minutes'] ?? 15);
 
@@ -267,7 +299,7 @@ if (preg_match('#^/admin/customers/(\d+)/panels/new$#', $uri, $m) && $method ===
     requireAdmin();
     requireCsrf();
     $cid = (int) $m[1];
-    PanelService::create($cid, trim($_POST['name'] ?? ''), trim($_POST['base_url'] ?? ''), $_POST['api_token'] ?? '', $encryption, AuthService::adminId());
+    PanelService::create($cid, trim($_POST['name'] ?? ''), trim($_POST['base_url'] ?? ''), $_POST['api_token'] ?? '', app_encryption($config), AuthService::adminId());
     Response::redirect('/admin/customers/' . $cid);
 }
 
@@ -275,14 +307,14 @@ if (preg_match('#^/admin/customers/(\d+)/add-quota$#', $uri, $m) && $method === 
     requireAdmin();
     requireCsrf();
     $id = (int) $m[1];
-    CustomerService::addQuota($id, (float) ($_POST['gb'] ?? 0), $encryption, $telegram, AuthService::adminId());
+    CustomerService::addQuota($id, (float) ($_POST['gb'] ?? 0), app_encryption($config), app_telegram($config), AuthService::adminId());
     Response::redirect('/admin/customers/' . $id);
 }
 
 if (preg_match('#^/admin/customers/(\d+)/sync$#', $uri, $m) && $method === 'GET') {
     requireAdmin();
     $id = (int) $m[1];
-    $sync = new TrafficSyncService($encryption, $telegram);
+    $sync = new TrafficSyncService(app_encryption($config), app_telegram($config));
     $panels = PanelService::forCustomer($id);
     foreach ($panels as $p) {
         try {
@@ -299,7 +331,7 @@ if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET'
     requireAdmin();
     $pid = (int) $m[1];
     try {
-        $clients = PanelService::discoverClients($pid, $encryption);
+        $clients = PanelService::discoverClients($pid, app_encryption($config));
     } catch (\Throwable $e) {
         Response::html(Layout::render('خطا', Layout::card('<div class="alert error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'), 'admin'));
     }

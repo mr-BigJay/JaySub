@@ -281,8 +281,10 @@ WEB_USER="www-data"
 if id nginx &>/dev/null; then
   WEB_USER="nginx"
 fi
+mkdir -p "${INSTALL_DIR}/storage/sessions"
 chown -R "${WEB_USER}:${WEB_USER}" "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs"
-chmod 750 "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs"
+chmod -R 750 "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs"
+chmod 770 "${INSTALL_DIR}/storage/sessions"
 
 PHP_SOCK="/run/php/php${PHP_VER}-fpm.sock"
 if [[ ! -S "$PHP_SOCK" ]]; then

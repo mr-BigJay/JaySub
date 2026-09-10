@@ -6,10 +6,18 @@ namespace App\Core;
 
 final class Session
 {
-    public static function start(string $name): void
+    public static function start(string $name, ?string $savePath = null): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             return;
+        }
+        if ($savePath !== null && $savePath !== '') {
+            if (!is_dir($savePath)) {
+                mkdir($savePath, 0750, true);
+            }
+            if (is_dir($savePath) && is_writable($savePath)) {
+                session_save_path($savePath);
+            }
         }
         session_name($name);
         session_set_cookie_params([

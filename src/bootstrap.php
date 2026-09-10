@@ -14,6 +14,7 @@ date_default_timezone_set($config['app']['timezone'] ?? 'UTC');
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 \App\Core\Database::init($config['database']);
-\App\Core\Session::start($config['security']['session_name'] ?? 'VPN_PANEL_SESS');
+$sessionDir = ($config['paths']['storage'] ?? dirname(__DIR__) . '/storage') . '/sessions';
+\App\Core\Session::start($config['security']['session_name'] ?? 'VPN_PANEL_SESS', $sessionDir);
 
 return $config;

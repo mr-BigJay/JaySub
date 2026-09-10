@@ -10,13 +10,17 @@ final class SettingsService
 {
     public static function get(string $key, ?string $default = null): ?string
     {
-        $stmt = Database::pdo()->prepare('SELECT setting_value FROM system_settings WHERE setting_key = :k LIMIT 1');
-        $stmt->execute(['k' => $key]);
-        $row = $stmt->fetch();
-        if ($row === false) {
+        try {
+            $stmt = Database::pdo()->prepare('SELECT setting_value FROM system_settings WHERE setting_key = :k LIMIT 1');
+            $stmt->execute(['k' => $key]);
+            $row = $stmt->fetch();
+            if ($row === false) {
+                return $default;
+            }
+            return $row['setting_value'];
+        } catch (\PDOException) {
             return $default;
         }
-        return $row['setting_value'];
     }
 
     public static function set(string $key, ?string $value): void
