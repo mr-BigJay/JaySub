@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_URL="${JAYSUB_REPO_URL:-https://github.com/mr-BigJay/JaySub.git}"
 GIT_BRANCH="${JAYSUB_BRANCH:-cursor/vpn-customer-panel-6abb}"
-INSTALLER_VERSION="3"
+INSTALLER_VERSION="4"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Lotfan ba root ejra konid:"

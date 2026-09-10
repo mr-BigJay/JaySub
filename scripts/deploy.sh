@@ -350,12 +350,18 @@ CREDS
 chmod 600 "$CREDENTIALS_FILE"
 chown "${WEB_USER}:${WEB_USER}" "$CREDENTIALS_FILE"
 
+cat > /usr/local/bin/jaysub-info <<'JAYSUBINFO'
+#!/usr/bin/env bash
+export JAYSUB_INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
+exec bash "${JAYSUB_INSTALL_DIR}/scripts/info"
+JAYSUBINFO
+chmod +x /usr/local/bin/jaysub-info
+
+export JAYSUB_INSTALL_DIR="${INSTALL_DIR}"
+bash "${INSTALL_DIR}/scripts/info"
+
 echo ""
-echo "=============================================="
-echo " JaySub installed successfully"
-echo "=============================================="
-echo " Panel:    ${APP_URL}/admin/login"
-echo " Customer: ${APP_URL}/login"
-echo " Admin:    admin / ${ADMIN_PASS}"
-echo " Credentials saved: ${CREDENTIALS_FILE}"
-echo "=============================================="
+echo "Baraye didan-e info dubare (har zaman):"
+echo "  jaysub-info"
+echo "  ya:"
+echo '  curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/info | bash'

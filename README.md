@@ -33,11 +33,19 @@
 
 روی VPS با **root** یا `sudo` — در حین نصب از شما **دامنه، رمز ادمین، SSL و …** پرسیده می‌شود:
 
-روی سرور با کاربر **root**:
+**Nasb (root):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
 ```
+
+**Didan-e address panel + ramzha (har zaman, yek khat):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/info | bash
+```
+
+Baad az nasb movafagh ham mitavanid bezani: `jaysub-info`
 
 اگر root نیستید: همان خط را با `| sudo bash` تمام کنید.
 

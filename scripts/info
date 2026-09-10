@@ -8,11 +8,21 @@ CONFIG="${INSTALL_DIR}/config/config.php"
 CRED="${INSTALL_DIR}/storage/install-credentials.txt"
 
 if [[ -f "$CRED" ]]; then
+  # shellcheck disable=SC1090
+  DOMAIN=$(grep -m1 '^Domain:' "$CRED" | cut -d' ' -f2-)
+  ADMIN_URL=$(grep -m1 '^Admin URL:' "$CRED" | cut -d' ' -f3-)
+  CUSTOMER_URL="${ADMIN_URL%/admin/login}/login"
+  ADMIN_USER=$(grep -m1 '^Admin user:' "$CRED" | cut -d' ' -f3-)
+  ADMIN_PASS=$(grep -m1 '^Admin password:' "$CRED" | cut -d' ' -f3-)
   echo ""
   echo "=============================================="
-  echo " JaySub — Install info (az file)"
+  echo " JaySub installed successfully"
   echo "=============================================="
-  cat "$CRED"
+  echo " Panel:    ${ADMIN_URL}"
+  echo " Customer: ${CUSTOMER_URL}"
+  echo " Admin:    ${ADMIN_USER} / ${ADMIN_PASS}"
+  echo " Domain:   ${DOMAIN}"
+  echo " Credentials file: ${CRED}"
   echo "=============================================="
   exit 0
 fi

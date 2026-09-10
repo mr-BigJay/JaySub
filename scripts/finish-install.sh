@@ -54,12 +54,6 @@ MySQL password: ${DB_PASS}
 CREDS
 chmod 600 "$CRED"
 
-echo ""
-echo "=============================================="
-echo " JaySub install finished"
-echo "=============================================="
-echo " Panel:    ${APP_URL}/admin/login"
-echo " Customer: ${APP_URL}/login"
-echo " Admin:    admin / ${ADMIN_PASS}"
-echo " Credentials: ${CRED}"
-echo "=============================================="
+export JAYSUB_INSTALL_DIR="${INSTALL_DIR}"
+bash "${INSTALL_DIR}/scripts/info" 2>/dev/null || cat "$CRED"
+echo "Dubare: jaysub-info"
