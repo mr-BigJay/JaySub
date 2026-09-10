@@ -845,8 +845,13 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
     $sub = CustomerService::activeSubscription($id);
     $used = $sub ? (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'] : 0;
     $quota = $sub ? (int) $sub['quota_bytes'] : 0;
-    $usageToken = CustomerService::ensureUsageViewToken($id);
-    $usageViewUrl = app_base_url($config) . '/u/' . $usageToken;
+    $usageViewUrl = '';
+    try {
+        $usageToken = CustomerService::ensureUsageViewToken($id);
+        $usageViewUrl = app_base_url($config) . '/u/' . $usageToken;
+    } catch (\Throwable $e) {
+        error_log('JaySub usage_view_token: ' . $e->getMessage());
+    }
     $panels = PanelService::forCustomer($id);
 
     $flashHtml = '';
@@ -872,25 +877,30 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
             <a class="btn small secondary" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a></div>';
     }
 
-    $body = $flashHtml . '<h3>' . htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8') . '</h3>
-        <p class="muted">مصرف: ' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</p>
-        ' . Layout::card($panelRows ?: '<p class="muted">پنلی ثبت نشده</p>', 'پنل‌های 3X-UI') . '
-        <p><a class="btn secondary" href="/admin/customers/' . $id . '/panels/new">افزودن پنل</a></p>
-        ' . Layout::card('
-            <div class="data-card-row"><span>مصرف ثبت‌شده</span><span>' . Format::bytesToGb($used) . '</span></div>
+    $quotaGbVal = $quota > 0 ? htmlspecialchars(Format::bytesToGbNumber($quota), ENT_QUOTES, 'UTF-8') : '0';
+    $volumeForm = '<div class="data-card-row"><span>مصرف ثبت‌شده</span><span>' . Format::bytesToGb($used) . '</span></div>
             <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $used)) . '</span></div>
             <form class="stack" method="post" action="/admin/customers/' . $id . '/set-quota" style="margin-top:1rem">' . Csrf::field() . '
             <label>سقف حجم (GB)</label>
-            <input name="quota_gb" type="number" step="0.1" min="0" required value="' . ($quota > 0 ? htmlspecialchars(Format::bytesToGbNumber($quota), ENT_QUOTES, 'UTF-8') : '0') . '">
+            <input name="quota_gb" type="number" step="0.1" min="0" required value="' . $quotaGbVal . '">
             <p class="muted form-hint">عدد نهایی سقف را وارد کنید و ذخیره کنید. مصرف واقعی از 3x-ui جدا است و با این فیلد عوض نمی‌شود.</p>
             <button class="btn btn-primary" type="submit">ذخیره سقف حجم</button>
-            </form>', 'مدیریت حجم')
-        . Layout::copyLinkField(
+            </form>';
+    $usageLinkCard = $usageViewUrl !== ''
+        ? Layout::copyLinkField(
             'customer-usage-link',
             $usageViewUrl,
             'لینک مشاهده مصرف برای مشتری',
             'این لینک را برای کاربر بفرستید — بدون نام کاربری و رمز، فقط مشاهدهٔ مصرف.'
-        ) . '
+        )
+        : Layout::card('<p class="muted">لینک مصرف پس از به‌روزرسانی دیتابیس (git pull + یک بار باز کردن پنل) فعال می‌شود.</p>', 'لینک مشاهده مصرف');
+
+    $body = $flashHtml . '<h3>' . htmlspecialchars($customer['name'], ENT_QUOTES, 'UTF-8') . '</h3>
+        <p class="muted">مصرف: ' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</p>
+        ' . Layout::card($panelRows ?: '<p class="muted">پنلی ثبت نشده</p>', 'پنل‌های 3X-UI') . '
+        <p><a class="btn secondary" href="/admin/customers/' . $id . '/panels/new">افزودن پنل</a></p>
+        ' . Layout::card($volumeForm, 'مدیریت حجم')
+        . $usageLinkCard . '
         <p><a class="btn secondary" href="/admin/customers/' . $id . '/sync">هم‌اکنون Sync</a></p>';
     adminPage('مدیریت مشتری', 'users', $body);
 }

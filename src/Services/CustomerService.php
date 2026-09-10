@@ -97,6 +97,9 @@ final class CustomerService
 
     public static function ensureUsageViewToken(int $customerId): string
     {
+        if (!self::hasUsageViewTokenColumn()) {
+            \App\Database\SchemaUpgrade::apply(Database::pdo());
+        }
         $customer = self::findById($customerId);
         if ($customer === null) {
             throw new \RuntimeException('Customer not found');
@@ -106,15 +109,23 @@ final class CustomerService
             return $existing;
         }
         $token = bin2hex(random_bytes(32));
-        try {
-            Database::pdo()->prepare('UPDATE customers SET usage_view_token = :t WHERE id = :id')
-                ->execute(['t' => $token, 'id' => $customerId]);
-        } catch (\PDOException $e) {
-            if (!str_contains($e->getMessage(), 'usage_view_token')) {
-                throw $e;
-            }
-        }
+        Database::pdo()->prepare('UPDATE customers SET usage_view_token = :t WHERE id = :id')
+            ->execute(['t' => $token, 'id' => $customerId]);
         return $token;
+    }
+
+    private static function hasUsageViewTokenColumn(): bool
+    {
+        try {
+            $stmt = Database::pdo()->prepare(
+                'SELECT COUNT(*) FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = \'customers\' AND COLUMN_NAME = \'usage_view_token\''
+            );
+            $stmt->execute();
+            return (int) $stmt->fetchColumn() > 0;
+        } catch (\PDOException) {
+            return false;
+        }
     }
 
     /** @return array<string, mixed>|null */

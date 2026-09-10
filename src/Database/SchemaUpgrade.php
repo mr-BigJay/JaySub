@@ -43,18 +43,7 @@ final class SchemaUpgrade
             }
             if ($current < 5) {
                 self::addColumnIfMissing($pdo, 'customers', 'usage_view_token', 'VARCHAR(64) NULL');
-                try {
-                    $pdo->exec('CREATE UNIQUE INDEX uq_customers_usage_view_token ON customers (usage_view_token)');
-                } catch (\Throwable) {
-                    // index may already exist
-                }
-                $ids = $pdo->query(
-                    "SELECT id FROM customers WHERE usage_view_token IS NULL OR usage_view_token = ''"
-                )->fetchAll(\PDO::FETCH_COLUMN);
-                $upd = $pdo->prepare('UPDATE customers SET usage_view_token = :t WHERE id = :id');
-                foreach ($ids as $cid) {
-                    $upd->execute(['t' => bin2hex(random_bytes(32)), 'id' => (int) $cid]);
-                }
+                self::backfillUsageViewTokens($pdo);
                 self::writeVersion($pdo, 5);
             }
         } catch (\Throwable $e) {
@@ -80,6 +69,21 @@ final class SchemaUpgrade
             'INSERT INTO system_settings (setting_key, setting_value) VALUES (\'schema_version\', :v)
              ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
         )->execute(['v' => (string) $version]);
+    }
+
+    private static function backfillUsageViewTokens(PDO $pdo): void
+    {
+        try {
+            $ids = $pdo->query(
+                "SELECT id FROM customers WHERE usage_view_token IS NULL OR usage_view_token = ''"
+            )->fetchAll(\PDO::FETCH_COLUMN);
+            $upd = $pdo->prepare('UPDATE customers SET usage_view_token = :t WHERE id = :id');
+            foreach ($ids as $cid) {
+                $upd->execute(['t' => bin2hex(random_bytes(32)), 'id' => (int) $cid]);
+            }
+        } catch (\Throwable $e) {
+            error_log('JaySub usage_view_token backfill: ' . $e->getMessage());
+        }
     }
 
     private static function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void
