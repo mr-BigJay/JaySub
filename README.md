@@ -23,6 +23,23 @@
 
 احراز هویت: `Authorization: Bearer <API Token>`
 
+### دریافت API Token از سرور 3x-ui
+
+اسکریپت `x-ui` روی VPS معمولاً **فقط** سرویس را مدیریت می‌کند (`start` / `stop` / `settings` و …). دستور `x-ui setting -getApiToken` در نسخهٔ رایج [MHSanaei/3x-ui](https://github.com/MHSanaei/3x-ui) **وجود ندارد**؛ اگر همان منوی کمکی را می‌بینید، طبیعی است.
+
+1. در مرورگر همان آدرسی را باز کنید که مشتریان به پنل می‌زنند (مثلاً `https://IP:PORT/مسیر`).
+2. با حساب **ادمین پنل 3x-ui** وارد شوید.
+3. **Panel settings** (تنظیمات پنل) → **API Tokens** → توکن جدید بسازید و بلافاصله کپی کنید (دوباره کامل نشان داده نمی‌شود).
+4. در JaySub فیلد **آدرس پنل** باید همان پایهٔ URL باشد (بدون `/panel/api/...`)؛ در فیلد توکن فقط رشتهٔ توکن، **بدون** پیشوند `Bearer`.
+
+تست از سرور:
+
+```bash
+curl -sk -H "Authorization: Bearer YOUR_TOKEN" "https://YOUR_PANEL/panel/api/server/status"
+```
+
+پاسخ JSON با `success: true` یعنی توکن و آدرس درست است.
+
 ## نیازمندی‌ها
 
 - PHP 8.3+ (extensions: `pdo_mysql`, `openssl`, `curl`, `json`)
