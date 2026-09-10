@@ -31,21 +31,18 @@
 
 ## نصب خودکار (یک خط — Ubuntu/Debian)
 
-روی VPS تازه (با **root** یا `sudo`):
+روی VPS با **root** یا `sudo` — در حین نصب از شما **دامنه، رمز ادمین، SSL و …** پرسیده می‌شود:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh | sudo bash -s -- -d panel.example.com -a 'رمز-ادمین-قوی' -e you@example.com
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)"
 ```
 
-| پارامتر | معنی |
-|---------|------|
-| `-d` | دامنه (الزامی) |
-| `-a` | رمز ورود ادمین (اختیاری؛ تصادفی) |
-| `-e` | ایمیل برای SSL رایگان Let's Encrypt |
-| `-p` | رمز MySQL (اختیاری؛ تصادفی) |
+> از `curl ... | bash` استفاده نکنید؛ با pipe ورودی تعاملی کار نمی‌کند. فرمت بالا درست است.
 
-اسکریپت نصب می‌کند: Nginx، PHP-FPM، MySQL، clone پروژه، دیتابیس، Cron worker، و در صورت `-e` گواهی HTTPS.  
+اسکریپت نصب می‌کند: Nginx، PHP-FPM، MySQL، clone پروژه، دیتابیس، Cron worker، و در صورت انتخاب شما گواهی HTTPS.  
 رمزها در `storage/install-credentials.txt` ذخیره می‌شوند.
+
+نصب بدون سوال (پارامتر خط فرمان): `-d` دامنه، `-a` رمز ادمین، `-e` ایمیل SSL، `-p` رمز MySQL.
 
 ## نصب دستی
 

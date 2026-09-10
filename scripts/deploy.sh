@@ -1,8 +1,26 @@
 #!/usr/bin/env bash
-# JaySub one-line installer — Ubuntu/Debian VPS
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh | sudo bash -s -- -d panel.example.com -a 'YourAdminPass'
+# JaySub installer — Ubuntu/Debian VPS (interactive or flags)
+# Interactive one-line (recommended):
+#   sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)"
 set -euo pipefail
+
+# Read from terminal even when script is piped to bash
+read_tty() {
+  if [[ -r /dev/tty ]]; then
+    read -r "$@" </dev/tty
+  else
+    read -r "$@"
+  fi
+}
+
+read_tty_secret() {
+  if [[ -r /dev/tty ]]; then
+    read -r -s "$@" </dev/tty
+  else
+    read -r -s "$@"
+  fi
+  echo ""
+}
 
 REPO_URL="${REPO_URL:-https://github.com/mr-BigJay/JaySub.git}"
 GIT_BRANCH="${GIT_BRANCH:-cursor/vpn-customer-panel-6abb}"
@@ -32,9 +50,85 @@ Optional:
   --skip-ssl            Do not run certbot
   --skip-mysql-install  Assume MySQL already installed
 
-One-line example:
-  curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh | sudo bash -s -- -d panel.example.com -a 'StrongPass123!' -e you@example.com
+Interactive install (asks domain, passwords, SSL):
+  sudo bash -c "\$(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)"
+
+Non-interactive:
+  sudo bash -c "\$(curl -fsSL .../deploy.sh)" -s -- -d panel.example.com -a 'StrongPass123!' -e you@example.com
 EOF
+}
+
+interactive_wizard() {
+  echo ""
+  echo "=============================================="
+  echo "  نصب خودکار پنل JaySub (VPN / 3X-UI)"
+  echo "=============================================="
+  echo ""
+
+  while [[ -z "$DOMAIN" ]]; do
+    read_tty -rp "دامنه پنل (مثال: panel.example.com): " DOMAIN
+    DOMAIN="$(echo "$DOMAIN" | tr -d '[:space:]')"
+    if [[ -z "$DOMAIN" ]]; then
+      echo "دامنه الزامی است."
+    fi
+  done
+
+  while [[ -z "$ADMIN_PASS" ]]; do
+    read_tty_secret -p "رمز ورود ادمین پنل (حداقل ۸ کاراکتر): " ADMIN_PASS
+    if [[ ${#ADMIN_PASS} -lt 8 ]]; then
+      echo "رمز باید حداقل ۸ کاراکتر باشد."
+      ADMIN_PASS=""
+      continue
+    fi
+    local confirm=""
+    read_tty_secret -p "تکرار رمز ادمین: " confirm
+    if [[ "$ADMIN_PASS" != "$confirm" ]]; then
+      echo "رمزها یکسان نیستند."
+      ADMIN_PASS=""
+    fi
+  done
+
+  echo ""
+  read_tty -rp "رمز دیتابیس MySQL را خودتان وارد می‌کنید؟ (y/N — در غیر این صورت تصادفی): " db_custom
+  if [[ "$db_custom" =~ ^[Yy]$ ]]; then
+    while [[ -z "$DB_PASS" ]]; do
+      read_tty_secret -p "رمز MySQL برای کاربر vpn_panel: " DB_PASS
+      if [[ ${#DB_PASS} -lt 8 ]]; then
+        echo "حداقل ۸ کاراکتر."
+        DB_PASS=""
+      fi
+    done
+  else
+    DB_PASS="$(rand_pass)"
+    echo "رمز MySQL به‌صورت تصادفی ساخته شد (در پایان نمایش داده می‌شود)."
+  fi
+
+  echo ""
+  read_tty -rp "فعال‌سازی HTTPS با Let's Encrypt؟ (Y/n): " ssl_yn
+  if [[ ! "$ssl_yn" =~ ^[Nn]$ ]]; then
+    SKIP_SSL=0
+    while [[ -z "$CERTBOT_EMAIL" ]]; do
+      read_tty -rp "ایمیل برای گواهی SSL: " CERTBOT_EMAIL
+      CERTBOT_EMAIL="$(echo "$CERTBOT_EMAIL" | tr -d '[:space:]')"
+    done
+  else
+    SKIP_SSL=1
+    CERTBOT_EMAIL=""
+    echo "نصب فقط روی HTTP (پورت ۸۰)."
+  fi
+
+  echo ""
+  echo "-------------- خلاصه --------------"
+  echo "دامنه:        $DOMAIN"
+  echo "مسیر نصب:     $INSTALL_DIR"
+  echo "SSL:          $([[ $SKIP_SSL -eq 0 ]] && echo "بله ($CERTBOT_EMAIL)" || echo "خیر")"
+  echo "-----------------------------------"
+  read_tty -rp "شروع نصب؟ (Y/n): " go
+  if [[ "$go" =~ ^[Nn]$ ]]; then
+    echo "لغو شد."
+    exit 0
+  fi
+  echo ""
 }
 
 rand_pass() {
@@ -62,13 +156,11 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 if [[ -z "$DOMAIN" ]]; then
-  echo "Error: --domain is required."
-  usage
-  exit 1
+  interactive_wizard
+else
+  [[ -z "$ADMIN_PASS" ]] && ADMIN_PASS="$(rand_pass)"
+  [[ -z "$DB_PASS" ]] && DB_PASS="$(rand_pass)"
 fi
-
-[[ -z "$ADMIN_PASS" ]] && ADMIN_PASS="$(rand_pass)"
-[[ -z "$DB_PASS" ]] && DB_PASS="$(rand_pass)"
 
 export DEBIAN_FRONTEND=noninteractive
 
