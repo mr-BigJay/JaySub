@@ -877,7 +877,9 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
             <a class="btn small secondary" href="/admin/panels/' . (int) $p['id'] . '/clients">کلاینت‌ها</a></div>';
     }
 
-    $quotaGbVal = $quota > 0 ? htmlspecialchars(Format::bytesToGbNumber($quota), ENT_QUOTES, 'UTF-8') : '0';
+    $quotaGbVal = $quota > 0
+        ? htmlspecialchars((string) Format::bytesToGbNumber($quota), ENT_QUOTES, 'UTF-8')
+        : '0';
     $volumeForm = '<div class="data-card-row"><span>مصرف ثبت‌شده</span><span>' . Format::bytesToGb($used) . '</span></div>
             <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $used)) . '</span></div>
             <form class="stack" method="post" action="/admin/customers/' . $id . '/set-quota" style="margin-top:1rem">' . Csrf::field() . '
