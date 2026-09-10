@@ -150,7 +150,7 @@ final class PanelService
     }
 
     /** @return array{ok:bool,message:string} */
-    public static function testConnection(int $panelId, Encryption $encryption): array
+    public static function testConnection(int $panelId, Encryption $encryption, ?string $plainTokenOverride = null): array
     {
         $stmt = Database::pdo()->prepare('SELECT base_url, api_token_encrypted FROM vpn_panels WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $panelId]);
@@ -158,7 +158,23 @@ final class PanelService
         if ($panel === false) {
             return ['ok' => false, 'message' => 'پنل یافت نشد'];
         }
-        $xui = new XuiClient((string) $panel['base_url'], $encryption->decrypt((string) $panel['api_token_encrypted']));
+        if ($plainTokenOverride !== null && $plainTokenOverride !== '') {
+            $apiToken = XuiToken::normalize($plainTokenOverride);
+        } else {
+            try {
+                $apiToken = $encryption->decrypt((string) $panel['api_token_encrypted']);
+            } catch (\Throwable) {
+                return [
+                    'ok' => false,
+                    'message' => 'توکن ذخیره‌شده قابل خواندن نیست (احتمالاً encryption_key در config.php عوض شده). توکن را در ویرایش پنل دوباره وارد و ذخیره کنید.',
+                ];
+            }
+            $apiToken = XuiToken::normalize($apiToken);
+        }
+        if ($apiToken === '') {
+            return ['ok' => false, 'message' => 'توکن API خالی است — در ویرایش پنل توکن جدید از 3x-ui را وارد و ذخیره کنید.'];
+        }
+        $xui = new XuiClient((string) $panel['base_url'], $apiToken);
         $result = $xui->getServerStatus();
         if ($result['ok'] ?? false) {
             Database::pdo()->prepare(

@@ -458,9 +458,13 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'GET') {
     $form = '<form class="stack" method="post" action="/admin/panels/' . $pid . '/edit">' . Csrf::field() . '
         <label>نام پنل</label><input name="name" required value="' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8') . '">
         <label>آدرس پنل</label><input name="base_url" required value="' . htmlspecialchars((string) $panel['base_url'], ENT_QUOTES, 'UTF-8') . '">
-        <label>API Token (خالی = بدون تغییر)</label><input name="api_token" autocomplete="off" placeholder="توکن جدید">
-        <button class="btn btn-primary" type="submit">ذخیره</button>
-        <a class="btn btn-secondary" href="/admin/panels">بازگشت</a>
+        <label>API Token (خالی = بدون تغییر)</label><input name="api_token" autocomplete="off" placeholder="توکن یک‌باره از 3x-ui (حدود ۴۸ کاراکتر)">
+        <p class="muted form-hint">بعد از ساخت توکن در 3x-ui باید <strong>اینجا بچسبانید و ذخیره کنید</strong>؛ دکمهٔ «تست اتصال» در لیست فقط توکن <em>ذخیره‌شده</em> را امتحان می‌کند. نام توکن یا شناسهٔ لیست نیست — فقط رشتهٔ طولانی که یک‌بار نشان داده می‌شود.</p>
+        <div class="form-actions-row">
+            <button class="btn btn-primary" type="submit" name="action" value="save">ذخیره</button>
+            <button class="btn btn-secondary" type="submit" name="action" value="save_test">ذخیره و تست اتصال</button>
+            <a class="btn btn-secondary" href="/admin/panels">بازگشت</a>
+        </div>
     </form>';
     adminPage('ویرایش پنل', 'panels', Layout::card($form));
 }
@@ -478,7 +482,20 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'POST') 
         app_encryption($config),
         AuthService::adminId()
     );
-    Session::set('flash_admin_ok', 'تغییرات پنل ذخیره شد.');
+    if (($_POST['action'] ?? '') === 'save_test') {
+        $result = PanelService::testConnection(
+            $pid,
+            app_encryption($config),
+            $token !== '' ? $token : null
+        );
+        if ($result['ok']) {
+            Session::set('flash_admin_ok', 'ذخیره شد. تست اتصال: ' . $result['message']);
+        } else {
+            Session::set('flash_admin', 'ذخیره شد اما تست ناموفق: ' . $result['message']);
+        }
+    } else {
+        Session::set('flash_admin_ok', 'تغییرات پنل ذخیره شد.');
+    }
     Response::redirect('/admin/panels');
 }
 
