@@ -63,9 +63,25 @@ for d in storage storage/sessions logs; do
 done
 
 echo ""
+echo "--- UI assets ---"
+if [[ -f public/assets/css/app.css ]]; then
+  SZ=$(wc -c < public/assets/css/app.css)
+  echo "  OK public/assets/css/app.css (${SZ} bytes)"
+else
+  echo "  MISSING public/assets/css/app.css — run: git pull"
+fi
+
+echo ""
 echo "--- HTTP local ---"
 CODE=$(curl -s -o /tmp/jaysub-http.out -w '%{http_code}' -H 'Host: localhost' http://127.0.0.1/admin/login 2>/dev/null || echo "000")
 echo "  GET /admin/login -> HTTP $CODE"
+CSS_CODE=$(curl -s -o /tmp/jaysub-css.out -w '%{http_code}' -H 'Host: localhost' http://127.0.0.1/assets/css/app.css 2>/dev/null || echo "000")
+echo "  GET /assets/css/app.css -> HTTP $CSS_CODE"
+if [[ "$CSS_CODE" == "200" ]] && grep -q 'theme-jaysub' /tmp/jaysub-css.out 2>/dev/null; then
+  echo "  OK CSS content"
+elif [[ "$CSS_CODE" != "200" ]]; then
+  echo "  FIX: nginx root must be ${INSTALL_DIR}/public and/or reload nginx after repair"
+fi
 if [[ "$CODE" == "500" ]]; then
   echo "  Body snippet:"
   head -5 /tmp/jaysub-http.out 2>/dev/null | sed 's/^/    /'

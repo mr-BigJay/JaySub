@@ -308,7 +308,7 @@ server {
     client_max_body_size 4m;
 
     location /assets/ {
-        try_files \$uri =404;
+        try_files \$uri /index.php\$is_args\$args;
         expires 7d;
     }
 

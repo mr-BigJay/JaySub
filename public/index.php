@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+$uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+\App\View\Assets::serveIfRequested($uri);
+
 try {
     $config = require dirname(__DIR__) . '/src/bootstrap.php';
 } catch (Throwable $e) {
@@ -49,7 +54,6 @@ function app_telegram(array $config): TelegramService
 $maxAttempts = (int) ($config['security']['login_max_attempts'] ?? 5);
 $lockout = (int) ($config['security']['login_lockout_minutes'] ?? 15);
 
-$uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 function requireCsrf(): void

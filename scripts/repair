@@ -25,6 +25,26 @@ php scripts/install.php "$ADMIN_PASS"
 WEB_USER=www-data
 id nginx &>/dev/null && WEB_USER=nginx
 chown -R "$WEB_USER:$WEB_USER" storage logs 2>/dev/null || true
+
+NGINX_CFG="/etc/nginx/sites-available/jaysub-vpn-panel"
+if [[ -f "$NGINX_CFG" ]]; then
+  if grep -qE "root[[:space:]]+${INSTALL_DIR};" "$NGINX_CFG" && ! grep -qE "root[[:space:]]+${INSTALL_DIR}/public;" "$NGINX_CFG"; then
+    sed -i "s|root ${INSTALL_DIR};|root ${INSTALL_DIR}/public;|g" "$NGINX_CFG"
+    echo "Nginx root -> ${INSTALL_DIR}/public"
+  fi
+  if grep -q 'try_files $uri =404;' "$NGINX_CFG"; then
+    sed -i 's|try_files \$uri =404;|try_files $uri /index.php$is_args$args;|g' "$NGINX_CFG"
+    echo "Nginx /assets/ fallback -> index.php"
+  fi
+  nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+fi
+
+if [[ ! -f "$INSTALL_DIR/public/assets/css/app.css" ]]; then
+  echo "WARNING: public/assets/css/app.css missing — git pull failed?"
+else
+  echo "OK UI assets: public/assets/css/app.css"
+fi
+
 systemctl restart php8.3-fpm nginx 2>/dev/null || true
 
 bash scripts/info 2>/dev/null || true

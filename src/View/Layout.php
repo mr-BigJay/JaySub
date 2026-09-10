@@ -8,6 +8,8 @@ use App\Core\Csrf;
 
 final class Layout
 {
+    private const CRITICAL_CSS = '<style>body.theme-jaysub{margin:0;background:#0b1020;color:#eef2ff;font-family:Vazirmatn,Tahoma,sans-serif}.admin-mobile-nav{display:none}.sidebar-link{text-decoration:none;color:inherit}@media(max-width:900px){.admin-mobile-nav{display:flex;overflow-x:auto}}</style>';
+
     /** @var array<string, string> */
     private const ADMIN_NAV = [
         'dashboard' => 'داشبورد',
@@ -54,6 +56,10 @@ final class Layout
             $mobileNav .= '<a class="' . $cls . '" href="' . $href . '">' . $label . '</a>';
         }
 
+        $criticalCss = self::CRITICAL_CSS;
+        $cssHref = Assets::url('css/app.css');
+        $jsSrc = Assets::url('js/app.js');
+
         return <<<HTML
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -63,7 +69,8 @@ final class Layout
     <title>{$t} | JaySub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/css/app.css">
+    {$criticalCss}
+    <link rel="stylesheet" href="{$cssHref}">
 </head>
 <body class="theme-jaysub admin-app">
 <div class="admin-shell">
@@ -81,7 +88,7 @@ final class Layout
         <main class="admin-content">{$content}</main>
     </div>
 </div>
-<script src="/assets/js/app.js" defer></script>
+<script src="{$jsSrc}" defer></script>
 </body>
 </html>
 HTML;
@@ -96,6 +103,10 @@ HTML;
             $bottom .= '<a class="bottom-nav-item ' . $cls . '" href="' . $item['href'] . '"><span class="bn-icon">' . $item['icon'] . '</span><span>' . $item['label'] . '</span></a>';
         }
 
+        $criticalCss = self::CRITICAL_CSS;
+        $cssHref = Assets::url('css/app.css');
+        $jsSrc = Assets::url('js/app.js');
+
         return <<<HTML
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -105,12 +116,13 @@ HTML;
     <title>{$t}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/css/app.css">
+    {$criticalCss}
+    <link rel="stylesheet" href="{$cssHref}">
 </head>
 <body class="theme-jaysub customer-app has-bottom-nav">
 <main class="customer-main">{$content}</main>
 <nav class="bottom-nav">{$bottom}</nav>
-<script src="/assets/js/app.js" defer></script>
+<script src="{$jsSrc}" defer></script>
 </body>
 </html>
 HTML;
@@ -182,6 +194,9 @@ HTML;
 
     public static function publicHomePage(): string
     {
+        $criticalCss = self::CRITICAL_CSS;
+        $cssHref = Assets::url('css/app.css');
+
         return <<<HTML
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -190,7 +205,8 @@ HTML;
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>پنل مشتریان VPN</title>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/css/app.css">
+    {$criticalCss}
+    <link rel="stylesheet" href="{$cssHref}">
 </head>
 <body class="login customer theme-jaysub">
 <div class="login-box">
@@ -214,6 +230,9 @@ HTML;
         if ($errorMessage !== null && $errorMessage !== '') {
             $errorBanner = '<div class="alert alert-error">' . htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8') . '</div>';
         }
+        $criticalCss = self::CRITICAL_CSS;
+        $cssHref = Assets::url('css/app.css');
+
         return <<<HTML
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -222,7 +241,8 @@ HTML;
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{$t}</title>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/css/app.css">
+    {$criticalCss}
+    <link rel="stylesheet" href="{$cssHref}">
 </head>
 <body class="login {$variant} theme-jaysub">
 <div class="login-box">
