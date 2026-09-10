@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # JaySub installer — Ubuntu/Debian VPS (interactive or flags)
 #
-# Interactive one-line (use this — NOT bash -c "$(curl...)"; inner quotes break the script):
-#   sudo bash <(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)
+# Recommended one-line (root on VPS):
+#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
 #
-# Alternative:
-#   curl -fsSL .../deploy.sh -o /tmp/jaysub-deploy.sh && sudo bash /tmp/jaysub-deploy.sh
+# Or two steps:
+#   curl -fsSL .../scripts/deploy.sh -o /root/jaysub-deploy.sh && bash /root/jaysub-deploy.sh
+#
+# Do NOT use: bash -c "$(curl ...)" or bash <(curl ...) — often breaks on VPS.
 set -euo pipefail
 
 # Read from terminal even when script is piped to bash

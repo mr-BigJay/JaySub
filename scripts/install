@@ -1,10 +1,52 @@
 #!/usr/bin/env bash
-# Short URL-friendly entry: curl .../scripts/install | sudo bash
-# Fetches full deploy.sh and runs it (safe for quoted content).
+# Reliable installer — download deploy.sh to a file, then run (works on all VPS).
+#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
+# As non-root: pipe to sudo bash
 set -euo pipefail
+
 DEPLOY_URL="${JAYSUB_DEPLOY_URL:-https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh}"
-TMP="$(mktemp /tmp/jaysub-deploy.XXXXXX.sh)"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "لطفاً با root اجرا کنید، یا:"
+  echo "  curl -fsSL .../scripts/install | sudo bash"
+  exit 1
+fi
+
+echo "در حال دریافت اسکریپت نصب JaySub..."
+
+TMP=""
+for dir in /tmp /root /var/tmp; do
+  if [[ -d "$dir" && -w "$dir" ]]; then
+    TMP="${dir}/jaysub-deploy.$$.$RANDOM.sh"
+    break
+  fi
+done
+if [[ -z "$TMP" ]]; then
+  echo "خطا: مسیر موقت برای ذخیره اسکریپت پیدا نشد."
+  exit 1
+fi
+
+download_ok=0
+for attempt in 1 2 3; do
+  if curl -fsSL "$DEPLOY_URL" -o "$TMP" 2>/dev/null && [[ -s "$TMP" ]]; then
+    download_ok=1
+    break
+  fi
+  if command -v wget &>/dev/null && wget -q -O "$TMP" "$DEPLOY_URL" 2>/dev/null && [[ -s "$TMP" ]]; then
+    download_ok=1
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$download_ok" -ne 1 ]]; then
+  echo "خطا: دانلود اسکریپت از GitHub ناموفق بود."
+  echo "URL: $DEPLOY_URL"
+  rm -f "$TMP"
+  exit 1
+fi
+
+chmod 700 "$TMP"
 trap 'rm -f "$TMP"' EXIT
-curl -fsSL "$DEPLOY_URL" -o "$TMP"
-chmod +x "$TMP"
-exec bash "$TMP" "$@"
+
+bash "$TMP" "$@"

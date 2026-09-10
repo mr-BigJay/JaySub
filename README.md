@@ -33,17 +33,22 @@
 
 روی VPS با **root** یا `sudo` — در حین نصب از شما **دامنه، رمز ادمین، SSL و …** پرسیده می‌شود:
 
-```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)
-```
-
-یا (ساده‌تر برای کپی):
+روی سرور با کاربر **root**:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | sudo bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
 ```
 
-> از `sudo bash -c "$(curl ...)"` استفاده **نکنید** — کوتیشن‌های داخل اسکریپت خراب می‌شود و نصب interactive کار نمی‌کند.
+اگر root نیستید: همان خط را با `| sudo bash` تمام کنید.
+
+جایگزین (دو مرحله):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh -o /root/jaysub-deploy.sh
+bash /root/jaysub-deploy.sh
+```
+
+> از `bash -c "$(curl ...)"` و `bash <(curl ...)` استفاده نکنید — روی بسیاری از VPS خطا می‌دهد (`/dev/fd/...` یا `curl: (23)`).
 
 اسکریپت نصب می‌کند: Nginx، PHP-FPM، MySQL، clone پروژه، دیتابیس، Cron worker، و در صورت انتخاب شما گواهی HTTPS.  
 رمزها در `storage/install-credentials.txt` ذخیره می‌شوند.
