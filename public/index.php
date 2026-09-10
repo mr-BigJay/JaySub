@@ -374,8 +374,8 @@ if ($uri === '/admin/panels' && $method === 'GET') {
         <label>نام پنل</label>
         <input name="name" required placeholder="مثلاً پنل اصلی / آلمان">
         <label>آدرس پنل (Domain یا IP + پورت)</label>
-        <input name="base_url" required placeholder="https://185.x.x.x:443 یا https://panel.example.com">
-        <p class="muted form-hint">توکن را از <strong>رابط وب</strong> 3x-ui بگیرید: ورود ادمین → تنظیمات پنل (Panel settings) → <strong>API Tokens</strong> → ایجاد توکن و کپی (یک‌بار نمایش داده می‌شود). دستور <code>x-ui setting -getApiToken</code> در بسیاری از نصب‌ها وجود ندارد؛ از <code>x-ui settings</code> فقط پورت و مسیر پنل را می‌بینید. فقط خود توکن را بچسبانید، بدون پیشوند Bearer.</p>
+        <input name="base_url" required placeholder="https://bell.jay-force.ir:2415/GRgxVKeEuAUnoMwRYy">
+        <p class="muted form-hint">همان آدرسی که در مرورگر برای ورود به پنل می‌زنید، با <code>https://</code> یا <code>http://</code>، شامل پورت و <strong>مسیر امنیتی</strong> (مثلاً <code>/GRgxVKeEuAUnoMwRYy</code>) — بدون اسلش آخر و بدون <code>/panel/api/...</code>. توکن را از <strong>رابط وب</strong> بگیرید: ادمین → Panel settings → <strong>API Tokens</strong> → ایجاد و کپی (یک‌بار). دستور <code>x-ui setting -getApiToken</code> در نصب شما نیست؛ با <code>x-ui settings</code> فقط پورت و مسیر را می‌بینید. توکن را بدون پیشوند <code>Bearer</code> بچسبانید.</p>
         <label>API Token</label>
         <input name="api_token" required autocomplete="off" placeholder="Bearer token">
         <div class="form-actions-row">
