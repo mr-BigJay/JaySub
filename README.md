@@ -29,7 +29,25 @@
 - MySQL 8
 - Nginx + PHP-FPM
 
-## نصب
+## نصب خودکار (یک خط — Ubuntu/Debian)
+
+روی VPS تازه (با **root** یا `sudo`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh | sudo bash -s -- -d panel.example.com -a 'رمز-ادمین-قوی' -e you@example.com
+```
+
+| پارامتر | معنی |
+|---------|------|
+| `-d` | دامنه (الزامی) |
+| `-a` | رمز ورود ادمین (اختیاری؛ تصادفی) |
+| `-e` | ایمیل برای SSL رایگان Let's Encrypt |
+| `-p` | رمز MySQL (اختیاری؛ تصادفی) |
+
+اسکریپت نصب می‌کند: Nginx، PHP-FPM، MySQL، clone پروژه، دیتابیس، Cron worker، و در صورت `-e` گواهی HTTPS.  
+رمزها در `storage/install-credentials.txt` ذخیره می‌شوند.
+
+## نصب دستی
 
 ```bash
 composer install
