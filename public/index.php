@@ -591,7 +591,7 @@ if ($uri === '/admin/services' && $method === 'GET') {
             Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota),
             $pct . '٪',
             '<a class="btn btn-sm btn-primary" href="/admin/customers/' . (int) $r['id'] . '/service">راه‌اندازی</a>'
-                . ($panelCount > 0 ? ' <a class="btn btn-sm btn-ghost" href="/admin/panels">کلاینت‌ها</a>' : ''),
+                . ' <a class="btn btn-sm btn-ghost" href="/admin/customers/' . (int) $r['id'] . '">مدیریت</a>',
         ];
     }
     $hint = '<p class="muted form-hint">مصرف از 3x-ui فقط برای <strong>کلاینت‌های اختصاص‌داده‌شده</strong> جمع می‌شود: پنل‌های XUI → کلاینت‌ها → اختصاص. سپس Sync (هر دقیقه worker یا «هم‌اکنون Sync» در پروفایل کاربر).</p>';
