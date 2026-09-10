@@ -522,6 +522,145 @@ HTML;
     }
 
     /**
+     * @param array{customers:int,active:int,services:int,panels_connected:int,total_traffic:int} $summary
+     * @param array{today:int,week:int,month:int,total:int} $periods
+     * @param list<array{label:string,bytes:int}> $chartPoints
+     */
+    public static function adminDashboardPage(array $summary, array $periods, array $chartPoints): string
+    {
+        $heroVal = Format::bytesAuto((float) $summary['total_traffic']);
+        $todayVal = Format::bytesAuto((float) $periods['today']);
+        $weekVal = Format::bytesAuto((float) $periods['week']);
+        $monthVal = Format::bytesAuto((float) $periods['month']);
+
+        $chartHtml = self::barChart($chartPoints);
+        $chartHtml = str_replace('class="traffic-chart"', 'class="traffic-chart admin-dash-chart"', $chartHtml);
+
+        return '<div class="admin-dash-page">
+            <header class="admin-dash-top">
+                <h2 class="admin-dash-title">داشبورد</h2>
+                <button type="button" class="admin-dash-menu" aria-label="منو" onclick="document.body.classList.toggle(\'sidebar-open\')">
+                    <span></span><span></span><span></span>
+                </button>
+            </header>
+
+            <section class="admin-dash-hero ui-card">
+                <div class="admin-dash-hero-head">
+                    <span class="admin-dash-globe" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.8 4 6 4 9s-1.5 6.2-4 9M12 3c-2.5 2.8-4 6-4 9s1.5 6.2 4 9"/></svg>
+                    </span>
+                    <span class="admin-dash-hero-label">مصرف کل اینترنت</span>
+                    <span class="admin-dash-mini-chart" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18V6M10 18V10M16 18V14M22 18V4"/></svg>
+                    </span>
+                </div>
+                <div class="admin-dash-hero-value">' . htmlspecialchars($heroVal, ENT_QUOTES, 'UTF-8') . '</div>
+                <div class="admin-dash-periods">
+                    <div class="admin-dash-period"><span class="adp-label">ماه</span><span class="adp-val">' . htmlspecialchars($monthVal, ENT_QUOTES, 'UTF-8') . '</span></div>
+                    <div class="admin-dash-period"><span class="adp-label">هفته</span><span class="adp-val">' . htmlspecialchars($weekVal, ENT_QUOTES, 'UTF-8') . '</span></div>
+                    <div class="admin-dash-period active"><span class="adp-label">امروز</span><span class="adp-val">' . htmlspecialchars($todayVal, ENT_QUOTES, 'UTF-8') . '</span></div>
+                </div>
+                ' . $chartHtml . '
+            </section>
+
+            <div class="admin-dash-stats">
+                ' . self::adminDashStatCard(
+                    'کاربران فعال',
+                    (string) $summary['active'],
+                    'آنلاین',
+                    'users-active',
+                    true,
+                )
+                . self::adminDashStatCard(
+                    'کاربران کل',
+                    (string) $summary['customers'],
+                    '',
+                    'users-total',
+                    false,
+                )
+                . self::adminDashStatCard(
+                    'پنل‌های متصل',
+                    (string) $summary['panels_connected'],
+                    'فعال',
+                    'panels',
+                    true,
+                )
+                . self::adminDashStatCard(
+                    'سرویس‌های فعال',
+                    (string) $summary['services'],
+                    'فعال',
+                    'services',
+                    true,
+                ) . '
+            </div>
+
+            <section class="admin-dash-quick">
+                <div class="admin-dash-quick-head">
+                    <h3>عملیات سریع</h3>
+                    <p class="muted">دسترسی سریع به امکانات اصلی</p>
+                </div>
+                <div class="admin-dash-actions">
+                    ' . self::adminDashAction('/admin/customers/new', 'ایجاد کاربر', 'plus', true) . '
+                    ' . self::adminDashAction('/admin/panels', 'پنل‌های XUI', 'hex') . '
+                    ' . self::adminDashAction('/admin/services', 'راه‌اندازی سرویس', 'service') . '
+                    ' . self::adminDashAction('/admin/customers', 'کاربران', 'users') . '
+                    ' . self::adminDashAction('/admin/reports', 'گزارش مصرف', 'chart') . '
+                    ' . self::adminDashAction('/admin/notifications', 'اعلان‌ها', 'bell') . '
+                </div>
+            </section>
+        </div>';
+    }
+
+    private static function adminDashStatCard(
+        string $label,
+        string $value,
+        string $badge,
+        string $icon,
+        bool $showBadge,
+    ): string {
+        $badgeHtml = $showBadge && $badge !== ''
+            ? '<span class="ads-badge"><span class="ads-badge-dot"></span>' . htmlspecialchars($badge, ENT_QUOTES, 'UTF-8') . '</span>'
+            : '';
+        return '<article class="admin-dash-stat">
+            <div class="ads-icon ads-icon-' . htmlspecialchars($icon, ENT_QUOTES, 'UTF-8') . '">' . self::adminDashIcon($icon) . '</div>
+            <div class="ads-body">
+                <div class="ads-label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</div>
+                <div class="ads-value-row">
+                    <span class="ads-value">' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '</span>
+                    ' . $badgeHtml . '
+                </div>
+            </div>
+        </article>';
+    }
+
+    private static function adminDashAction(string $href, string $label, string $icon, bool $accent = false): string
+    {
+        $cls = 'admin-dash-action' . ($accent ? ' accent' : '');
+        return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">
+            <span class="ada-chevron" aria-hidden="true">‹</span>
+            <span class="ada-label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>
+            <span class="ada-icon">' . self::adminDashIcon($icon) . '</span>
+        </a>';
+    }
+
+    private static function adminDashIcon(string $kind): string
+    {
+        return match ($kind) {
+            'plus' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+            'hex' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7L12 2z"/></svg>',
+            'service' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10h8M8 14h5"/></svg>',
+            'users' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 2.5-5 6-5s6 2 6 5M16 8a3 3 0 110 6M21 20c0-2.5-1.5-4-4-4"/></svg>',
+            'chart' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18V8M10 18V4M16 18v-6M22 18V10"/></svg>',
+            'bell' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 8a6 6 0 0112 0v5l2 2H4l2-2V8"/><path d="M10 19a2 2 0 004 0"/></svg>',
+            'users-active' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>',
+            'users-total' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M4 19c0-2.5 2-4 4-4M16 15c2 0 4 1.5 4 4"/></svg>',
+            'panels' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7L12 2z"/></svg>',
+            'services' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 7h11M8 12h11M8 17h11M5 7h.01M5 12h.01M5 17h.01"/></svg>',
+            default => '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>',
+        };
+    }
+
+    /**
      * @param list<array<string, mixed>> $panels
      */
     public static function adminXuiPanelsPage(

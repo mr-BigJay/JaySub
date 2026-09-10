@@ -504,7 +504,9 @@ form.stack select {
 }
 
 /* Admin — subscription manage (mockup) */
-.admin-main:has(.sub-mgmt-page) .page-title { display: none; }
+.admin-main:has(.sub-mgmt-page) .page-title,
+.admin-main:has(.admin-dash-page) .page-title { display: none; }
+.admin-main:has(.admin-dash-page) .admin-top .menu-toggle { visibility: hidden; }
 .sub-mgmt-page { max-width: 480px; margin: 0 auto; padding-bottom: 0.5rem; }
 .sub-mgmt-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;

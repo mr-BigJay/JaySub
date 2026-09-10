@@ -366,33 +366,7 @@ if ($uri === '/admin/dashboard' && $method === 'GET') {
     }
     unset($pt);
 
-    $body = '
-    <section class="traffic-hero ui-card">
-        <div class="traffic-hero-label">مصرف کل اینترنت</div>
-        <div class="traffic-hero-value">' . Format::bytesAuto((float) $summary['total_traffic']) . '</div>
-        <div class="period-pills">
-            <span><b>امروز</b> ' . Format::bytesAuto((float) $periods['today']) . '</span>
-            <span><b>هفته</b> ' . Format::bytesAuto((float) $periods['week']) . '</span>
-            <span><b>ماه</b> ' . Format::bytesAuto((float) $periods['month']) . '</span>
-        </div>
-        ' . Layout::barChart($chart) . '
-    </section>
-    ' . Layout::statGrid(
-        Layout::statCard('کاربران کل', (string) $summary['customers'])
-        . Layout::statCard('کاربران فعال', (string) $summary['active'], 'tone-success')
-        . Layout::statCard('سرویس‌های فعال', (string) $summary['services'])
-        . Layout::statCard('پنل‌های متصل', (string) $summary['panels_connected'])
-    )
-    . Layout::hubGrid(
-        Layout::hubTile('/admin/customers/new', '＋', 'ایجاد کاربر', true)
-        . Layout::hubTile('/admin/panels', '⬡', 'پنل‌های XUI')
-        . Layout::hubTile('/admin/services', '◈', 'راه‌اندازی سرویس')
-        . Layout::hubTile('/admin/customers', '👤', 'کاربران')
-        . Layout::hubTile('/admin/reports', '📊', 'گزارش مصرف')
-        . Layout::hubTile('/admin/notifications', '🔔', 'اعلان‌ها')
-        . Layout::hubTile('/admin/settings', '⚙', 'تنظیمات')
-        . Layout::hubTile('/admin/customers', '🎧', 'پشتیبانی')
-    );
+    $body = Layout::adminDashboardPage($summary, $periods, $chart);
     adminPage('داشبورد', 'dashboard', $body);
 }
 
