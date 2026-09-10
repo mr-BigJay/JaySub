@@ -10,6 +10,8 @@
 # Do NOT use: bash -c "$(curl ...)" or bash <(curl ...) — often breaks on VPS.
 set -euo pipefail
 
+DEPLOY_SCRIPT_VERSION="2026.03.26-interactive"
+
 # Read from terminal even when script is piped to bash
 read_tty() {
   if [[ -r /dev/tty ]]; then
@@ -56,11 +58,12 @@ Optional:
   --skip-ssl            Do not run certbot
   --skip-mysql-install  Assume MySQL already installed
 
-Interactive install:
-  sudo bash <(curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh)
+Interactive install (root):
+  curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
 
-Non-interactive (after saving script to a file):
-  sudo bash /tmp/jaysub-deploy.sh -d panel.example.com -a 'StrongPass123!' -e you@example.com
+Non-interactive:
+  curl -fsSL .../scripts/deploy.sh -o /root/jaysub-deploy.sh
+  bash /root/jaysub-deploy.sh -d panel.example.com -a 'StrongPass123!' -e you@example.com
 EOF
 }
 

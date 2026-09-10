@@ -1,52 +1,59 @@
 #!/usr/bin/env bash
-# Reliable installer — download deploy.sh to a file, then run (works on all VPS).
+# JaySub bootstrap — always fetches latest deploy.sh via git (avoids stale raw.githubusercontent cache).
 #   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
-# As non-root: pipe to sudo bash
 set -euo pipefail
 
-DEPLOY_URL="${JAYSUB_DEPLOY_URL:-https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/deploy.sh}"
+REPO_URL="${JAYSUB_REPO_URL:-https://github.com/mr-BigJay/JaySub.git}"
+GIT_BRANCH="${JAYSUB_BRANCH:-cursor/vpn-customer-panel-6abb}"
+INSTALLER_VERSION="3"
 
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "لطفاً با root اجرا کنید، یا:"
+  echo "لطفاً با root اجرا کنید:"
   echo "  curl -fsSL .../scripts/install | sudo bash"
   exit 1
 fi
 
-echo "در حال دریافت اسکریپت نصب JaySub..."
+echo "JaySub installer v${INSTALLER_VERSION}"
+echo "در حال دریافت آخرین نسخه از GitHub (شاخه ${GIT_BRANCH})..."
 
-TMP=""
+WORK=""
 for dir in /tmp /root /var/tmp; do
   if [[ -d "$dir" && -w "$dir" ]]; then
-    TMP="${dir}/jaysub-deploy.$$.$RANDOM.sh"
+    WORK="${dir}/jaysub-src.$$.$RANDOM"
     break
   fi
 done
-if [[ -z "$TMP" ]]; then
-  echo "خطا: مسیر موقت برای ذخیره اسکریپت پیدا نشد."
+if [[ -z "$WORK" ]]; then
+  echo "خطا: مسیر موقت پیدا نشد."
   exit 1
 fi
 
-download_ok=0
-for attempt in 1 2 3; do
-  if curl -fsSL "$DEPLOY_URL" -o "$TMP" 2>/dev/null && [[ -s "$TMP" ]]; then
-    download_ok=1
-    break
-  fi
-  if command -v wget &>/dev/null && wget -q -O "$TMP" "$DEPLOY_URL" 2>/dev/null && [[ -s "$TMP" ]]; then
-    download_ok=1
-    break
-  fi
-  sleep 2
-done
+if ! command -v git &>/dev/null; then
+  echo "نصب git..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq git ca-certificates
+fi
 
-if [[ "$download_ok" -ne 1 ]]; then
-  echo "خطا: دانلود اسکریپت از GitHub ناموفق بود."
-  echo "URL: $DEPLOY_URL"
-  rm -f "$TMP"
+rm -rf "$WORK"
+if ! git clone --depth 1 --branch "$GIT_BRANCH" "$REPO_URL" "$WORK" 2>/dev/null; then
+  echo "خطا در git clone. بررسی کنید اینترنت و نام شاخه در دسترس باشد."
+  echo "Repo: $REPO_URL branch: $GIT_BRANCH"
   exit 1
 fi
 
-chmod 700 "$TMP"
-trap 'rm -f "$TMP"' EXIT
+DEPLOY="${WORK}/scripts/deploy.sh"
+if [[ ! -f "$DEPLOY" ]]; then
+  echo "خطا: deploy.sh در مخزن پیدا نشد."
+  exit 1
+fi
 
-bash "$TMP" "$@"
+if ! grep -q 'interactive_wizard' "$DEPLOY"; then
+  echo "خطا: نسخه deploy.sh در مخزن قدیمی است. با پشتیبانی تماس بگیرید."
+  exit 1
+fi
+
+chmod +x "$DEPLOY"
+trap 'rm -rf "$WORK"' EXIT
+
+bash "$DEPLOY" "$@"
