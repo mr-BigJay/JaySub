@@ -47,7 +47,12 @@ final class AuthService
         $stmt = Database::pdo()->prepare('SELECT * FROM users WHERE username = :u AND is_active = 1 LIMIT 1');
         $stmt->execute(['u' => $username]);
         $user = $stmt->fetch();
-        $ok = $user !== false && password_verify($password, $user['password_hash']);
+        if ($user === false) {
+            self::recordAttempt('admin', $username, $ip, false);
+            return false;
+        }
+        $hash = $user['password_hash'] ?? '';
+        $ok = is_string($hash) && $hash !== '' && password_verify($password, $hash);
         self::recordAttempt('admin', $username, $ip, $ok);
         if (!$ok) {
             return false;

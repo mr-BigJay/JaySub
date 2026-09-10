@@ -44,9 +44,25 @@ $pdo = new PDO($dsn, $db['user'], $db['password'], [
 
 $password = $argv[1] ?? 'Admin@12345';
 $hash = password_hash($password, PASSWORD_DEFAULT);
-$pdo->prepare('UPDATE users SET password_hash = :h WHERE username = \'admin\'')->execute(['h' => $hash]);
+$stmt = $pdo->prepare(
+    'INSERT INTO users (username, password_hash, is_active) VALUES (\'admin\', :h, 1)
+     ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), is_active = 1, updated_at = CURRENT_TIMESTAMP'
+);
+$stmt->execute(['h' => $hash]);
+
+$check = $pdo->query("SELECT id FROM users WHERE username = 'admin' LIMIT 1")->fetch();
+if ($check === false) {
+    fwrite(STDERR, "ERROR: admin user could not be created. Check database import.\n");
+    exit(1);
+}
+
+if (!password_verify($password, $hash)) {
+    fwrite(STDERR, "ERROR: password hash verification failed.\n");
+    exit(1);
+}
 
 echo "Install complete. Admin password: {$password}\n";
+echo "Admin login: admin / {$password}\n";
 
 /** @param array<string, mixed> $db */
 function importSchemaViaMysqlCli(array $db, string $schemaFile): bool
