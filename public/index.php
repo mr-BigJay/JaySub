@@ -557,6 +557,17 @@ if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET'
 
 if ($uri === '/admin/services' && $method === 'GET') {
     requireAdmin();
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
     $rows = CustomerService::listAll();
     $tableRows = [];
     foreach ($rows as $r) {
@@ -573,12 +584,12 @@ if ($uri === '/admin/services' && $method === 'GET') {
             htmlspecialchars($r['username'], ENT_QUOTES, 'UTF-8') . $mapHint,
             Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota),
             $pct . '٪',
-            '<a class="btn btn-sm btn-primary" href="/admin/customers/' . (int) $r['id'] . '/service">راه‌اندازی</a>'
+            '<a class="btn btn-sm btn-primary" href="/admin/customers/' . (int) $r['id'] . '/service">تنظیم سرویس</a>'
                 . ' <a class="btn btn-sm btn-ghost" href="/admin/customers/' . (int) $r['id'] . '">مدیریت</a>',
         ];
     }
-    $hint = '<p class="muted form-hint">مصرف از 3x-ui به‌صورت خودکار برای <strong>همهٔ کلاینت‌های پنل‌های فعال</strong> جمع می‌شود (هر sync / worker). کلاینت جدید در XUI بدون کار دستی اضافه می‌شود.</p>';
-    adminPage('سرویس‌ها', 'services', $hint . Layout::card(Layout::responsiveTable(['کاربر', 'مصرف', '٪', ''], $tableRows)));
+    $hint = '<p class="muted form-hint">حجم، تاریخ انقضا و لینک اشتراک را از دکمهٔ <strong>تنظیم سرویس</strong> برای هر کاربر تنظیم کنید. مصرف از 3x-ui برای پنل‌های فعال خودکار sync می‌شود.</p>';
+    adminPage('سرویس‌ها', 'services', $flashHtml . $hint . Layout::card(Layout::responsiveTable(['کاربر', 'مصرف', '٪', ''], $tableRows)));
 }
 
 if ($uri === '/admin/reports' && $method === 'GET') {
@@ -675,7 +686,7 @@ if ($uri === '/admin/customers/new' && $method === 'GET') {
         <label>توضیحات</label><textarea name="notes" rows="3"></textarea>
         <label>Telegram Chat ID</label><input name="telegram_chat_id">
         <label><input type="checkbox" name="is_active" value="1" checked> حساب فعال</label>
-        <p class="muted">مشتری از پنل لاگین نمی‌کند؛ فقط لینک اشتراک و مصرف در سرویس تنظیم می‌شود.</p>
+        <p class="muted">پس از ایجاد، از منوی <strong>سرویس‌ها</strong> حجم، تاریخ انقضا و لینک اشتراک را تنظیم کنید.</p>
         <button class="btn btn-primary" type="submit">ایجاد کاربر</button>
     </form>';
     adminPage('مشتری جدید', 'users', Layout::card($form));
@@ -696,7 +707,11 @@ if ($uri === '/admin/customers/new' && $method === 'POST') {
             'warning1_percent' => 80,
             'warning2_percent' => 90,
         ], 0, AuthService::adminId());
-        Response::redirect('/admin/customers/' . $id . '/service');
+        Session::set(
+            'flash_admin_ok',
+            'کاربر «' . $username . '» ایجاد شد. از ستون «تنظیم سرویس» حجم و تاریخ انقضا را مشخص کنید.'
+        );
+        Response::redirect('/admin/services');
     } catch (\Throwable $e) {
         adminPage('خطا', 'users', Layout::card('<div class="alert alert-error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'));
     }
