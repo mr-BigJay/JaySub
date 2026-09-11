@@ -615,6 +615,93 @@ HTML;
         </div>';
     }
 
+    /**
+     * @param array{token:string, enabled:bool, admin_chat_id:string, proxy_enabled:bool, proxy_url:string, v2ray_config:string, bot_info:array{ok:bool, username?:string, name?:string, error?:string}} $state
+     */
+    public static function adminTelegramPage(string $activeTab, string $flashHtml, array $state, string $csrfField): string
+    {
+        $tabs = [
+            'overview' => 'نمای کلی',
+            'setup' => 'ستاپ ربات',
+            'proxy' => 'پروکسی',
+        ];
+        $nav = '';
+        foreach ($tabs as $key => $label) {
+            $cls = $key === $activeTab ? 'active' : '';
+            $nav .= '<a class="tg-tab ' . $cls . '" href="/admin/telegram?tab=' . $key . '">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
+        }
+
+        $content = '';
+        if ($activeTab === 'overview') {
+            $botLine = '—';
+            $statusCls = 'tg-pill off';
+            $statusLabel = 'قطع';
+            if ($state['bot_info']['ok']) {
+                $botLine = htmlspecialchars(trim($state['bot_info']['username'] . ' ' . ($state['bot_info']['name'] ?? '')), ENT_QUOTES, 'UTF-8');
+                $statusCls = 'tg-pill on';
+                $statusLabel = 'متصل';
+            } elseif (($state['token'] ?? '') !== '') {
+                $botLine = htmlspecialchars((string) ($state['bot_info']['error'] ?? 'خطا'), ENT_QUOTES, 'UTF-8');
+                $statusCls = 'tg-pill warn';
+                $statusLabel = 'خطا';
+            }
+            $content = '<div class="tg-overview-grid">
+                <div class="tg-stat-card"><span class="tg-stat-label">وضعیت API</span><span class="' . $statusCls . '">' . $statusLabel . '</span></div>
+                <div class="tg-stat-card"><span class="tg-stat-label">ربات</span><span class="tg-stat-val">' . $botLine . '</span></div>
+                <div class="tg-stat-card"><span class="tg-stat-label">توکن</span><span class="tg-stat-val mono">' . htmlspecialchars(\App\Services\TelegramService::maskToken($state['token']), ENT_QUOTES, 'UTF-8') . '</span></div>
+                <div class="tg-stat-card"><span class="tg-stat-label">اعلان مشتری</span><span class="tg-stat-val">' . ($state['enabled'] ? 'فعال' : 'غیرفعال') . '</span></div>
+                <div class="tg-stat-card"><span class="tg-stat-label">Chat ID ادمین</span><span class="tg-stat-val">' . htmlspecialchars($state['admin_chat_id'] !== '' ? $state['admin_chat_id'] : '—', ENT_QUOTES, 'UTF-8') . '</span></div>
+                <div class="tg-stat-card"><span class="tg-stat-label">پروکسی</span><span class="tg-stat-val">' . ($state['proxy_enabled'] ? htmlspecialchars($state['proxy_url'], ENT_QUOTES, 'UTF-8') : 'مستقیم (بدون پروکسی)') . '</span></div>
+            </div>
+            <form method="post" action="/admin/telegram?tab=overview" class="toolbar" style="margin-top:1rem">' . $csrfField . '
+                <input type="hidden" name="action" value="test">
+                <button class="btn btn-primary" type="submit">تست اتصال و ارسال پیام</button>
+            </form>
+            <p class="muted form-hint">پیام تست به Chat ID ادمین (تب ستاپ) ارسال می‌شود.</p>';
+        } elseif ($activeTab === 'setup') {
+            $tokenEsc = htmlspecialchars($state['token'], ENT_QUOTES, 'UTF-8');
+            $chatEsc = htmlspecialchars($state['admin_chat_id'], ENT_QUOTES, 'UTF-8');
+            $chk = $state['enabled'] ? ' checked' : '';
+            $content = '<form class="stack" method="post" action="/admin/telegram?tab=setup">' . $csrfField . '
+                <input type="hidden" name="action" value="save_setup">
+                <label>توکن ربات (از @BotFather)</label>
+                <input name="telegram_bot_token" value="' . $tokenEsc . '" autocomplete="off" placeholder="123456789:AAH...">
+                <label>Chat ID ادمین / تست</label>
+                <input name="telegram_admin_chat_id" value="' . $chatEsc . '" placeholder="مثلاً 123456789 یا -100...">
+                <p class="muted form-hint">برای دریافت Chat ID به ربات @userinfobot پیام دهید یا از گروه استفاده کنید.</p>
+                <label class="check-row"><input type="checkbox" name="telegram_notifications_enabled" value="1"' . $chk . '> ارسال اعلان مصرف به مشتریان (Chat ID در پروفایل هر کاربر)</label>
+                <button class="btn btn-primary" type="submit">ذخیره ستاپ</button>
+            </form>';
+        } else {
+            $proxyUrl = htmlspecialchars($state['proxy_url'], ENT_QUOTES, 'UTF-8');
+            $v2ray = htmlspecialchars($state['v2ray_config'], ENT_QUOTES, 'UTF-8');
+            $proxyOn = $state['proxy_enabled'] ? ' checked' : '';
+            $content = '<form class="stack" method="post" action="/admin/telegram?tab=proxy">' . $csrfField . '
+                <input type="hidden" name="action" value="save_proxy">
+                <p class="muted form-hint">سرور در ایران: ابتدا Xray/V2Ray را روی همین VPS با کانفیگ خودتان اجرا کنید (inbound SOCKS یا HTTP روی localhost). سپس آدرس پروکسی محلی را اینجا وارد کنید.</p>
+                <label class="check-row"><input type="checkbox" name="telegram_proxy_enabled" value="1"' . $proxyOn . '> استفاده از پروکسی برای api.telegram.org</label>
+                <label>آدرس پروکسی (برای cURL)</label>
+                <input name="telegram_proxy_url" value="' . $proxyUrl . '" placeholder="socks5h://127.0.0.1:10808">
+                <p class="muted form-hint">مثال‌ها: <code>socks5h://127.0.0.1:10808</code> · <code>http://127.0.0.1:10809</code></p>
+                <label>کانفیگ V2Ray / Xray (JSON) — ذخیره در پنل</label>
+                <textarea name="telegram_v2ray_config" rows="12" placeholder="{\"outbounds\":[...]}">' . $v2ray . '</textarea>
+                <p class="muted form-hint">این JSON فقط در JaySub ذخیره می‌شود؛ سرویس Xray را جداگانه با systemd یا دستی اجرا کنید و پورت inbound را در فیلد بالا بزنید.</p>
+                <div class="form-actions-row">
+                    <button class="btn btn-primary" type="submit">ذخیره پروکسی</button>
+                </div>
+            </form>
+            <form method="post" action="/admin/telegram?tab=proxy" class="toolbar" style="margin-top:0.75rem">' . $csrfField . '
+                <input type="hidden" name="action" value="test">
+                <button class="btn btn-secondary" type="submit">تست اتصال از طریق پروکسی</button>
+            </form>';
+        }
+
+        return '<div class="tg-admin-page">' . $flashHtml . '
+            <nav class="tg-tabs" aria-label="تب‌های تلگرام">' . $nav . '</nav>
+            <section class="ui-card tg-tab-panel">' . $content . '</section>
+        </div>';
+    }
+
     private static function adminDashStatCard(
         string $label,
         string $value,

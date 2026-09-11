@@ -942,8 +942,13 @@ if (preg_match('#^/admin/panels/(\d+)/assign$#', $uri, $m) && $method === 'POST'
 
 if ($uri === '/admin/telegram' && $method === 'GET') {
     requireAdmin();
-    $token = SettingsService::get('telegram_bot_token', '');
-    $enabled = SettingsService::get('telegram_notifications_enabled', '1') === '1';
+    $tab = trim($_GET['tab'] ?? 'overview');
+    if (!in_array($tab, ['overview', 'setup', 'proxy'], true)) {
+        $tab = 'overview';
+    }
+    $token = trim((string) SettingsService::get('telegram_bot_token', ''));
+    $tg = new TelegramService($token !== '' ? $token : null);
+    $botInfo = $token !== '' ? $tg->getBotInfo() : ['ok' => false, 'error' => 'توکن تنظیم نشده'];
     $flashHtml = '';
     $flash = Session::get('flash_admin');
     Session::remove('flash_admin');
@@ -955,44 +960,70 @@ if ($uri === '/admin/telegram' && $method === 'GET') {
     if (is_string($flashOk) && $flashOk !== '') {
         $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
-    $form = $flashHtml . '<form class="stack" method="post" action="/admin/telegram">' . Csrf::field() . '
-        <label>توکن ربات (از @BotFather)</label>
-        <input name="telegram_bot_token" value="' . htmlspecialchars($token ?? '', ENT_QUOTES, 'UTF-8') . '" autocomplete="off" placeholder="123456:ABC...">
-        <label class="check-row"><input type="checkbox" name="telegram_notifications_enabled" value="1"' . ($enabled ? ' checked' : '') . '> ارسال اعلان مصرف به مشتریان (Chat ID در پروفایل کاربر)</label>
-        <p class="muted form-hint">هشدار ۸۰٪ / ۹۰٪، اتمام حجم و شارژ مجدد از طریق همین ربات ارسال می‌شود.</p>
-        <label>Chat ID برای تست (اختیاری)</label>
-        <input name="test_chat_id" placeholder="مثلاً 123456789">
-        <div class="form-actions-row">
-            <button class="btn btn-primary" type="submit" name="action" value="save">ذخیره</button>
-            <button class="btn btn-secondary" type="submit" name="action" value="test">ارسال پیام تست</button>
-        </div>
-        </form>';
-    adminPage('ربات تلگرام', 'telegram', Layout::card($form));
+    $body = Layout::adminTelegramPage($tab, $flashHtml, [
+        'token' => $token,
+        'enabled' => SettingsService::get('telegram_notifications_enabled', '1') === '1',
+        'admin_chat_id' => trim((string) SettingsService::get('telegram_admin_chat_id', '')),
+        'proxy_enabled' => SettingsService::get('telegram_proxy_enabled', '0') === '1',
+        'proxy_url' => trim((string) SettingsService::get('telegram_proxy_url', '')),
+        'v2ray_config' => (string) SettingsService::get('telegram_v2ray_config', ''),
+        'bot_info' => $botInfo,
+    ], Csrf::field());
+    adminPage('ربات تلگرام', 'telegram', $body);
 }
 
 if ($uri === '/admin/telegram' && $method === 'POST') {
     requireAdmin();
     requireCsrf();
-    $action = $_POST['action'] ?? 'save';
-    if ($action === 'test') {
-        $chat = trim($_POST['test_chat_id'] ?? '');
-        if ($chat === '') {
-            Session::set('flash_admin', 'Chat ID تست را وارد کنید.');
-        } else {
-            $testToken = trim($_POST['telegram_bot_token'] ?? '');
-            $tg = new TelegramService($testToken !== '' ? $testToken : SettingsService::get('telegram_bot_token'));
-            $ok = $tg->sendMessage($chat, "✅ <b>JaySub</b>\nربات تلگرام با موفقیت متصل است.", true);
-            Session::set($ok ? 'flash_admin_ok' : 'flash_admin', $ok ? 'پیام تست ارسال شد.' : 'ارسال ناموفق — توکن یا Chat ID را بررسی کنید.');
-        }
-        Response::redirect('/admin/telegram');
+    $tab = trim($_GET['tab'] ?? $_POST['tab'] ?? 'overview');
+    if (!in_array($tab, ['overview', 'setup', 'proxy'], true)) {
+        $tab = 'overview';
     }
-    SettingsService::set('telegram_bot_token', trim($_POST['telegram_bot_token'] ?? ''));
-    SettingsService::set(
-        'telegram_notifications_enabled',
-        isset($_POST['telegram_notifications_enabled']) ? '1' : '0'
-    );
-    Session::set('flash_admin_ok', 'تنظیمات ربات ذخیره شد.');
-    Response::redirect('/admin/telegram');
+    $action = $_POST['action'] ?? 'save_setup';
+    $redirect = '/admin/telegram?tab=' . rawurlencode($tab);
+
+    if ($action === 'test') {
+        $chat = trim((string) SettingsService::get('telegram_admin_chat_id', ''));
+        if ($chat === '') {
+            Session::set('flash_admin', 'در تب «ستاپ ربات» Chat ID ادمین را ذخیره کنید.');
+        } else {
+            $token = trim((string) SettingsService::get('telegram_bot_token', ''));
+            $tg = new TelegramService($token !== '' ? $token : null);
+            $info = $tg->getBotInfo();
+            if (!$info['ok']) {
+                Session::set('flash_admin', 'اتصال API ناموفق: ' . ($info['error'] ?? ''));
+            } else {
+                $ok = $tg->sendMessage($chat, "✅ <b>JaySub</b>\nاتصال ربات و پروکسی (در صورت فعال) برقرار است.", true);
+                Session::set(
+                    $ok ? 'flash_admin_ok' : 'flash_admin',
+                    $ok ? 'getMe موفق و پیام تست ارسال شد.' : 'getMe OK بود اما sendMessage ناموفق — Chat ID را بررسی کنید.'
+                );
+            }
+        }
+        Response::redirect($redirect);
+    }
+
+    if ($action === 'save_setup') {
+        SettingsService::set('telegram_bot_token', trim($_POST['telegram_bot_token'] ?? ''));
+        SettingsService::set('telegram_admin_chat_id', trim($_POST['telegram_admin_chat_id'] ?? ''));
+        SettingsService::set(
+            'telegram_notifications_enabled',
+            isset($_POST['telegram_notifications_enabled']) ? '1' : '0'
+        );
+        Session::set('flash_admin_ok', 'ستاپ ربات ذخیره شد.');
+        Response::redirect('/admin/telegram?tab=setup');
+    }
+
+    if ($action === 'save_proxy') {
+        SettingsService::set('telegram_proxy_enabled', isset($_POST['telegram_proxy_enabled']) ? '1' : '0');
+        SettingsService::set('telegram_proxy_url', trim($_POST['telegram_proxy_url'] ?? ''));
+        $v2 = trim($_POST['telegram_v2ray_config'] ?? '');
+        SettingsService::set('telegram_v2ray_config', $v2 !== '' ? $v2 : null);
+        Session::set('flash_admin_ok', 'تنظیمات پروکسی ذخیره شد.');
+        Response::redirect('/admin/telegram?tab=proxy');
+    }
+
+    Response::redirect('/admin/telegram?tab=overview');
 }
 
 if ($uri === '/admin/backup' && $method === 'GET') {
