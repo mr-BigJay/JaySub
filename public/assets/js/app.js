@@ -10,6 +10,21 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (pct >= 80) el.classList.add('warn');
   });
 
+  const copyText = (text, onDone) => {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onDone);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      onDone();
+    }
+  };
+
   document.querySelectorAll('[data-copy-target]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-copy-target');
@@ -18,14 +33,62 @@ document.addEventListener('DOMContentLoaded', () => {
       input.select();
       input.setSelectionRange(0, 99999);
       const text = input.value;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => {
-          btn.textContent = 'Copied';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
-        });
-      } else {
-        document.execCommand('copy');
-      }
+      const label = btn.textContent;
+      copyText(text, () => {
+        btn.textContent = 'Copied';
+        setTimeout(() => { btn.textContent = label; }, 1500);
+      });
     });
+  });
+
+  document.querySelectorAll('[data-copy-text]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const text = btn.getAttribute('data-copy-text') || '';
+      copyText(text, () => {
+        btn.classList.add('copied');
+        const prev = btn.getAttribute('data-copy-label') || btn.textContent;
+        btn.setAttribute('data-copy-label', prev);
+        btn.textContent = 'کپی شد ✓';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.textContent = prev;
+        }, 1400);
+      });
+    });
+  });
+
+  const openModal = (id) => {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    const focusable = modal.querySelector('input, select, button, textarea');
+    if (focusable) focusable.focus();
+  };
+
+  const closeModal = (modal) => {
+    modal.hidden = true;
+    if (!document.querySelector('.app-modal:not([hidden])')) {
+      document.body.classList.remove('modal-open');
+    }
+  };
+
+  document.querySelectorAll('[data-open-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-open-modal');
+      if (id) openModal(id);
+    });
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const modal = el.closest('.app-modal');
+      if (modal) closeModal(modal);
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.app-modal:not([hidden])').forEach((modal) => closeModal(modal));
   });
 });

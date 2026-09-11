@@ -127,9 +127,15 @@ final class DashboardService
     public static function allPanels(): array
     {
         return Database::pdo()->query(
-            'SELECT vp.*, c.name AS customer_name, c.username AS customer_username
+            'SELECT vp.*, c.name AS customer_name, c.username AS customer_username,
+                COALESCE(SUM(
+                    GREATEST(0, CAST(vc.base_upload_bytes AS SIGNED) + CAST(vc.last_xui_upload AS SIGNED) - CAST(vc.xui_baseline_upload AS SIGNED))
+                  + GREATEST(0, CAST(vc.base_download_bytes AS SIGNED) + CAST(vc.last_xui_download AS SIGNED) - CAST(vc.xui_baseline_download AS SIGNED))
+                ), 0) AS traffic_bytes
              FROM vpn_panels vp
              INNER JOIN customers c ON c.id = vp.customer_id
+             LEFT JOIN vpn_clients vc ON vc.panel_id = vp.id
+             GROUP BY vp.id
              ORDER BY vp.id DESC'
         )->fetchAll();
     }
