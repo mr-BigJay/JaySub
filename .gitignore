@@ -1,0 +1,7 @@
+/vendor/*
+!/vendor/autoload.php
+/config/config.php
+/storage/worker.lock
+/storage/.admin-init
+/logs/*.log
+!.gitkeep

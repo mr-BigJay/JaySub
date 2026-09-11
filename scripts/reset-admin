@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Reset admin password (one line):
+#   curl -fsSL .../scripts/reset-admin | bash -s -- 'YourNewPassword'
+#   ya: bash /var/www/vpn-panel/scripts/reset-admin 'YourNewPassword'
+set -euo pipefail
+INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
+PASS="${1:-Admin@12345}"
+cd "$INSTALL_DIR"
+php scripts/install.php "$PASS"
+php -r "
+require 'config/config.php';
+\$c = require 'config/config.php';
+\$pdo = new PDO(
+  'mysql:host='.\$c['database']['host'].';dbname='.\$c['database']['name'].';charset=utf8mb4',
+  \$c['database']['user'],
+  \$c['database']['password']
+);
+\$row = \$pdo->query(\"SELECT username, is_active FROM users WHERE username='admin'\")->fetch(PDO::FETCH_ASSOC);
+if (!\$row) { echo \"ERROR: user admin vojud nadarad. install.php failed.\n\"; exit(1); }
+echo \"OK admin user exists, is_active={\$row['is_active']}\n\";
+"
+echo ""
+echo "Login: https://$(php -r "\$c=require 'config/config.php'; echo parse_url(\$c['app']['url'],PHP_URL_HOST);")/admin/login"
+echo "User: admin"
+echo "Pass: $PASS"
