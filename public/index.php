@@ -99,9 +99,9 @@ function requireCsrf(): void
     }
 }
 
-function adminPage(string $title, string $activeNav, string $content): void
+function adminPage(string $title, string $activeNav, string $content, string $headerActionHtml = ''): void
 {
-    Response::html(Layout::admin($title, $activeNav, $content));
+    Response::html(Layout::admin($title, $activeNav, $content, $headerActionHtml));
 }
 
 function customerPage(string $title, string $activeNav, string $content): void
@@ -417,7 +417,8 @@ if ($uri === '/admin/panels' && $method === 'GET') {
         $customerOptions,
         $panels,
     );
-    adminPage('پنل‌های 3X-UI', 'panels', $body);
+    $panelsHeaderAction = '<button type="button" class="btn btn-primary btn-sm admin-top-action-btn" data-open-modal="panel-connect-modal">اتصال پنل جدید</button>';
+    adminPage('پنل‌های 3X-UI', 'panels', $body, $panelsHeaderAction);
 }
 
 if ($uri === '/admin/panels' && $method === 'POST') {

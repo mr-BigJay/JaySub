@@ -39,7 +39,7 @@ final class Layout
         'profile' => ['href' => '/app/profile', 'label' => 'پروفایل', 'icon' => '👤'],
     ];
 
-    public static function admin(string $title, string $active, string $content): string
+    public static function admin(string $title, string $active, string $content, string $headerActionHtml = ''): string
     {
         $t = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
         $navHtml = '';
@@ -73,8 +73,12 @@ final class Layout
         $isDashboard = $active === 'dashboard';
         $topClass = 'admin-top' . ($isDashboard ? ' admin-top-dashboard' : '');
         $backHtml = $isDashboard
-            ? '<span class="admin-top-slot" aria-hidden="true"></span>'
+            ? '<span class="admin-top-slot admin-top-slot-start" aria-hidden="true"></span>'
             : '<a class="admin-back" href="/admin/dashboard" data-admin-back aria-label="بازگشت"><span aria-hidden="true">←</span></a>';
+
+        $headerEndHtml = $headerActionHtml !== ''
+            ? '<div class="admin-header-end">' . $headerActionHtml . '</div>'
+            : '<span class="admin-top-slot admin-top-slot-end" aria-hidden="true"></span>';
 
         $menuSheet = '<div class="admin-nav-sheet" id="admin-nav-sheet" hidden>
             <div class="admin-nav-sheet-backdrop" data-close-admin-menu tabindex="-1" aria-hidden="true"></div>
@@ -113,7 +117,7 @@ final class Layout
         <header class="{$topClass}">
             {$backHtml}
             <h1 class="page-title">{$t}</h1>
-            <span class="admin-top-slot" aria-hidden="true"></span>
+            {$headerEndHtml}
         </header>
         <main class="admin-content app-container">{$content}</main>
     </div>
@@ -892,13 +896,7 @@ HTML;
             $flashModal = self::adminFlashToastModal($flashError, 'error');
         }
 
-        return '<div class="sub-mgmt-page">' . $flashModal . '
-            <header class="sub-mgmt-toolbar">
-                <a class="sub-mgmt-back" href="/admin/dashboard" aria-label="بازگشت">←</a>
-                <h2 class="sub-mgmt-title">پنل‌های 3X-UI</h2>
-                <button type="button" class="btn btn-primary btn-sm xui-panels-add-btn" data-open-modal="panel-connect-modal">اتصال پنل جدید</button>
-            </header>
-
+        return '<div class="sub-mgmt-page xui-panels-page">' . $flashModal . '
             <section class="ui-card sub-mgmt-hero sub-mgmt-panels-hero">
                 <div class="sub-mgmt-hero-icon" aria-hidden="true">⬡</div>
                 <div class="sub-mgmt-hero-main">
