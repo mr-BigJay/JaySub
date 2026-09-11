@@ -26,10 +26,10 @@ final class Layout
 
     /** @var array<string, array{href: string, label: string, icon: string}> */
     private const ADMIN_BOTTOM = [
+        'menu' => ['href' => '#', 'label' => 'منو', 'icon' => ''],
         'dashboard' => ['href' => '/admin/dashboard', 'label' => 'خانه', 'icon' => '⌂'],
         'users' => ['href' => '/admin/customers', 'label' => 'کاربران', 'icon' => '👤'],
         'reports' => ['href' => '/admin/reports', 'label' => 'گزارش', 'icon' => '📊'],
-        'menu' => ['href' => '#', 'label' => 'منو', 'icon' => ''],
     ];
 
     /** @var array<string, array{href: string, label: string, icon: string}> */

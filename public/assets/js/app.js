@@ -112,9 +112,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 340);
   };
 
+  const positionAdminMenuPanel = () => {
+    const trigger = document.querySelector('.bottom-nav-menu-trigger');
+    const panel = adminMenuSheet?.querySelector('.admin-nav-sheet-panel');
+    if (!trigger || !panel) return;
+    const tr = trigger.getBoundingClientRect();
+    const width = Math.min(292, window.innerWidth - 16);
+    const right = Math.max(8, window.innerWidth - tr.right + (tr.width - width) / 2);
+    panel.style.width = `${width}px`;
+    panel.style.right = `${right}px`;
+    panel.style.left = 'auto';
+  };
+
   const openAdminMenu = () => {
     if (!adminMenuSheet) return;
     adminMenuSheet.hidden = false;
+    positionAdminMenuPanel();
     document.body.classList.add('admin-menu-open');
     adminMenuTriggers.forEach((btn) => btn.setAttribute('aria-expanded', 'true'));
     requestAnimationFrame(() => {
@@ -122,9 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  window.addEventListener('resize', () => {
+    if (adminMenuSheet?.classList.contains('is-open')) positionAdminMenuPanel();
+  });
+
   adminMenuTriggers.forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (adminMenuSheet && !adminMenuSheet.hidden) closeAdminMenu();
+      if (adminMenuSheet?.classList.contains('is-open')) closeAdminMenu();
       else openAdminMenu();
     });
   });
