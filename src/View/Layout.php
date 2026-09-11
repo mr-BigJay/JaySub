@@ -29,7 +29,7 @@ final class Layout
         'dashboard' => ['href' => '/admin/dashboard', 'label' => 'خانه', 'icon' => '⌂'],
         'users' => ['href' => '/admin/customers', 'label' => 'کاربران', 'icon' => '👤'],
         'reports' => ['href' => '/admin/reports', 'label' => 'گزارش', 'icon' => '📊'],
-        'settings' => ['href' => '/admin/settings', 'label' => 'تنظیمات', 'icon' => '⚙'],
+        'menu' => ['href' => '#', 'label' => 'منو', 'icon' => ''],
     ];
 
     /** @var array<string, array{href: string, label: string, icon: string}> */
@@ -61,9 +61,10 @@ final class Layout
         }
         $bottom = '';
         foreach (self::ADMIN_BOTTOM as $key => $item) {
-            if ($key === 'settings') {
+            if ($key === 'menu') {
                 $bottom .= '<button type="button" class="bottom-nav-item bottom-nav-menu-trigger" data-open-admin-menu aria-label="باز کردن منو" aria-expanded="false">'
-                    . '<span class="bn-icon">' . $item['icon'] . '</span><span>' . $item['label'] . '</span></button>';
+                    . '<span class="bn-icon bn-icon-menu" aria-hidden="true"><span></span><span></span><span></span></span>'
+                    . '<span>' . $item['label'] . '</span></button>';
                 continue;
             }
             $cls = $key === $active ? 'active' : '';

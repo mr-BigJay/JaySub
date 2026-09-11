@@ -102,9 +102,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const closeAdminMenu = () => {
     if (!adminMenuSheet) return;
-    adminMenuSheet.hidden = true;
+    adminMenuSheet.classList.remove('is-open');
     document.body.classList.remove('admin-menu-open');
     adminMenuTriggers.forEach((btn) => btn.setAttribute('aria-expanded', 'false'));
+    window.setTimeout(() => {
+      if (adminMenuSheet && !adminMenuSheet.classList.contains('is-open')) {
+        adminMenuSheet.hidden = true;
+      }
+    }, 340);
   };
 
   const openAdminMenu = () => {
@@ -112,6 +117,9 @@ document.addEventListener('DOMContentLoaded', () => {
     adminMenuSheet.hidden = false;
     document.body.classList.add('admin-menu-open');
     adminMenuTriggers.forEach((btn) => btn.setAttribute('aria-expanded', 'true'));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => adminMenuSheet.classList.add('is-open'));
+    });
   };
 
   adminMenuTriggers.forEach((btn) => {
@@ -139,6 +147,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && adminMenuSheet && !adminMenuSheet.hidden) closeAdminMenu();
+    if (e.key === 'Escape' && adminMenuSheet && adminMenuSheet.classList.contains('is-open')) closeAdminMenu();
   });
 });
