@@ -19,6 +19,8 @@ final class Layout
         'services' => 'سرویس‌ها',
         'reports' => 'گزارش مصرف',
         'notifications' => 'اعلان‌ها',
+        'telegram' => 'ربات تلگرام',
+        'backup' => 'بک‌آپ',
         'settings' => 'تنظیمات',
     ];
 
@@ -48,6 +50,8 @@ final class Layout
             'services' => '/admin/services',
             'reports' => '/admin/reports',
             'notifications' => '/admin/notifications',
+            'telegram' => '/admin/telegram',
+            'backup' => '/admin/backup',
             'settings' => '/admin/settings',
         ];
         foreach (self::ADMIN_NAV as $key => $label) {
@@ -902,6 +906,8 @@ HTML;
             'services' => '◈',
             'reports' => '📊',
             'notifications' => '🔔',
+            'telegram' => '✈',
+            'backup' => '💾',
             'settings' => '⚙',
             default => '•',
         };

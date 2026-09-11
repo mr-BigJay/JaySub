@@ -29,6 +29,7 @@ use App\Services\PanelService;
 use App\Services\SettingsService;
 use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
+use App\Services\BackupService;
 use App\Services\DashboardService;
 use App\View\Layout;
 
@@ -939,20 +940,135 @@ if (preg_match('#^/admin/panels/(\d+)/assign$#', $uri, $m) && $method === 'POST'
     Response::redirect('/admin/panels/' . $pid . '/clients');
 }
 
-if ($uri === '/admin/settings' && $method === 'GET') {
+if ($uri === '/admin/telegram' && $method === 'GET') {
     requireAdmin();
     $token = SettingsService::get('telegram_bot_token', '');
-    $form = '<form class="stack" method="post" action="/admin/settings">' . Csrf::field() . '
-        <label>Telegram Bot Token</label>
-        <input name="telegram_bot_token" value="' . htmlspecialchars($token ?? '', ENT_QUOTES, 'UTF-8') . '" autocomplete="off">
-        <button class="btn primary" type="submit">ذخیره</button></form>';
-    adminPage('تنظیمات', 'settings', Layout::card($form));
+    $enabled = SettingsService::get('telegram_notifications_enabled', '1') === '1';
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $form = $flashHtml . '<form class="stack" method="post" action="/admin/telegram">' . Csrf::field() . '
+        <label>توکن ربات (از @BotFather)</label>
+        <input name="telegram_bot_token" value="' . htmlspecialchars($token ?? '', ENT_QUOTES, 'UTF-8') . '" autocomplete="off" placeholder="123456:ABC...">
+        <label class="check-row"><input type="checkbox" name="telegram_notifications_enabled" value="1"' . ($enabled ? ' checked' : '') . '> ارسال اعلان مصرف به مشتریان (Chat ID در پروفایل کاربر)</label>
+        <p class="muted form-hint">هشدار ۸۰٪ / ۹۰٪، اتمام حجم و شارژ مجدد از طریق همین ربات ارسال می‌شود.</p>
+        <label>Chat ID برای تست (اختیاری)</label>
+        <input name="test_chat_id" placeholder="مثلاً 123456789">
+        <div class="form-actions-row">
+            <button class="btn btn-primary" type="submit" name="action" value="save">ذخیره</button>
+            <button class="btn btn-secondary" type="submit" name="action" value="test">ارسال پیام تست</button>
+        </div>
+        </form>';
+    adminPage('ربات تلگرام', 'telegram', Layout::card($form));
+}
+
+if ($uri === '/admin/telegram' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $action = $_POST['action'] ?? 'save';
+    if ($action === 'test') {
+        $chat = trim($_POST['test_chat_id'] ?? '');
+        if ($chat === '') {
+            Session::set('flash_admin', 'Chat ID تست را وارد کنید.');
+        } else {
+            $testToken = trim($_POST['telegram_bot_token'] ?? '');
+            $tg = new TelegramService($testToken !== '' ? $testToken : SettingsService::get('telegram_bot_token'));
+            $ok = $tg->sendMessage($chat, "✅ <b>JaySub</b>\nربات تلگرام با موفقیت متصل است.", true);
+            Session::set($ok ? 'flash_admin_ok' : 'flash_admin', $ok ? 'پیام تست ارسال شد.' : 'ارسال ناموفق — توکن یا Chat ID را بررسی کنید.');
+        }
+        Response::redirect('/admin/telegram');
+    }
+    SettingsService::set('telegram_bot_token', trim($_POST['telegram_bot_token'] ?? ''));
+    SettingsService::set(
+        'telegram_notifications_enabled',
+        isset($_POST['telegram_notifications_enabled']) ? '1' : '0'
+    );
+    Session::set('flash_admin_ok', 'تنظیمات ربات ذخیره شد.');
+    Response::redirect('/admin/telegram');
+}
+
+if ($uri === '/admin/backup' && $method === 'GET') {
+    requireAdmin();
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $files = BackupService::listFiles($config);
+    $rows = '';
+    foreach ($files as $f) {
+        $rows .= '<div class="data-card-row"><span>' . htmlspecialchars($f['filename'], ENT_QUOTES, 'UTF-8') . '</span><span>'
+            . Format::bytesAuto((float) $f['bytes']) . ' · '
+            . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $f['mtime'])), ENT_QUOTES, 'UTF-8')
+            . ' <a class="btn btn-sm btn-ghost" href="/admin/backup/download?file=' . rawurlencode($f['filename']) . '">دانلود</a></span></div>';
+    }
+    $body = $flashHtml
+        . '<p class="muted form-hint">پشتیبان شامل کاربران، تنظیمات، پنل‌ها، اشتراک‌ها و کلاینت‌هاست (کل دیتابیس JaySub).</p>'
+        . '<form method="post" action="/admin/backup" class="toolbar">' . Csrf::field()
+        . '<button class="btn btn-primary" type="submit">ایجاد بک‌آپ الان</button></form>'
+        . Layout::card($rows !== '' ? $rows : '<p class="muted">هنوز بک‌آپی ذخیره نشده.</p>', 'فایل‌های اخیر (حداکثر ۱۰ عدد روی سرور)');
+    adminPage('بک‌آپ', 'backup', $body);
+}
+
+if ($uri === '/admin/backup' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    try {
+        $result = BackupService::create($config);
+        Session::set(
+            'flash_admin_ok',
+            'بک‌آپ ایجاد شد (' . $result['filename'] . ', ' . Format::bytesAuto((float) $result['bytes']) . ', ' . $result['method'] . ').'
+        );
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
+    Response::redirect('/admin/backup');
+}
+
+if ($uri === '/admin/backup/download' && $method === 'GET') {
+    requireAdmin();
+    $file = trim($_GET['file'] ?? '');
+    $path = BackupService::resolveDownloadPath($config, $file);
+    if ($path === null) {
+        http_response_code(404);
+        echo 'فایل یافت نشد';
+        return;
+    }
+    header('Content-Type: application/gzip');
+    header('Content-Disposition: attachment; filename="' . basename($file) . '"');
+    header('Content-Length: ' . (string) filesize($path));
+    readfile($path);
+    exit;
+}
+
+if ($uri === '/admin/settings' && $method === 'GET') {
+    requireAdmin();
+    $body = '<p class="muted">تنظیمات تخصصی:</p>
+        <ul>
+            <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>
+            <li><a href="/admin/backup">بک‌آپ</a> — پشتیبان دیتابیس</li>
+        </ul>
+        <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
+    adminPage('تنظیمات', 'settings', Layout::card($body));
 }
 
 if ($uri === '/admin/settings' && $method === 'POST') {
     requireAdmin();
     requireCsrf();
-    SettingsService::set('telegram_bot_token', trim($_POST['telegram_bot_token'] ?? ''));
     Response::redirect('/admin/settings');
 }
 

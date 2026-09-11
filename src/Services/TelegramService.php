@@ -13,9 +13,12 @@ final class TelegramService
     ) {
     }
 
-    public function sendMessage(string $chatId, string $text): bool
+    public function sendMessage(string $chatId, string $text, bool $force = false): bool
     {
         if ($this->botToken === null || $this->botToken === '' || $chatId === '') {
+            return false;
+        }
+        if (!$force && SettingsService::get('telegram_notifications_enabled', '1') !== '1') {
             return false;
         }
         $url = 'https://api.telegram.org/bot' . $this->botToken . '/sendMessage';
