@@ -343,6 +343,32 @@ final class CustomerService
         return $row === false ? null : $row;
     }
 
+    /**
+     * Ensures a subscription row exists so panel traffic sync can auto-import all XUI clients.
+     *
+     * @return array<string, mixed>
+     */
+    public static function ensureTrafficSubscription(int $customerId): array
+    {
+        $sub = self::activeSubscription($customerId);
+        if ($sub !== null) {
+            return $sub;
+        }
+        $pdo = Database::pdo();
+        $pdo->prepare(
+            'INSERT INTO subscriptions (customer_id, quota_bytes, status, started_at)
+             VALUES (:cid, 0, \'active\', NOW())'
+        )->execute(['cid' => $customerId]);
+        $pdo->prepare(
+            "UPDATE customers SET service_status = 'active', vpn_enabled = 1 WHERE id = :id"
+        )->execute(['id' => $customerId]);
+        $sub = self::activeSubscription($customerId);
+        if ($sub === null) {
+            throw new \RuntimeException('Could not create traffic subscription');
+        }
+        return $sub;
+    }
+
     /** @return list<array<string, mixed>> */
     public static function panelUsageBreakdown(int $customerId): array
     {

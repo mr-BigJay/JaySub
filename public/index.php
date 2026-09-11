@@ -65,6 +65,26 @@ function app_telegram(array $config): TelegramService
     return $instance;
 }
 
+/** @param array<string, mixed> $config */
+function app_traffic_sync(array $config): TrafficSyncService
+{
+    static $instance = null;
+    if ($instance === null) {
+        $instance = new TrafficSyncService(app_encryption($config), app_telegram($config));
+    }
+    return $instance;
+}
+
+/** @param array<string, mixed> $config */
+function sync_panel_traffic(array $config, int $panelId): void
+{
+    try {
+        app_traffic_sync($config)->syncPanelAndAggregate($panelId);
+    } catch (\Throwable $e) {
+        error_log('JaySub panel sync after create: ' . $e->getMessage());
+    }
+}
+
 $maxAttempts = (int) ($config['security']['login_max_attempts'] ?? 5);
 $lockout = (int) ($config['security']['login_lockout_minutes'] ?? 15);
 
@@ -428,6 +448,7 @@ if ($uri === '/admin/panels' && $method === 'POST') {
     } else {
         Session::set('flash_admin_ok', 'پنل با موفقیت ذخیره شد.');
     }
+    sync_panel_traffic($config, $panelId);
     Response::redirect('/admin/panels');
 }
 
@@ -488,6 +509,7 @@ if (preg_match('#^/admin/panels/(\d+)/test$#', $uri, $m) && $method === 'POST') 
     $result = PanelService::testConnection((int) $m[1], app_encryption($config));
     if ($result['ok']) {
         Session::set('flash_admin_ok', 'تست اتصال: ' . $result['message']);
+        sync_panel_traffic($config, (int) $m[1]);
     } else {
         Session::set('flash_admin', 'تست اتصال: ' . $result['message']);
     }
@@ -513,44 +535,30 @@ if (preg_match('#^/admin/panels/(\d+)/clients$#', $uri, $m) && $method === 'GET'
         $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
     try {
-        $clients = PanelService::discoverClients($pid, app_encryption($config));
+        app_traffic_sync($config)->syncPanelAndAggregate($pid);
     } catch (\Throwable $e) {
-        adminPage('خطا', 'panels', Layout::card('<div class="alert alert-error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'));
-        return;
+        Session::set('flash_admin', 'Sync: ' . $e->getMessage());
     }
-    $cid = (int) $panel['customer_id'];
+    $tracked = PanelService::listTrackedClients($pid);
+    $panelTotal = 0;
     $tableRows = [];
-    foreach ($clients as $c) {
-        $total = $c['up'] + $c['down'];
-        $action = '';
-        if (!$c['mapped']) {
-            $action = '<form method="post" action="/admin/panels/' . $pid . '/assign" class="inline-form">' . Csrf::field() .
-                '<input type="hidden" name="email" value="' . htmlspecialchars($c['email'], ENT_QUOTES, 'UTF-8') . '">
-                <input type="hidden" name="inbound_id" value="' . $c['inbound_id'] . '">
-                <input type="hidden" name="uuid" value="' . htmlspecialchars($c['uuid'] ?? '', ENT_QUOTES, 'UTF-8') . '">
-                <input type="hidden" name="protocol" value="' . htmlspecialchars($c['protocol'] ?? '', ENT_QUOTES, 'UTF-8') . '">
-                <button class="btn btn-sm btn-primary" type="submit">اختصاص</button></form>';
-        }
+    foreach ($tracked as $c) {
+        $panelTotal += $c['tracked_bytes'];
         $tableRows[] = [
             htmlspecialchars($c['email'], ENT_QUOTES, 'UTF-8'),
-            Format::bytesToGb($total),
-            ($c['enable'] ? 'فعال' : 'غیرفعال') . ($c['mapped'] ? ' · متصل' : ''),
-            $action,
+            Format::bytesToGb($c['tracked_bytes']),
+            ($c['enabled'] ? 'فعال' : 'غیرفعال') . ' · sync خودکار',
+            '',
         ];
     }
-    $mappedCount = 0;
-    foreach ($clients as $c) {
-        if ($c['mapped']) {
-            $mappedCount++;
-        }
-    }
     $intro = '<p class="muted">' . htmlspecialchars((string) $panel['name'], ENT_QUOTES, 'UTF-8')
-        . ' — کلاینت اختصاص‌داده‌شده: <strong>' . $mappedCount . '</strong></p>';
-    if ($mappedCount === 0 && $clients !== []) {
-        $intro .= '<p class="muted form-hint">کلاینت‌ها معمولاً بعد از worker/sync خودکار ثبت می‌شوند. «اختصاص» دستی فقط در صورت نیاز است.</p>';
-    }
+        . ' — <strong>' . count($tracked) . '</strong> کلاینت · مصرف تجمیعی پنل (JaySub): <strong>'
+        . Format::bytesToGb($panelTotal) . '</strong></p>'
+        . '<p class="muted form-hint">همهٔ کلاینت‌های 3x-ui این پنل خودکار import و هر ~۱ دقیقه با worker به‌روز می‌شوند. اختصاص دستی لازم نیست.</p>';
     $html = $flashHtml . $intro
-        . Layout::responsiveTable(['ایمیل', 'مصرف (3x-ui)', 'وضعیت', ''], $tableRows)
+        . ($tableRows === []
+            ? '<p class="muted">هنوز کلاینتی از XUI دریافت نشده — اتصال پنل و worker را بررسی کنید.</p>'
+            : Layout::responsiveTable(['ایمیل', 'مصرف ثبت‌شده', 'وضعیت', ''], $tableRows))
         . '<p><a href="/admin/panels">بازگشت به پنل‌ها</a></p>';
     adminPage('کلاینت‌های پنل', 'panels', Layout::card($html));
 }
@@ -877,7 +885,8 @@ if (preg_match('#^/admin/customers/(\d+)/panels/new$#', $uri, $m) && $method ===
     requireAdmin();
     requireCsrf();
     $cid = (int) $m[1];
-    PanelService::create($cid, trim($_POST['name'] ?? ''), trim($_POST['base_url'] ?? ''), $_POST['api_token'] ?? '', app_encryption($config), AuthService::adminId());
+    $panelId = PanelService::create($cid, trim($_POST['name'] ?? ''), trim($_POST['base_url'] ?? ''), $_POST['api_token'] ?? '', app_encryption($config), AuthService::adminId());
+    sync_panel_traffic($config, $panelId);
     Response::redirect('/admin/customers/' . $cid);
 }
 
@@ -928,28 +937,8 @@ if (preg_match('#^/admin/panels/(\d+)/assign$#', $uri, $m) && $method === 'POST'
     requireAdmin();
     requireCsrf();
     $pid = (int) $m[1];
-    $stmt = Database::pdo()->prepare('SELECT customer_id FROM vpn_panels WHERE id = :id');
-    $stmt->execute(['id' => $pid]);
-    $panel = $stmt->fetch();
-    if ($panel) {
-        $cid = (int) $panel['customer_id'];
-        try {
-            PanelService::assignClient(
-                $pid,
-                $cid,
-                trim($_POST['email'] ?? ''),
-                (int) ($_POST['inbound_id'] ?? 0),
-                ($_POST['uuid'] ?? '') !== '' ? $_POST['uuid'] : null,
-                ($_POST['protocol'] ?? '') !== '' ? $_POST['protocol'] : null,
-            );
-            $sync = new TrafficSyncService(app_encryption($config), app_telegram($config));
-            $sync->syncPanel($pid);
-            $sync->aggregateCustomer($cid);
-            Session::set('flash_admin_ok', 'کلاینت اختصاص داده شد و مصرف به‌روز شد.');
-        } catch (\Throwable $e) {
-            Session::set('flash_admin', $e->getMessage());
-        }
-    }
+    sync_panel_traffic($config, $pid);
+    Session::set('flash_admin_ok', 'مصرف پنل از 3x-ui sync شد (همه کلاینت‌ها خودکار).');
     Response::redirect('/admin/panels/' . $pid . '/clients');
 }
 

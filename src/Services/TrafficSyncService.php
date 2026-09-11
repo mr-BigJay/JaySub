@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Core\Encryption;
+use App\Xui\InboundTraffic;
 use App\Xui\XuiClient;
 use PDO;
 
@@ -43,6 +44,19 @@ final class TrafficSyncService
         }
     }
 
+    public function syncPanelAndAggregate(int $panelId): void
+    {
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare('SELECT customer_id FROM vpn_panels WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $panelId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            throw new \RuntimeException('Panel not found');
+        }
+        $this->syncPanel($panelId);
+        $this->aggregateCustomer((int) $row['customer_id']);
+    }
+
     public function syncPanel(int $panelId): void
     {
         $pdo = Database::pdo();
@@ -74,41 +88,13 @@ final class TrafficSyncService
             return;
         }
 
-        /** @var array<string, array{up:int,down:int,enable:bool,uuid?:string}> $statsByEmail */
-        $statsByEmail = [];
-        foreach ($obj as $inbound) {
-            if (!is_array($inbound)) {
-                continue;
-            }
-            $inboundId = (int) ($inbound['id'] ?? 0);
-            $protocol = is_string($inbound['protocol'] ?? null) ? $inbound['protocol'] : null;
-            $clientStats = $inbound['clientStats'] ?? [];
-            if (!is_array($clientStats)) {
-                continue;
-            }
-            foreach ($clientStats as $stat) {
-                if (!is_array($stat) || !isset($stat['email'])) {
-                    continue;
-                }
-                $email = (string) $stat['email'];
-                $statsByEmail[$email] = [
-                    'inbound_id' => $inboundId,
-                    'protocol' => $protocol,
-                    'up' => (int) ($stat['up'] ?? 0),
-                    'down' => (int) ($stat['down'] ?? 0),
-                    'enable' => (bool) ($stat['enable'] ?? true),
-                    'uuid' => isset($stat['uuid']) ? (string) $stat['uuid'] : null,
-                ];
-            }
-        }
+        $statsByEmail = InboundTraffic::statsByEmail($obj);
 
         $customerId = (int) $panel['customer_id'];
-        $subscription = CustomerService::activeSubscription($customerId);
-        if ($subscription === null) {
-            $this->markPanelError($panelId, 'اشتراک فعال برای مشتری ثبت نشده — ابتدا راه‌اندازی سرویس');
-            return;
-        }
+        $subscription = CustomerService::ensureTrafficSubscription($customerId);
         $subId = (int) $subscription['id'];
+
+        $pdo->prepare('UPDATE vpn_panels SET is_active = 1 WHERE id = :id')->execute(['id' => $panelId]);
 
         $selectVc = $pdo->prepare(
             'SELECT * FROM vpn_clients WHERE panel_id = :panel_id AND xui_email = :email LIMIT 1'

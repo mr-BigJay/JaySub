@@ -26,6 +26,7 @@ final class PanelService
             'tok' => $encryption->encrypt($apiToken),
         ]);
         $id = (int) Database::pdo()->lastInsertId();
+        Database::pdo()->prepare('UPDATE vpn_panels SET is_active = 1 WHERE id = :id')->execute(['id' => $id]);
         AuditLogService::log('admin', $adminId, 'panel_created', 'vpn_panel', $id);
         return $id;
     }
@@ -91,35 +92,50 @@ final class PanelService
         $mapped = array_column($mappedStmt->fetchAll(), 'xui_email');
         $mappedSet = array_flip($mapped);
 
-        $result = [];
         $obj = $list['data']['obj'] ?? [];
         if (!is_array($obj)) {
             return [];
         }
-        foreach ($obj as $inbound) {
-            if (!is_array($inbound)) {
-                continue;
-            }
-            $inboundId = (int) ($inbound['id'] ?? 0);
-            $protocol = is_string($inbound['protocol'] ?? null) ? $inbound['protocol'] : null;
-            foreach ($inbound['clientStats'] ?? [] as $stat) {
-                if (!is_array($stat) || !isset($stat['email'])) {
-                    continue;
-                }
-                $email = (string) $stat['email'];
-                $result[] = [
-                    'inbound_id' => $inboundId,
-                    'protocol' => $protocol,
-                    'email' => $email,
-                    'up' => (int) ($stat['up'] ?? 0),
-                    'down' => (int) ($stat['down'] ?? 0),
-                    'enable' => (bool) ($stat['enable'] ?? true),
-                    'uuid' => isset($stat['uuid']) ? (string) $stat['uuid'] : null,
-                    'mapped' => isset($mappedSet[$email]),
-                ];
-            }
+        $statsByEmail = \App\Xui\InboundTraffic::statsByEmail($obj);
+        $result = [];
+        foreach ($statsByEmail as $email => $s) {
+            $result[] = [
+                'inbound_id' => $s['inbound_id'],
+                'protocol' => $s['protocol'],
+                'email' => $email,
+                'up' => $s['up'],
+                'down' => $s['down'],
+                'enable' => $s['enable'],
+                'uuid' => $s['uuid'],
+                'mapped' => isset($mappedSet[$email]),
+            ];
         }
         return $result;
+    }
+
+    /** @return list<array{email:string,bytes:int,tracked_bytes:int,enabled:bool}> */
+    public static function listTrackedClients(int $panelId): array
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT xui_email, base_upload_bytes, base_download_bytes, last_xui_upload, last_xui_download,
+                    xui_baseline_upload, xui_baseline_download, enabled_in_xui
+             FROM vpn_clients WHERE panel_id = :pid ORDER BY xui_email'
+        );
+        $stmt->execute(['pid' => $panelId]);
+        $rows = $stmt->fetchAll();
+        $out = [];
+        foreach ($rows as $r) {
+            $up = max(0, (int) $r['base_upload_bytes'] + (int) $r['last_xui_upload'] - (int) $r['xui_baseline_upload']);
+            $down = max(0, (int) $r['base_download_bytes'] + (int) $r['last_xui_download'] - (int) $r['xui_baseline_download']);
+            $xuiTotal = (int) $r['last_xui_upload'] + (int) $r['last_xui_download'];
+            $out[] = [
+                'email' => (string) $r['xui_email'],
+                'bytes' => $xuiTotal,
+                'tracked_bytes' => $up + $down,
+                'enabled' => (int) $r['enabled_in_xui'] === 1,
+            ];
+        }
+        return $out;
     }
 
     public static function assignClient(int $panelId, int $customerId, string $email, int $inboundId, ?string $uuid, ?string $protocol): void
