@@ -61,9 +61,30 @@ final class Layout
         }
         $bottom = '';
         foreach (self::ADMIN_BOTTOM as $key => $item) {
+            if ($key === 'settings') {
+                $bottom .= '<button type="button" class="bottom-nav-item bottom-nav-menu-trigger" data-open-admin-menu aria-label="باز کردن منو" aria-expanded="false">'
+                    . '<span class="bn-icon">' . $item['icon'] . '</span><span>' . $item['label'] . '</span></button>';
+                continue;
+            }
             $cls = $key === $active ? 'active' : '';
             $bottom .= '<a class="bottom-nav-item ' . $cls . '" href="' . $item['href'] . '"><span class="bn-icon">' . $item['icon'] . '</span><span>' . $item['label'] . '</span></a>';
         }
+
+        $isDashboard = $active === 'dashboard';
+        $topClass = 'admin-top' . ($isDashboard ? ' admin-top-dashboard' : '');
+        $backHtml = $isDashboard
+            ? '<span class="admin-top-slot" aria-hidden="true"></span>'
+            : '<a class="admin-back" href="/admin/dashboard" data-admin-back aria-label="بازگشت"><span aria-hidden="true">←</span></a>';
+
+        $menuSheet = '<div class="admin-nav-sheet" id="admin-nav-sheet" hidden>
+            <div class="admin-nav-sheet-backdrop" data-close-admin-menu tabindex="-1" aria-hidden="true"></div>
+            <div class="admin-nav-sheet-panel" role="dialog" aria-modal="true" aria-label="منوی ادمین">
+                <div class="admin-nav-sheet-handle" aria-hidden="true"></div>
+                <div class="admin-nav-sheet-brand">JaySub <span>منو</span></div>
+                <nav class="admin-nav-sheet-links">' . $navHtml . '</nav>
+                <a class="admin-nav-sheet-logout" href="/admin/logout">خروج</a>
+            </div>
+        </div>';
 
         $criticalCss = self::CRITICAL_CSS;
         $cssHref = Assets::url('css/app.css');
@@ -89,13 +110,15 @@ final class Layout
         <a class="sidebar-logout" href="/admin/logout">خروج</a>
     </aside>
     <div class="admin-main">
-        <header class="admin-top">
-            <button type="button" class="menu-toggle" aria-label="منو" onclick="document.body.classList.toggle('sidebar-open')">☰</button>
+        <header class="{$topClass}">
+            {$backHtml}
             <h1 class="page-title">{$t}</h1>
+            <span class="admin-top-slot" aria-hidden="true"></span>
         </header>
         <main class="admin-content app-container">{$content}</main>
     </div>
 </div>
+{$menuSheet}
 <nav class="bottom-nav admin-bottom-nav">{$bottom}</nav>
 <script src="{$jsSrc}" defer></script>
 </body>
@@ -541,13 +564,6 @@ HTML;
         $chartHtml = str_replace('class="traffic-chart"', 'class="traffic-chart admin-dash-chart"', $chartHtml);
 
         return '<div class="admin-dash-page">
-            <header class="admin-dash-top">
-                <h2 class="admin-dash-title">داشبورد</h2>
-                <button type="button" class="admin-dash-menu" aria-label="منو" onclick="document.body.classList.toggle(\'sidebar-open\')">
-                    <span></span><span></span><span></span>
-                </button>
-            </header>
-
             <section class="admin-dash-hero ui-card">
                 <div class="admin-dash-hero-head">
                     <span class="admin-dash-globe" aria-hidden="true">

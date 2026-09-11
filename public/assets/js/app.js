@@ -96,4 +96,49 @@ document.addEventListener('DOMContentLoaded', () => {
     modal.hidden = false;
     document.body.classList.add('modal-open');
   });
+
+  const adminMenuSheet = document.getElementById('admin-nav-sheet');
+  const adminMenuTriggers = document.querySelectorAll('[data-open-admin-menu]');
+
+  const closeAdminMenu = () => {
+    if (!adminMenuSheet) return;
+    adminMenuSheet.hidden = true;
+    document.body.classList.remove('admin-menu-open');
+    adminMenuTriggers.forEach((btn) => btn.setAttribute('aria-expanded', 'false'));
+  };
+
+  const openAdminMenu = () => {
+    if (!adminMenuSheet) return;
+    adminMenuSheet.hidden = false;
+    document.body.classList.add('admin-menu-open');
+    adminMenuTriggers.forEach((btn) => btn.setAttribute('aria-expanded', 'true'));
+  };
+
+  adminMenuTriggers.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (adminMenuSheet && !adminMenuSheet.hidden) closeAdminMenu();
+      else openAdminMenu();
+    });
+  });
+
+  document.querySelectorAll('[data-close-admin-menu]').forEach((el) => {
+    el.addEventListener('click', closeAdminMenu);
+  });
+
+  adminMenuSheet?.querySelectorAll('a.sidebar-link').forEach((link) => {
+    link.addEventListener('click', closeAdminMenu);
+  });
+
+  document.querySelectorAll('[data-admin-back]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      if (window.history.length > 1) {
+        e.preventDefault();
+        window.history.back();
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && adminMenuSheet && !adminMenuSheet.hidden) closeAdminMenu();
+  });
 });
