@@ -623,10 +623,22 @@ HTML;
         $rows = '';
         foreach ($files as $f) {
             $dl = '/admin/backup/download?panel=' . (int) $f['panel_id'] . '&file=' . rawurlencode($f['filename']);
+            $edit = '/admin/panels/' . (int) $f['panel_id'] . '/edit';
+            $warn = !empty($f['host_mismatch'])
+                ? '<span class="backup-warn" title="نام فایل از 3x-ui است؛ دامنهٔ داخل نام با آدرس ثبت‌شده در JaySub یکی نیست — احتمالاً base URL پنل اشتباه است یا تنظیم دامنه در 3x-ui.">⚠ نام فایل: '
+                . htmlspecialchars((string) ($f['filename_host'] ?? ''), ENT_QUOTES, 'UTF-8')
+                . ' ≠ آدرس پنل</span>'
+                : '';
+            $urlLine = ($f['panel_base_url'] ?? '') !== ''
+                ? '<span class="muted backup-url">' . htmlspecialchars((string) $f['panel_base_url'], ENT_QUOTES, 'UTF-8')
+                . ' · <a href="' . htmlspecialchars($edit, ENT_QUOTES, 'UTF-8') . '">ویرایش پنل</a></span>'
+                : '';
             $rows .= '<div class="data-card-row backup-row">'
                 . '<span class="backup-meta">'
                 . '<strong>' . htmlspecialchars($f['panel_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
+                . $urlLine
                 . '<span class="muted mono">' . htmlspecialchars($f['filename'], ENT_QUOTES, 'UTF-8') . '</span>'
+                . $warn
                 . '</span><span>'
                 . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
                 . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $f['mtime'])), ENT_QUOTES, 'UTF-8')

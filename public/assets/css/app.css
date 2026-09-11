@@ -1186,6 +1186,8 @@ form.stack select {
 .backup-row { flex-wrap: wrap; gap: 0.35rem; }
 .backup-meta { display: flex; flex-direction: column; gap: 0.15rem; }
 .backup-meta .mono { font-size: 0.78rem; }
+.backup-url { font-size: 0.75rem; display: block; }
+.backup-warn { display: block; font-size: 0.75rem; color: #fcd34d; margin-top: 0.2rem; }
 
 .tg-tab-panel textarea {
   width: 100%;

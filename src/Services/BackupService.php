@@ -115,10 +115,14 @@ final class BackupService
     public static function listFiles(array $config): array
     {
         $root = self::storageRoot($config);
-        $panels = Database::pdo()->query('SELECT id, name FROM vpn_panels ORDER BY id')->fetchAll();
-        $names = [];
+        $panels = Database::pdo()->query('SELECT id, name, base_url FROM vpn_panels ORDER BY id')->fetchAll();
+        /** @var array<int, array{name:string, base_url:string}> $panelMeta */
+        $panelMeta = [];
         foreach ($panels as $p) {
-            $names[(int) $p['id']] = (string) $p['name'];
+            $panelMeta[(int) $p['id']] = [
+                'name' => (string) $p['name'],
+                'base_url' => (string) $p['base_url'],
+            ];
         }
 
         $out = [];
@@ -127,7 +131,8 @@ final class BackupService
             if ($panelId <= 0) {
                 continue;
             }
-            $panelName = $names[$panelId] ?? ('پنل #' . $panelId);
+            $meta = $panelMeta[$panelId] ?? ['name' => 'پنل #' . $panelId, 'base_url' => ''];
+            $panelHost = self::hostFromPanelUrl($meta['base_url']);
             foreach (glob($panelDir . '/*') ?: [] as $path) {
                 if (!is_file($path)) {
                     continue;
@@ -136,12 +141,18 @@ final class BackupService
                 if (!self::isAllowedFilename($name)) {
                     continue;
                 }
+                $fileHost = self::hostFromBackupFilename($name);
+                $mismatch = $panelHost !== null && $fileHost !== null
+                    && strtolower($fileHost) !== strtolower($panelHost);
                 $out[] = [
                     'panel_id' => $panelId,
-                    'panel_name' => $panelName,
+                    'panel_name' => $meta['name'],
+                    'panel_base_url' => $meta['base_url'],
                     'filename' => $name,
                     'bytes' => (int) filesize($path),
                     'mtime' => (int) filemtime($path),
+                    'host_mismatch' => $mismatch,
+                    'filename_host' => $fileHost,
                 ];
             }
         }
@@ -175,6 +186,25 @@ final class BackupService
             return false;
         }
         return (bool) preg_match('/^[A-Za-z0-9._\-]+$/', $filename);
+    }
+
+    public static function hostFromPanelUrl(string $baseUrl): ?string
+    {
+        $host = parse_url(trim($baseUrl), PHP_URL_HOST);
+        if (!is_string($host) || $host === '') {
+            return null;
+        }
+        return strtolower($host);
+    }
+
+    /** Host prefix in 3x-ui backup names, e.g. bell2.jay-force.ir from bell2.jay-force.ir_2026-09-11_091435.db */
+    public static function hostFromBackupFilename(string $filename): ?string
+    {
+        $base = preg_replace('/\.(db|dump)$/i', '', $filename) ?? $filename;
+        if (preg_match('/^(.+)_\d{4}-\d{2}-\d{2}_\d{6}$/', $base, $m)) {
+            return $m[1];
+        }
+        return null;
     }
 
     private static function prunePanelDir(string $dir, int $keep): void
