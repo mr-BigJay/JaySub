@@ -105,15 +105,15 @@ final class TrafficSyncService
                 xui_baseline_upload, xui_baseline_download, last_xui_upload, last_xui_download
              ) VALUES (
                 :cid, :pid, :sid, :inbound, :email, :uuid, :protocol,
-                :bup, :bdown, :bup, :bdown
+                :bup, :bdown, :last_up, :last_down
              )'
         );
         $freezeBaseline = $pdo->prepare(
             'UPDATE vpn_clients SET
                 xui_baseline_upload = :bup,
                 xui_baseline_download = :bdown,
-                last_xui_upload = :bup,
-                last_xui_download = :bdown,
+                last_xui_upload = :last_up,
+                last_xui_download = :last_down,
                 updated_at = CURRENT_TIMESTAMP
              WHERE id = :id'
         );
@@ -146,6 +146,8 @@ final class TrafficSyncService
                     'protocol' => $s['protocol'],
                     'bup' => $s['up'],
                     'bdown' => $s['down'],
+                    'last_up' => $s['up'],
+                    'last_down' => $s['down'],
                 ]);
                 continue;
             }
@@ -157,6 +159,8 @@ final class TrafficSyncService
                 $freezeBaseline->execute([
                     'bup' => $s['up'],
                     'bdown' => $s['down'],
+                    'last_up' => $s['up'],
+                    'last_down' => $s['down'],
                     'id' => $vc['id'],
                 ]);
                 continue;
