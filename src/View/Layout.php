@@ -853,15 +853,15 @@ HTML;
                     <button type="button" class="xui-panel-url" data-copy-text="' . $baseAttr . '" title="کلیک برای کپی آدرس">' . $baseEsc . '</button>
                 </div>
                 <div class="xui-panel-footer">
+                    <div class="xui-panel-tags">
+                        <span class="xui-panel-tag">' . $cust . '</span>
+                        <span class="xui-panel-tag xui-panel-tag-traffic" title="مصرف sync‌شده">' . htmlspecialchars($traffic, ENT_QUOTES, 'UTF-8') . '</span>
+                    </div>
                     <div class="sub-mgmt-panel-actions">
                         <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/clients">کلاینت‌ها</a>
                         <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/edit">ویرایش</a>
                         <form method="post" action="/admin/panels/' . $pid . '/test" class="inline-form">' . $csrfField
                 . '<button type="submit" class="btn btn-sm btn-primary">تست</button></form>
-                    </div>
-                    <div class="xui-panel-tags">
-                        <span class="xui-panel-tag">' . $cust . '</span>
-                        <span class="xui-panel-tag xui-panel-tag-traffic" title="مصرف sync‌شده">' . htmlspecialchars($traffic, ENT_QUOTES, 'UTF-8') . '</span>
                     </div>
                 </div>
             </article>' . $err;

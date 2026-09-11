@@ -660,9 +660,11 @@ body.admin-menu-open { overflow: hidden; }
 }
 .xui-panel-link-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+  direction: ltr;
 }
 .xui-panel-dot {
   flex-shrink: 0;
@@ -677,7 +679,7 @@ body.admin-menu-open { overflow: hidden; }
   flex: 1;
   min-width: 0;
   display: block;
-  text-align: right;
+  text-align: left;
   font-family: ui-monospace, monospace;
   font-size: 0.68rem;
   color: #a5b4fc;
@@ -702,6 +704,7 @@ body.admin-menu-open { overflow: hidden; }
   padding-top: 0.45rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   flex-wrap: wrap;
+  direction: ltr;
 }
 .xui-panel-tags {
   display: flex;
@@ -731,12 +734,14 @@ body.admin-menu-open { overflow: hidden; }
   margin: 0;
   padding: 0;
   border: none;
-  justify-content: flex-start;
+  justify-content: flex-end;
+  margin-left: auto;
+  direction: rtl;
 }
 @media (max-width: 640px) {
-  .xui-panel-footer { flex-direction: column; align-items: stretch; }
-  .xui-panel-tags { justify-content: flex-start; }
-  .sub-mgmt-panel-actions { justify-content: flex-start; }
+  .xui-panel-footer { flex-direction: row; align-items: center; }
+  .xui-panel-tags { justify-content: flex-start; flex: 1; min-width: 0; }
+  .sub-mgmt-panel-actions { justify-content: flex-end; flex-shrink: 0; }
 }
 .app-toast-dialog {
   width: min(100%, 340px);
