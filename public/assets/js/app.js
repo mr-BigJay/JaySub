@@ -91,4 +91,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key !== 'Escape') return;
     document.querySelectorAll('.app-modal:not([hidden])').forEach((modal) => closeModal(modal));
   });
+
+  document.querySelectorAll('.app-modal[data-auto-open]').forEach((modal) => {
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+  });
 });

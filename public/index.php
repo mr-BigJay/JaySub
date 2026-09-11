@@ -405,17 +405,14 @@ if ($uri === '/admin/panels' && $method === 'GET') {
 
     $flash = Session::get('flash_admin');
     Session::remove('flash_admin');
-    $flashHtml = is_string($flash) && $flash !== ''
-        ? '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>'
-        : '';
+    $flashError = is_string($flash) && $flash !== '' ? $flash : '';
     $flashOk = Session::get('flash_admin_ok');
     Session::remove('flash_admin_ok');
-    if (is_string($flashOk) && $flashOk !== '') {
-        $flashHtml = '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
-    }
+    $flashSuccess = is_string($flashOk) && $flashOk !== '' ? $flashOk : '';
 
     $body = Layout::adminXuiPanelsPage(
-        $flashHtml,
+        $flashError,
+        $flashSuccess,
         Csrf::field(),
         $customerOptions,
         $panels,

@@ -794,7 +794,8 @@ HTML;
      * @param list<array<string, mixed>> $panels
      */
     public static function adminXuiPanelsPage(
-        string $flashHtml,
+        string $flashError,
+        string $flashSuccess,
         string $csrfField,
         string $customerOptionsHtml,
         array $panels,
@@ -826,28 +827,26 @@ HTML;
             $baseEsc = htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8');
             $baseAttr = htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8');
             $traffic = Format::bytesAuto((float) ($p['traffic_bytes'] ?? 0));
-            $panelName = htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8');
             $err = '';
             if (!empty($p['last_error'])) {
                 $err = '<p class="muted sub-mgmt-panel-err">' . htmlspecialchars((string) $p['last_error'], ENT_QUOTES, 'UTF-8') . '</p>';
             }
             $panelChips .= '<article class="xui-panel-item">
-                <div class="xui-panel-row">
-                    <div class="xui-panel-meta">
-                        <span class="xui-panel-tag">' . $cust . '</span>
-                        <span class="xui-panel-traffic" title="مصرف sync‌شده">' . htmlspecialchars($traffic, ENT_QUOTES, 'UTF-8') . '</span>
-                    </div>
-                    <div class="xui-panel-center">
-                        <span class="xui-panel-name">' . $panelName . '</span>
-                        <button type="button" class="xui-panel-url" data-copy-text="' . $baseAttr . '" title="کلیک برای کپی آدرس">' . $baseEsc . '</button>
-                    </div>
+                <div class="xui-panel-link-row">
                     <span class="xui-panel-dot ' . $dot . '" title="' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '" aria-label="' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '"></span>
+                    <button type="button" class="xui-panel-url" data-copy-text="' . $baseAttr . '" title="کلیک برای کپی آدرس">' . $baseEsc . '</button>
                 </div>
-                <div class="sub-mgmt-panel-actions">
-                    <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/clients">کلاینت‌ها</a>
-                    <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/edit">ویرایش</a>
-                    <form method="post" action="/admin/panels/' . $pid . '/test" class="inline-form">' . $csrfField
+                <div class="xui-panel-footer">
+                    <div class="sub-mgmt-panel-actions">
+                        <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/clients">کلاینت‌ها</a>
+                        <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/edit">ویرایش</a>
+                        <form method="post" action="/admin/panels/' . $pid . '/test" class="inline-form">' . $csrfField
                 . '<button type="submit" class="btn btn-sm btn-primary">تست</button></form>
+                    </div>
+                    <div class="xui-panel-tags">
+                        <span class="xui-panel-tag">' . $cust . '</span>
+                        <span class="xui-panel-tag xui-panel-tag-traffic" title="مصرف sync‌شده">' . htmlspecialchars($traffic, ENT_QUOTES, 'UTF-8') . '</span>
+                    </div>
                 </div>
             </article>' . $err;
         }
@@ -870,7 +869,14 @@ HTML;
                     </div>
                 </form>';
 
-        return '<div class="sub-mgmt-page">' . $flashHtml . '
+        $flashModal = '';
+        if ($flashSuccess !== '') {
+            $flashModal = self::adminFlashToastModal($flashSuccess, 'success');
+        } elseif ($flashError !== '') {
+            $flashModal = self::adminFlashToastModal($flashError, 'error');
+        }
+
+        return '<div class="sub-mgmt-page">' . $flashModal . '
             <header class="sub-mgmt-toolbar">
                 <a class="sub-mgmt-back" href="/admin/dashboard" aria-label="بازگشت">←</a>
                 <h2 class="sub-mgmt-title">پنل‌های 3X-UI</h2>
@@ -902,6 +908,22 @@ HTML;
                 </div>
             </div>
         </div>';
+    }
+
+    private static function adminFlashToastModal(string $message, string $variant): string
+    {
+        $msg = htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
+        $cls = $variant === 'success' ? 'app-toast-success' : 'app-toast-error';
+        $icon = $variant === 'success' ? '✓' : '!';
+
+        return '<div class="app-modal app-flash-toast" id="panels-flash-toast" data-auto-open hidden>
+                <div class="app-modal-backdrop" data-close-modal tabindex="-1" aria-hidden="true"></div>
+                <div class="app-modal-dialog app-toast-dialog" role="alertdialog" aria-modal="true">
+                    <div class="app-toast-icon ' . $cls . '" aria-hidden="true">' . $icon . '</div>
+                    <p class="app-toast-msg ' . $cls . '">' . $msg . '</p>
+                    <button type="button" class="btn btn-primary app-toast-ok" data-close-modal>باشه</button>
+                </div>
+            </div>';
     }
 
     private static function statusPill(string $statusKey): string
