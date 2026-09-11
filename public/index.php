@@ -642,6 +642,17 @@ if (in_array($uri, ['/admin/subscriptions', '/admin/sales', '/admin/payments', '
 
 if ($uri === '/admin/customers' && $method === 'GET') {
     requireAdmin();
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
     $q = trim($_GET['q'] ?? '');
     $statusFilter = trim($_GET['status'] ?? '');
     $rows = CustomerService::listAll();
@@ -675,7 +686,7 @@ if ($uri === '/admin/customers' && $method === 'GET') {
         <button class="btn btn-secondary" type="submit">فیلتر</button></form>
         <p class="toolbar"><a class="btn btn-primary" href="/admin/customers/new">ایجاد کاربر</a></p>'
         . Layout::responsiveTable(['کاربر', 'مصرف', '٪', 'انقضا', 'وضعیت', ''], $tableRows);
-    adminPage('کاربران', 'users', Layout::card($html));
+    adminPage('کاربران', 'users', $flashHtml . Layout::card($html));
 }
 
 if ($uri === '/admin/customers/new' && $method === 'GET') {
@@ -686,7 +697,7 @@ if ($uri === '/admin/customers/new' && $method === 'GET') {
         <label>توضیحات</label><textarea name="notes" rows="3"></textarea>
         <label>Telegram Chat ID</label><input name="telegram_chat_id">
         <label><input type="checkbox" name="is_active" value="1" checked> حساب فعال</label>
-        <p class="muted">پس از ایجاد، از منوی <strong>سرویس‌ها</strong> حجم، تاریخ انقضا و لینک اشتراک را تنظیم کنید.</p>
+        <p class="muted form-hint">فقط پروفایل کاربر — بدون مرحلهٔ بعد. حجم، تاریخ انقضا و لینک اشتراک را بعداً از <a href="/admin/services">سرویس‌ها</a> تنظیم کنید.</p>
         <button class="btn btn-primary" type="submit">ایجاد کاربر</button>
     </form>';
     adminPage('مشتری جدید', 'users', Layout::card($form));
@@ -697,7 +708,10 @@ if ($uri === '/admin/customers/new' && $method === 'POST') {
     requireCsrf();
     try {
         $username = trim($_POST['username'] ?? '');
-        $id = CustomerService::create([
+        if ($username === '') {
+            throw new \InvalidArgumentException('نام کاربری الزامی است.');
+        }
+        CustomerService::createUser([
             'name' => $username,
             'username' => $username,
             'mobile' => trim($_POST['mobile'] ?? '') ?: null,
@@ -706,12 +720,12 @@ if ($uri === '/admin/customers/new' && $method === 'POST') {
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'warning1_percent' => 80,
             'warning2_percent' => 90,
-        ], 0, AuthService::adminId());
+        ], AuthService::adminId());
         Session::set(
             'flash_admin_ok',
-            'کاربر «' . $username . '» ایجاد شد. از ستون «تنظیم سرویس» حجم و تاریخ انقضا را مشخص کنید.'
+            'کاربر «' . $username . '» اضافه شد. برای حجم و انقضا به منوی سرویس‌ها بروید.'
         );
-        Response::redirect('/admin/services');
+        Response::redirect('/admin/customers');
     } catch (\Throwable $e) {
         adminPage('خطا', 'users', Layout::card('<div class="alert alert-error">' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>'));
     }
@@ -758,7 +772,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
         <p class="muted form-hint">پنل‌های فعال را تیک بزنید؛ مصرف همهٔ کلاینت‌های همان پنل در 3x-ui خودکار sync می‌شود.</p>
         <button class="btn btn-primary" type="submit">ذخیره سرویس</button></form>
         <p style="margin-top:1rem"><a href="/admin/customers/' . $id . '">مدیریت پنل و کلاینت</a></p>';
-    adminPage('راه‌اندازی سرویس', 'services', Layout::card($body));
+    adminPage('تنظیم سرویس', 'services', Layout::card($body));
 }
 
 if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'POST') {
