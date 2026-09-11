@@ -766,7 +766,6 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
         $breakRows .= '<div class="data-card-row"><span>' . htmlspecialchars($b['name'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesToGb($t) . '</span></div>';
     }
     $endsVal = $sub && $sub['ends_at'] ? date('Y-m-d', strtotime((string) $sub['ends_at'])) : '';
-    $subLink = htmlspecialchars((string) ($customer['subscription_link'] ?? ''), ENT_QUOTES, 'UTF-8');
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
         <p class="muted">مصرف تجمیعی (پنل‌های فعال): <strong>' . Format::bytesToGb($used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
         . ($breakRows ? Layout::card($breakRows, 'مصرف به تفکیک پنل (ادمین)') : '')
@@ -775,7 +774,6 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
         <label>هشدار در (٪)</label><input name="warning1_percent" type="number" value="' . (int) $customer['warning1_percent'] . '">
         <label>هشدار دوم (٪)</label><input name="warning2_percent" type="number" value="' . (int) $customer['warning2_percent'] . '">
         <label>تاریخ انقضا</label><input name="ends_at" type="date" value="' . $endsVal . '">
-        <label>Subscription Link</label><input name="subscription_link" value="' . $subLink . '" placeholder="https://...">
         <fieldset class="panel-pick"><legend>پنل‌های فعال برای این سرویس</legend>' . ($panelChecks ?: '<p class="muted">ابتدا از صفحه مشتری پنل XUI اضافه کنید.</p>') . '</fieldset>
         <p class="muted form-hint">پنل‌های فعال را تیک بزنید؛ مصرف همهٔ کلاینت‌های همان پنل در 3x-ui خودکار sync می‌شود.</p>
         <button class="btn btn-primary" type="submit">ذخیره سرویس</button></form>
@@ -793,7 +791,6 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'P
         'warning1_percent' => (int) ($_POST['warning1_percent'] ?? 80),
         'warning2_percent' => (int) ($_POST['warning2_percent'] ?? 90),
         'ends_at' => $ends !== '' ? $ends . ' 23:59:59' : null,
-        'subscription_link' => trim($_POST['subscription_link'] ?? ''),
     ], AuthService::adminId());
     $panelIds = array_map('intval', $_POST['panel_ids'] ?? []);
     CustomerService::setPanelActivation($id, $panelIds);
