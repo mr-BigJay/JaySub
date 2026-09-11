@@ -1183,6 +1183,10 @@ form.stack select {
 .tg-pill.on { background: rgba(34, 197, 94, 0.15); color: #86efac; }
 .tg-pill.off { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
 .tg-pill.warn { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+.backup-row { flex-wrap: wrap; gap: 0.35rem; }
+.backup-meta { display: flex; flex-direction: column; gap: 0.15rem; }
+.backup-meta .mono { font-size: 0.78rem; }
+
 .tg-tab-panel textarea {
   width: 100%;
   font-family: ui-monospace, monospace;

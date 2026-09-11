@@ -58,6 +58,96 @@ final class XuiClient
     }
 
     /**
+     * Same as panel UI «Back Up» — GET /panel/api/server/getDb (SQLite .db or Postgres .dump).
+     *
+     * @return array{ok:bool, body?:string, filename?:string, error?:string, http_code?:int}
+     */
+    public function downloadDatabaseBackup(int $timeoutSeconds = 180): array
+    {
+        return $this->requestBinary('GET', '/panel/api/server/getDb', $timeoutSeconds);
+    }
+
+    /**
+     * @return array{ok:bool, body?:string, filename?:string, error?:string, http_code?:int}
+     */
+    private function requestBinary(string $method, string $path, int $timeoutSeconds): array
+    {
+        $url = rtrim($this->baseUrl, '/') . $path;
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init failed'];
+        }
+
+        $headers = [
+            'Accept: */*',
+            'Authorization: Bearer ' . $this->apiToken,
+            'X-Requested-With: XMLHttpRequest',
+        ];
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_TIMEOUT => $timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $raw = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($raw === false) {
+            return ['ok' => false, 'error' => $curlError ?: 'Request failed', 'http_code' => $httpCode];
+        }
+
+        $headerBlock = substr($raw, 0, $headerSize);
+        $body = substr($raw, $headerSize);
+        if ($httpCode >= 400 || $body === '') {
+            $trim = trim($body);
+            if ($trim !== '' && str_starts_with($trim, '{')) {
+                $decoded = json_decode($trim, true);
+                if (is_array($decoded)) {
+                    $msg = is_string($decoded['msg'] ?? null) ? $decoded['msg'] : 'API error';
+                    return ['ok' => false, 'error' => $msg, 'http_code' => $httpCode];
+                }
+            }
+            return [
+                'ok' => false,
+                'error' => $this->describeNonJsonResponse($httpCode, $body),
+                'http_code' => $httpCode,
+            ];
+        }
+
+        $filename = self::filenameFromHeaders($headerBlock) ?? 'x-ui.db';
+
+        return ['ok' => true, 'body' => $body, 'filename' => $filename, 'http_code' => $httpCode];
+    }
+
+    private static function filenameFromHeaders(string $headerBlock): ?string
+    {
+        if (!preg_match('/^Content-Disposition:\s*(.+)$/im', $headerBlock, $m)) {
+            return null;
+        }
+        $value = trim($m[1]);
+        if (preg_match("/filename\\*=UTF-8''([^\\s;]+)/i", $value, $fm)) {
+            return rawurldecode($fm[1]);
+        }
+        if (preg_match('/filename="([^"]+)"/i', $value, $fm)) {
+            return $fm[1];
+        }
+        if (preg_match('/filename=([^;\\s]+)/i', $value, $fm)) {
+            return trim($fm[1], "\"'");
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<string, mixed>|null $body
      * @return array{ok: bool, data?: mixed, error?: string, http_code?: int}
      */

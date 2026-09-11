@@ -616,6 +616,33 @@ HTML;
     }
 
     /**
+     * @param list<array{panel_id:int, panel_name:string, filename:string, bytes:int, mtime:int}> $files
+     */
+    public static function adminBackupPage(string $flashHtml, array $files, string $csrfField): string
+    {
+        $rows = '';
+        foreach ($files as $f) {
+            $dl = '/admin/backup/download?panel=' . (int) $f['panel_id'] . '&file=' . rawurlencode($f['filename']);
+            $rows .= '<div class="data-card-row backup-row">'
+                . '<span class="backup-meta">'
+                . '<strong>' . htmlspecialchars($f['panel_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
+                . '<span class="muted mono">' . htmlspecialchars($f['filename'], ENT_QUOTES, 'UTF-8') . '</span>'
+                . '</span><span>'
+                . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
+                . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $f['mtime'])), ENT_QUOTES, 'UTF-8')
+                . ' <a class="btn btn-sm btn-ghost" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">دانلود</a>'
+                . '</span></div>';
+        }
+
+        return $flashHtml
+            . '<p class="muted form-hint">بک‌آپ همان فایل <code>.db</code> (یا <code>.dump</code>) پنل 3x-ui است — معادل «Back Up» در Backup &amp; Restore. نام فایل از پنل بدون تغییر ذخیره می‌شود (مثلاً <code>domain_2026-09-11_090912.db</code>).</p>'
+            . '<p class="muted form-hint">هر <strong>۴ ساعت</strong> از همهٔ پنل‌های <strong>فعال</strong> بک‌آپ گرفته می‌شود. کرون: <code>scripts/install-backup-cron.sh</code></p>'
+            . '<form method="post" action="/admin/backup" class="toolbar">' . $csrfField
+            . '<button class="btn btn-primary" type="submit">بک‌آپ الان (همه پنل‌های فعال)</button></form>'
+            . self::card($rows !== '' ? $rows : '<p class="muted">هنوز بک‌آپی ذخیره نشده — دکمه بالا را بزنید یا کرون را نصب کنید.</p>', 'فایل‌های ذخیره‌شده (حداکثر ۴۰ عدد به‌ازای هر پنل)');
+    }
+
+    /**
      * @param array{token:string, enabled:bool, admin_chat_id:string, proxy_enabled:bool, proxy_url:string, v2ray_config:string, bot_info:array{ok:bool, username?:string, name?:string, error?:string}} $state
      */
     public static function adminTelegramPage(string $activeTab, string $flashHtml, array $state, string $csrfField): string

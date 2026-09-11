@@ -4,13 +4,29 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Core\Database;
+use App\Core\Encryption;
+use App\Xui\XuiClient;
+
 final class BackupService
 {
+    private const MAX_FILES_PER_PANEL = 40;
+
     /** @param array<string, mixed> $config */
-    public static function storageDir(array $config): string
+    public static function storageRoot(array $config): string
     {
         $base = (string) ($config['paths']['storage'] ?? dirname(__DIR__, 2) . '/storage');
-        $dir = rtrim($base, '/') . '/backups';
+        $dir = rtrim($base, '/') . '/backups/xui';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0750, true);
+        }
+        return $dir;
+    }
+
+    /** @param array<string, mixed> $config */
+    public static function panelDir(array $config, int $panelId): string
+    {
+        $dir = self::storageRoot($config) . '/' . $panelId;
         if (!is_dir($dir)) {
             mkdir($dir, 0750, true);
         }
@@ -19,161 +35,152 @@ final class BackupService
 
     /**
      * @param array<string, mixed> $config
-     * @return array{filename:string, bytes:int, method:string}
+     * @return array{filename:string, bytes:int, panel_id:int, panel_name:string}
      */
-    public static function create(array $config): array
+    public static function backupPanel(array $config, int $panelId, Encryption $encryption): array
     {
-        $dir = self::storageDir($config);
-        $filename = 'jaysub-' . date('Y-m-d-His') . '.sql.gz';
+        $stmt = Database::pdo()->prepare('SELECT id, name, base_url, api_token_encrypted, is_active FROM vpn_panels WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $panelId]);
+        $panel = $stmt->fetch();
+        if ($panel === false) {
+            throw new \RuntimeException('پنل یافت نشد.');
+        }
+        if ((int) ($panel['is_active'] ?? 0) !== 1) {
+            throw new \RuntimeException('پنل غیرفعال است — بک‌آپ خودکار فقط برای پنل‌های فعال است.');
+        }
+
+        $token = $encryption->decrypt((string) $panel['api_token_encrypted']);
+        $xui = new XuiClient((string) $panel['base_url'], $token);
+        $result = $xui->downloadDatabaseBackup();
+        if (!$result['ok'] || !isset($result['body'], $result['filename'])) {
+            throw new \RuntimeException($result['error'] ?? 'دانلود بک‌آپ از 3x-ui ناموفق بود.');
+        }
+
+        $filename = self::sanitizeFilename($result['filename']);
+        $dir = self::panelDir($config, $panelId);
         $path = $dir . '/' . $filename;
-
-        $db = $config['database'] ?? [];
-        $host = (string) ($db['host'] ?? '127.0.0.1');
-        $port = (int) ($db['port'] ?? 3306);
-        $name = (string) ($db['name'] ?? '');
-        $user = (string) ($db['user'] ?? '');
-        $pass = (string) ($db['password'] ?? '');
-
-        if ($name === '' || $user === '') {
-            throw new \RuntimeException('تنظیمات دیتابیس در config.php ناقص است.');
+        if (file_put_contents($path, $result['body'], LOCK_EX) === false) {
+            throw new \RuntimeException('ذخیره فایل بک‌آپ روی سرور ناموفق بود.');
         }
 
-        $method = 'php';
-        if (self::commandExists('mysqldump')) {
-            $method = 'mysqldump';
-            $cmd = sprintf(
-                'mysqldump --single-transaction --quick --host=%s --port=%d --user=%s %s 2>/dev/null | gzip -c > %s',
-                escapeshellarg($host),
-                $port,
-                escapeshellarg($user),
-                escapeshellarg($name),
-                escapeshellarg($path)
-            );
-            $hadPwd = getenv('MYSQL_PWD');
-            if ($pass !== '') {
-                putenv('MYSQL_PWD=' . $pass);
-            }
-            $proc = proc_open(
-                $cmd,
-                [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']],
-                $pipes
-            );
-            if ($pass !== '') {
-                if ($hadPwd !== false) {
-                    putenv('MYSQL_PWD=' . $hadPwd);
-                } else {
-                    putenv('MYSQL_PWD');
-                }
-            }
-            if (is_resource($proc)) {
-                fclose($pipes[0]);
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-                $code = proc_close($proc);
-                if ($code !== 0 || !is_file($path) || filesize($path) < 32) {
-                    @unlink($path);
-                    $method = 'php';
-                }
-            } else {
-                $method = 'php';
-            }
-        }
-
-        if ($method === 'php') {
-            self::exportViaPhp($config, $path);
-        }
-
-        if (!is_file($path)) {
-            throw new \RuntimeException('ایجاد فایل پشتیبان ناموفق بود.');
-        }
-
-        self::pruneOld($dir, 10);
+        self::prunePanelDir($dir, self::MAX_FILES_PER_PANEL);
 
         return [
             'filename' => $filename,
             'bytes' => (int) filesize($path),
-            'method' => $method,
+            'panel_id' => $panelId,
+            'panel_name' => (string) $panel['name'],
         ];
     }
 
-    /** @param array<string, mixed> $config */
-    private static function exportViaPhp(array $config, string $gzipPath): void
+    /**
+     * @param array<string, mixed> $config
+     * @return list<array{panel_id:int, panel_name:string, filename:string, bytes:int, ok:bool, error?:string}>
+     */
+    public static function backupAllActivePanels(array $config, Encryption $encryption): array
     {
-        $pdo = \App\Core\Database::pdo();
-        $sql = "-- JaySub backup " . date('c') . "\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n";
-        $tables = $pdo->query('SHOW TABLES')->fetchAll(\PDO::FETCH_COLUMN);
-        foreach ($tables as $table) {
-            $table = (string) $table;
-            $create = $pdo->query('SHOW CREATE TABLE `' . str_replace('`', '``', $table) . '`')->fetch();
-            if (!is_array($create)) {
-                continue;
-            }
-            $sql .= "\nDROP TABLE IF EXISTS `{$table}`;\n";
-            $sql .= $create['Create Table'] . ";\n";
-            $rows = $pdo->query('SELECT * FROM `' . str_replace('`', '``', $table) . '`');
-            while ($row = $rows->fetch(\PDO::FETCH_ASSOC)) {
-                $cols = array_map(static fn ($c) => '`' . str_replace('`', '``', (string) $c) . '`', array_keys($row));
-                $vals = [];
-                foreach ($row as $v) {
-                    if ($v === null) {
-                        $vals[] = 'NULL';
-                    } elseif (is_int($v) || is_float($v)) {
-                        $vals[] = (string) $v;
-                    } else {
-                        $vals[] = $pdo->quote((string) $v);
-                    }
-                }
-                $sql .= 'INSERT INTO `' . $table . '` (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ");\n";
+        $rows = Database::pdo()->query(
+            'SELECT id, name FROM vpn_panels WHERE is_active = 1 ORDER BY id'
+        )->fetchAll();
+        $out = [];
+        foreach ($rows as $row) {
+            $pid = (int) $row['id'];
+            $name = (string) $row['name'];
+            try {
+                $r = self::backupPanel($config, $pid, $encryption);
+                $out[] = [
+                    'panel_id' => $pid,
+                    'panel_name' => $name,
+                    'filename' => $r['filename'],
+                    'bytes' => $r['bytes'],
+                    'ok' => true,
+                ];
+            } catch (\Throwable $e) {
+                $out[] = [
+                    'panel_id' => $pid,
+                    'panel_name' => $name,
+                    'filename' => '',
+                    'bytes' => 0,
+                    'ok' => false,
+                    'error' => $e->getMessage(),
+                ];
             }
         }
-        $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
-        $gz = gzopen($gzipPath, 'wb9');
-        if ($gz === false) {
-            throw new \RuntimeException('gzip باز نشد');
-        }
-        gzwrite($gz, $sql);
-        gzclose($gz);
+        return $out;
     }
 
-    /** @return list<array{filename:string, bytes:int, mtime:int}> */
+    /**
+     * @return list<array{panel_id:int, panel_name:string, filename:string, bytes:int, mtime:int}>
+     */
     public static function listFiles(array $config): array
     {
-        $dir = self::storageDir($config);
-        $files = glob($dir . '/jaysub-*.sql.gz') ?: [];
+        $root = self::storageRoot($config);
+        $panels = Database::pdo()->query('SELECT id, name FROM vpn_panels ORDER BY id')->fetchAll();
+        $names = [];
+        foreach ($panels as $p) {
+            $names[(int) $p['id']] = (string) $p['name'];
+        }
+
         $out = [];
-        foreach ($files as $path) {
-            $name = basename($path);
-            $out[] = [
-                'filename' => $name,
-                'bytes' => (int) filesize($path),
-                'mtime' => (int) filemtime($path),
-            ];
+        foreach (glob($root . '/*', GLOB_ONLYDIR) ?: [] as $panelDir) {
+            $panelId = (int) basename($panelDir);
+            if ($panelId <= 0) {
+                continue;
+            }
+            $panelName = $names[$panelId] ?? ('پنل #' . $panelId);
+            foreach (glob($panelDir . '/*') ?: [] as $path) {
+                if (!is_file($path)) {
+                    continue;
+                }
+                $name = basename($path);
+                if (!self::isAllowedFilename($name)) {
+                    continue;
+                }
+                $out[] = [
+                    'panel_id' => $panelId,
+                    'panel_name' => $panelName,
+                    'filename' => $name,
+                    'bytes' => (int) filesize($path),
+                    'mtime' => (int) filemtime($path),
+                ];
+            }
         }
         usort($out, static fn ($a, $b) => $b['mtime'] <=> $a['mtime']);
         return $out;
     }
 
     /** @param array<string, mixed> $config */
-    public static function resolveDownloadPath(array $config, string $filename): ?string
+    public static function resolveDownloadPath(array $config, int $panelId, string $filename): ?string
     {
-        if (!preg_match('/^jaysub-\d{4}-\d{2}-\d{2}-\d{6}\.sql\.gz$/', $filename)) {
+        if ($panelId <= 0 || !self::isAllowedFilename($filename)) {
             return null;
         }
-        $path = self::storageDir($config) . '/' . $filename;
+        $path = self::panelDir($config, $panelId) . '/' . $filename;
         return is_file($path) ? $path : null;
     }
 
-    private static function commandExists(string $cmd): bool
+    public static function sanitizeFilename(string $filename): string
     {
-        $out = [];
-        $code = 0;
-        @exec('command -v ' . escapeshellarg($cmd) . ' 2>/dev/null', $out, $code);
-        return $code === 0 && $out !== [];
+        $filename = basename(str_replace(['\\', '/'], '', $filename));
+        $filename = trim($filename);
+        if ($filename === '' || !self::isAllowedFilename($filename)) {
+            throw new \RuntimeException('نام فایل بک‌آپ از پنل نامعتبر است: ' . $filename);
+        }
+        return $filename;
     }
 
-    private static function pruneOld(string $dir, int $keep): void
+    public static function isAllowedFilename(string $filename): bool
     {
-        $files = glob($dir . '/jaysub-*.sql.gz') ?: [];
+        if ($filename === '' || strlen($filename) > 200) {
+            return false;
+        }
+        return (bool) preg_match('/^[A-Za-z0-9._\-]+$/', $filename);
+    }
+
+    private static function prunePanelDir(string $dir, int $keep): void
+    {
+        $files = glob($dir . '/*') ?: [];
+        $files = array_filter($files, 'is_file');
         usort($files, static fn ($a, $b) => filemtime($b) <=> filemtime($a));
         foreach (array_slice($files, $keep) as $old) {
             @unlink($old);
