@@ -14,7 +14,7 @@ if (!is_file($configPath)) {
 /** @var array<string, mixed> $config */
 $config = require $configPath;
 
-date_default_timezone_set($config['app']['timezone'] ?? 'UTC');
+date_default_timezone_set($config['app']['timezone'] ?? 'Asia/Tehran');
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 

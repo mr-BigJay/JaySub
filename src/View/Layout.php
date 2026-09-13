@@ -320,7 +320,7 @@ HTML;
         if ($ts === false) {
             return htmlspecialchars($datetime, ENT_QUOTES, 'UTF-8');
         }
-        return htmlspecialchars(date('Y/m/d', $ts), ENT_QUOTES, 'UTF-8');
+        return htmlspecialchars(Format::dateTehran('Y/m/d', $ts), ENT_QUOTES, 'UTF-8');
     }
 
     private static function publicUsageStatusPill(string $statusKey): string
@@ -730,7 +730,7 @@ HTML;
         $copyLine = $baseUrl !== '' ? $baseUrl : (string) $f['filename'];
         $copyAttr = htmlspecialchars($copyLine, ENT_QUOTES, 'UTF-8');
         $ts = (int) ($f['backup_ts'] ?? $f['mtime'] ?? 0);
-        $dateStr = htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8');
+        $dateStr = htmlspecialchars(Format::fromTimestamp($ts), ENT_QUOTES, 'UTF-8');
         $sizeStr = htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8');
         $warn = !empty($f['host_mismatch'])
             ? '<p class="backup-warn">⚠ نام فایل با آدرس پنل یکی نیست</p>'
@@ -901,7 +901,7 @@ HTML;
         $name = htmlspecialchars((string) $f['server_name'], ENT_QUOTES, 'UTF-8');
         $fname = htmlspecialchars((string) $f['filename'], ENT_QUOTES, 'UTF-8');
         $ts = (int) ($f['mtime'] ?? 0);
-        $dateStr = htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8');
+        $dateStr = htmlspecialchars(Format::fromTimestamp($ts), ENT_QUOTES, 'UTF-8');
         $sizeStr = htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8');
 
         return '<article class="backup-hub-card ' . $accent . '"><div class="backup-hub-card-inner">'
@@ -989,7 +989,7 @@ HTML;
     private static function backupHubFooter(int $lastTs): string
     {
         $updated = $lastTs > 0
-            ? htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $lastTs)), ENT_QUOTES, 'UTF-8')
+            ? htmlspecialchars(Format::fromTimestamp($lastTs), ENT_QUOTES, 'UTF-8')
             : '—';
 
         return '<footer class="backup-hub-footer">'

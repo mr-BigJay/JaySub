@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
+use App\Core\Format;
 
 final class DashboardService
 {
@@ -40,10 +41,12 @@ final class DashboardService
     {
         $total = self::adminSummary()['total_traffic'];
 
+        $dayStart = Format::tehranNow()->setTime(0, 0, 0);
+
         return [
-            'today' => self::trafficSinceDatetime(date('Y-m-d 00:00:00')),
-            'week' => self::trafficSinceDatetime(date('Y-m-d 00:00:00', strtotime('-7 days'))),
-            'month' => self::trafficSinceDatetime(date('Y-m-d 00:00:00', strtotime('-30 days'))),
+            'today' => self::trafficSinceDatetime($dayStart->format('Y-m-d H:i:s')),
+            'week' => self::trafficSinceDatetime($dayStart->modify('-7 days')->format('Y-m-d H:i:s')),
+            'month' => self::trafficSinceDatetime($dayStart->modify('-30 days')->format('Y-m-d H:i:s')),
             'total' => $total,
         ];
     }
@@ -77,8 +80,9 @@ final class DashboardService
     {
         $days = max(1, min(31, $days));
         $out = [];
+        $today = Format::tehranNow()->setTime(0, 0, 0);
         for ($i = $days - 1; $i >= 0; --$i) {
-            $ymd = date('Y-m-d', strtotime('-' . $i . ' days'));
+            $ymd = $today->modify('-' . $i . ' days')->format('Y-m-d');
             $out[] = [
                 'label' => substr($ymd, 5),
                 'bytes' => self::trafficOnCalendarDay($ymd),
@@ -90,13 +94,16 @@ final class DashboardService
 
     public static function trafficOnCalendarDay(string $ymd): int
     {
-        if ($ymd === date('Y-m-d')) {
+        if ($ymd === Format::tehranNow()->format('Y-m-d')) {
             return self::trafficSinceDatetime($ymd . ' 00:00:00');
         }
 
         $pdo = Database::pdo();
         $dayStart = $ymd . ' 00:00:00';
-        $dayEnd = date('Y-m-d', strtotime($ymd . ' +1 day')) . ' 00:00:00';
+        $day = \DateTimeImmutable::createFromFormat('Y-m-d', $ymd, new \DateTimeZone(Format::TZ));
+        $dayEnd = $day !== false
+            ? $day->modify('+1 day')->format('Y-m-d H:i:s')
+            : $ymd . ' 23:59:59';
         $stmt = $pdo->prepare(
             'SELECT COALESCE(SUM(GREATEST(0, COALESCE(e.end_t, 0) - COALESCE(b.start_t, 0))), 0) AS bytes
              FROM subscriptions s
