@@ -1144,13 +1144,15 @@ if ($uri === '/admin/ssl-backup' && $method === 'GET') {
             . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
     $tab = trim($_GET['tab'] ?? 'files');
-    if (!in_array($tab, ['files', 'servers', 'add'], true)) {
+    if (!in_array($tab, ['files', 'servers'], true)) {
         $tab = 'files';
     }
+    $openAdd = isset($_GET['add']) && (string) $_GET['add'] === '1';
     $servers = SslServerService::listAll();
     $files = SslBackupService::listFiles($config);
-    $body = Layout::adminSslBackupPage($flashHtml, $tab, $servers, $files, Csrf::field());
-    adminPage('بکاپ SSL', 'ssl_backup', $body);
+    $body = Layout::adminSslBackupPage($flashHtml, $tab, $servers, $files, Csrf::field(), $openAdd);
+    $sslHeaderAction = '<button type="button" class="btn btn-primary btn-sm admin-top-action-btn" data-open-modal="ssl-add-server-modal">افزودن سرور</button>';
+    adminPage('بکاپ SSL', 'ssl_backup', $body, $sslHeaderAction);
 }
 
 if ($uri === '/admin/ssl-backup' && $method === 'POST') {
@@ -1175,6 +1177,8 @@ if ($uri === '/admin/ssl-backup' && $method === 'POST') {
         Session::set('flash_admin_ok', 'سرور ثبت شد.');
     } catch (\Throwable $e) {
         Session::set('flash_admin', $e->getMessage());
+        Response::redirect('/admin/ssl-backup?add=1');
+        return;
     }
     Response::redirect('/admin/ssl-backup?tab=servers');
 }

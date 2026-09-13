@@ -1458,10 +1458,11 @@ body.modal-open { overflow: hidden; }
 .backup-warn { display: block; font-size: 0.75rem; color: #fcd34d; margin-top: 0.2rem; }
 .backup-week-tag { font-size: 0.72rem; }
 
-.admin-main:has(.backup-hub-page) .admin-top { display: none; }
+.admin-main:has(.backup-hub-page):not(:has(.ssl-backup-page)) .admin-top { display: none; }
 .admin-main:has(.backup-hub-page) .admin-content { padding: 0.85rem 1rem 1.25rem; max-width: 520px; }
 
 .backup-hub-page { max-width: 520px; margin: 0 auto; padding-bottom: 0.5rem; }
+.ssl-backup-intro { margin: 0 0 0.75rem; font-size: 0.78rem; text-align: center; }
 .backup-hub-hero {
   display: grid;
   grid-template-columns: auto 1fr auto;
