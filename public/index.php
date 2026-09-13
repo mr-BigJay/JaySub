@@ -1066,7 +1066,14 @@ if ($uri === '/admin/backup' && $method === 'GET') {
         $cardTitle = 'آخرین بک‌آپ هر پنل';
     }
     $body = Layout::adminBackupPage($flashHtml, $tab, $files, $jalaliYear, $jalaliMonth, $cardTitle, Csrf::field());
-    adminPage('بک‌آپ پنل‌های 3x-ui', 'backup', $body);
+    $backupPostUrl = '/admin/backup?tab=' . rawurlencode($tab);
+    if ($tab === 'month') {
+        $backupPostUrl .= '&jy=' . $jalaliYear . '&jm=' . $jalaliMonth;
+    }
+    $backupHeaderAction = '<form method="post" action="' . htmlspecialchars($backupPostUrl, ENT_QUOTES, 'UTF-8') . '" class="admin-top-action-form">'
+        . Csrf::field()
+        . '<button type="submit" class="btn btn-primary btn-sm admin-top-action-btn">بکاپ‌گیری آنی</button></form>';
+    adminPage('بک‌آپ پنل‌های 3x-ui', 'backup', $body, $backupHeaderAction);
 }
 
 if ($uri === '/admin/backup' && $method === 'POST') {

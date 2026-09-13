@@ -695,22 +695,27 @@ HTML;
             }
         }
 
-        return '<div class="backup-hub-page backup-admin-page">' . $flashHtml
-            . self::backupHubHero(
-                'بکاپ پنل‌های 3x-ui',
-                'فایل‌های پشتیبان برای بازیابی و استفادهٔ مجدد',
-                'case',
-                false,
-            )
+        $entryCount = count($files);
+
+        return '<div class="sub-mgmt-page xui-backup-page">' . $flashHtml
+            . '<section class="ui-card sub-mgmt-hero sub-mgmt-panels-hero">'
+            . '<div class="sub-mgmt-hero-icon xui-backup-hero-icon" aria-hidden="true">💾</div>'
+            . '<div class="sub-mgmt-hero-main">'
+            . '<h3 class="sub-mgmt-username">بکاپ پنل‌های 3x-ui</h3>'
+            . '<p class="muted sub-mgmt-hero-sub">' . $entryCount . ' مورد در این نما · فایل برای بازیابی</p>'
+            . '</div>'
+            . '<div class="sub-mgmt-days sub-mgmt-days-muted">'
+            . '<span class="sub-mgmt-days-label">هر ۴ ساعت</span>'
+            . '</div>'
+            . '</section>'
+            . '<section class="ui-card sub-mgmt-card xui-backup-main-card">'
             . '<nav class="backup-hub-tabs" aria-label="تب‌های بک‌آپ">' . $nav . '</nav>'
-            . '<form method="post" action="/admin/backup?tab=' . rawurlencode($activeTab) . '" class="backup-hub-run-form">' . $csrfField
-            . '<button class="btn btn-primary backup-hub-run-btn" type="submit">'
-            . self::backupHubSvg('cloud') . ' بکاپ‌گیری آنی (همه پنل‌های فعال)</button></form>'
             . '<h2 class="backup-hub-section-title">' . self::backupHubSvg('doc') . ' '
             . htmlspecialchars($cardTitle, ENT_QUOTES, 'UTF-8') . '</h2>'
             . '<div class="backup-hub-list">' . $list . '</div>'
             . $monthPills
             . self::backupHubFooter($lastTs)
+            . '</section>'
             . '</div>';
     }
 
