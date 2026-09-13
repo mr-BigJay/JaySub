@@ -806,7 +806,7 @@ HTML;
                 $list .= self::backupSslServerCard($s, $csrfField, $i++);
             }
             if ($list === '') {
-                $list = '<div class="backup-hub-empty">هنوز سروری ثبت نشده — دکمه «افزودن سرور» بالا سمت چپ را بزنید.</div>';
+                $list = '<div class="backup-hub-empty">هنوز سروری ثبت نشده — «افزودن سرور جدید» را بزنید.</div>';
             }
             $body = '<h2 class="backup-hub-section-title">' . self::backupHubSvg('clock') . ' سرورهای ثبت‌شده</h2>'
                 . '<div class="backup-hub-list">' . $list . '</div>';
@@ -819,15 +819,33 @@ HTML;
         }
 
         $modalAuto = $openAddModal ? ' data-auto-open' : '';
+        $activeCount = 0;
+        foreach ($servers as $s) {
+            if ((int) ($s['is_active'] ?? 0) === 1) {
+                ++$activeCount;
+            }
+        }
+        $totalServers = count($servers);
 
-        return '<div class="backup-hub-page ssl-backup-page">' . $flashHtml
-            . '<p class="muted ssl-backup-intro">پشتیبان هفتگی پوشهٔ <code>/root/cert</code> از سرورها</p>'
+        return '<div class="sub-mgmt-page ssl-backup-page">' . $flashHtml
+            . '<section class="ui-card sub-mgmt-hero sub-mgmt-panels-hero">'
+            . '<div class="sub-mgmt-hero-icon ssl-backup-hero-icon" aria-hidden="true">🔒</div>'
+            . '<div class="sub-mgmt-hero-main">'
+            . '<h3 class="sub-mgmt-username">مدیریت بکاپ SSL</h3>'
+            . '<p class="muted sub-mgmt-hero-sub">' . $activeCount . ' فعال از ' . $totalServers . ' سرور ثبت‌شده</p>'
+            . '</div>'
+            . '<div class="sub-mgmt-days sub-mgmt-days-muted">'
+            . '<span class="sub-mgmt-days-label">هفتگی · SSH</span>'
+            . '</div>'
+            . '</section>'
+            . '<section class="ui-card sub-mgmt-card ssl-backup-main-card">'
             . '<nav class="backup-hub-tabs" aria-label="تب‌های بکاپ SSL">' . $nav . '</nav>'
             . '<form method="post" action="/admin/ssl-backup/run" class="backup-hub-run-form">' . $csrfField
             . '<button class="btn btn-primary backup-hub-run-btn" type="submit">'
             . self::backupHubSvg('cloud') . ' بکاپ‌گیری آنی (همه سرورهای فعال)</button></form>'
             . $body
             . self::backupHubFooter($lastTs)
+            . '</section>'
             . self::sslAddServerModal($csrfField, $modalAuto)
             . '</div>';
     }

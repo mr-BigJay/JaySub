@@ -1151,7 +1151,7 @@ if ($uri === '/admin/ssl-backup' && $method === 'GET') {
     $servers = SslServerService::listAll();
     $files = SslBackupService::listFiles($config);
     $body = Layout::adminSslBackupPage($flashHtml, $tab, $servers, $files, Csrf::field(), $openAdd);
-    $sslHeaderAction = '<button type="button" class="btn btn-primary btn-sm admin-top-action-btn" data-open-modal="ssl-add-server-modal">افزودن سرور</button>';
+    $sslHeaderAction = '<button type="button" class="btn btn-primary btn-sm admin-top-action-btn" data-open-modal="ssl-add-server-modal">افزودن سرور جدید</button>';
     adminPage('بکاپ SSL', 'ssl_backup', $body, $sslHeaderAction);
 }
 
