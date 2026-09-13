@@ -1143,9 +1143,13 @@ if ($uri === '/admin/ssl-backup' && $method === 'GET') {
         $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">'
             . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
+    $tab = trim($_GET['tab'] ?? 'files');
+    if (!in_array($tab, ['files', 'servers', 'add'], true)) {
+        $tab = 'files';
+    }
     $servers = SslServerService::listAll();
     $files = SslBackupService::listFiles($config);
-    $body = Layout::adminSslBackupPage($flashHtml, $servers, $files, Csrf::field());
+    $body = Layout::adminSslBackupPage($flashHtml, $tab, $servers, $files, Csrf::field());
     adminPage('بکاپ SSL', 'ssl_backup', $body);
 }
 
@@ -1172,7 +1176,7 @@ if ($uri === '/admin/ssl-backup' && $method === 'POST') {
     } catch (\Throwable $e) {
         Session::set('flash_admin', $e->getMessage());
     }
-    Response::redirect('/admin/ssl-backup');
+    Response::redirect('/admin/ssl-backup?tab=servers');
 }
 
 if ($uri === '/admin/ssl-backup/run' && $method === 'POST') {

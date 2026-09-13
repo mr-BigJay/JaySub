@@ -650,27 +650,31 @@ HTML;
         string $cardTitle,
         string $csrfField,
     ): string {
-        $tabs = [
-            'latest' => 'آخرین',
-            'week' => 'هفته جاری',
-            'month' => 'ماه',
+        $tabDefs = [
+            'latest' => ['label' => 'آخرین', 'icon' => 'doc'],
+            'week' => ['label' => 'هفته جاری', 'icon' => 'clock'],
+            'month' => ['label' => 'ماه', 'icon' => 'cal'],
         ];
         $nav = '';
-        foreach ($tabs as $key => $label) {
+        foreach ($tabDefs as $key => $def) {
             $cls = $key === $activeTab ? 'active' : '';
             $href = '/admin/backup?tab=' . rawurlencode($key);
             if ($key === 'month') {
                 $href .= '&jy=' . $jalaliYear . '&jm=' . $jalaliMonth;
             }
-            $nav .= '<a class="tg-tab ' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
-                . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
+            $nav .= '<a class="backup-hub-tab ' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
+                . '<span class="backup-hub-tab-ico">' . self::backupHubSvg($def['icon']) . '</span>'
+                . htmlspecialchars($def['label'], ENT_QUOTES, 'UTF-8') . '</a>';
         }
 
-        $rows = '';
+        $list = '';
+        $i = 0;
         foreach ($files as $f) {
-            $rows .= self::backupFileRow($f);
+            $list .= self::backupPanelFileCard($f, $i++);
         }
-        $empty = '<p class="muted">موردی برای نمایش نیست.</p>';
+        if ($list === '') {
+            $list = '<div class="backup-hub-empty">موردی برای نمایش نیست.</div>';
+        }
 
         $monthPills = '';
         if ($activeTab === 'month') {
@@ -683,44 +687,71 @@ HTML;
             $monthPills .= '</nav>';
         }
 
-        return '<div class="backup-admin-page">' . $flashHtml
-            . '<nav class="tg-tabs" aria-label="تب‌های بک‌آپ">' . $nav . '</nav>'
-            . '<form method="post" action="/admin/backup?tab=' . rawurlencode($activeTab) . '" class="toolbar backup-run-form">' . $csrfField
-            . '<button class="btn btn-primary" type="submit">بک‌آپ الان (همه پنل‌های فعال)</button></form>'
-            . self::card($rows !== '' ? $rows : $empty, $cardTitle)
+        $lastTs = 0;
+        foreach ($files as $f) {
+            $ts = (int) ($f['backup_ts'] ?? $f['mtime'] ?? 0);
+            if ($ts > $lastTs) {
+                $lastTs = $ts;
+            }
+        }
+
+        return '<div class="backup-hub-page backup-admin-page">' . $flashHtml
+            . self::backupHubHero(
+                'بکاپ پنل‌های 3x-ui',
+                'فایل‌های پشتیبان برای بازیابی و استفادهٔ مجدد',
+                'case',
+                false,
+            )
+            . '<nav class="backup-hub-tabs" aria-label="تب‌های بک‌آپ">' . $nav . '</nav>'
+            . '<form method="post" action="/admin/backup?tab=' . rawurlencode($activeTab) . '" class="backup-hub-run-form">' . $csrfField
+            . '<button class="btn btn-primary backup-hub-run-btn" type="submit">'
+            . self::backupHubSvg('cloud') . ' بکاپ‌گیری آنی (همه پنل‌های فعال)</button></form>'
+            . '<h2 class="backup-hub-section-title">' . self::backupHubSvg('doc') . ' '
+            . htmlspecialchars($cardTitle, ENT_QUOTES, 'UTF-8') . '</h2>'
+            . '<div class="backup-hub-list">' . $list . '</div>'
             . $monthPills
+            . self::backupHubFooter($lastTs)
             . '</div>';
     }
 
     /** @param array<string, mixed> $f */
-    private static function backupFileRow(array $f): string
+    private static function backupPanelFileCard(array $f, int $index): string
     {
         $dl = '/admin/backup/download?panel=' . (int) $f['panel_id'] . '&file=' . rawurlencode((string) $f['filename']);
         $edit = '/admin/panels/' . (int) $f['panel_id'] . '/edit';
-        $warn = !empty($f['host_mismatch'])
-            ? '<span class="backup-warn" title="نام فایل با آدرس ثبت‌شده در JaySub یکی نیست">⚠ '
-            . htmlspecialchars((string) ($f['filename_host'] ?? ''), ENT_QUOTES, 'UTF-8') . ' ≠ آدرس پنل</span>'
-            : '';
-        $urlLine = ($f['panel_base_url'] ?? '') !== ''
-            ? '<span class="muted backup-url">' . htmlspecialchars((string) $f['panel_base_url'], ENT_QUOTES, 'UTF-8')
-            . ' · <a href="' . htmlspecialchars($edit, ENT_QUOTES, 'UTF-8') . '">ویرایش پنل</a></span>'
-            : '';
+        $accent = 'accent-' . ($index % 4);
+        $name = htmlspecialchars((string) $f['panel_name'], ENT_QUOTES, 'UTF-8');
+        $baseUrl = (string) ($f['panel_base_url'] ?? '');
+        $copyLine = $baseUrl !== '' ? $baseUrl : (string) $f['filename'];
+        $copyAttr = htmlspecialchars($copyLine, ENT_QUOTES, 'UTF-8');
         $ts = (int) ($f['backup_ts'] ?? $f['mtime'] ?? 0);
+        $dateStr = htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8');
+        $sizeStr = htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8');
+        $warn = !empty($f['host_mismatch'])
+            ? '<p class="backup-warn">⚠ نام فایل با آدرس پنل یکی نیست</p>'
+            : '';
         $weekNote = isset($f['week_key'])
-            ? '<span class="muted backup-week-tag">هفته ' . htmlspecialchars((string) $f['week_key'], ENT_QUOTES, 'UTF-8') . '</span> '
+            ? '<span class="muted backup-week-tag">هفته ' . htmlspecialchars((string) $f['week_key'], ENT_QUOTES, 'UTF-8') . '</span>'
             : '';
 
-        return '<div class="data-card-row backup-row">'
-            . '<span class="backup-meta">'
-            . '<strong>' . htmlspecialchars((string) $f['panel_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
-            . $urlLine
-            . '<span class="muted mono">' . $weekNote . htmlspecialchars((string) $f['filename'], ENT_QUOTES, 'UTF-8') . '</span>'
+        return '<article class="backup-hub-card ' . $accent . '"><div class="backup-hub-card-inner">'
+            . '<div class="backup-hub-card-main">'
+            . '<div class="backup-hub-card-head">'
+            . '<span class="backup-hub-card-avatar" aria-hidden="true">⬡</span>'
+            . '<div><p class="backup-hub-card-name">' . $name . '</p><span class="backup-hub-badge">پنل</span> ' . $weekNote . '</div>'
+            . '</div>'
+            . '<div class="backup-hub-url-wrap"><span class="backup-hub-link-ico" aria-hidden="true">🔗</span>'
+            . '<button type="button" class="backup-hub-url" data-copy-text="' . $copyAttr . '">' . $copyAttr . '</button></div>'
+            . '<a class="backup-hub-edit" href="' . htmlspecialchars($edit, ENT_QUOTES, 'UTF-8') . '">'
+            . self::backupHubSvg('pencil') . ' ویرایش پنل</a>'
             . $warn
-            . '</span><span>'
-            . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
-            . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8')
-            . ' <a class="btn btn-sm btn-ghost" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">دانلود</a>'
-            . '</span></div>';
+            . '</div>'
+            . '<div class="backup-hub-card-side">'
+            . '<span class="backup-hub-stat">' . self::backupHubSvg('db') . ' ' . $sizeStr . '</span>'
+            . '<span class="backup-hub-stat">' . self::backupHubSvg('cal') . ' ' . $dateStr . '</span>'
+            . '<a class="btn btn-primary backup-hub-dl" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">'
+            . self::backupHubSvg('down') . ' دانلود</a>'
+            . '</div></div></article>';
     }
 
     /**
@@ -729,64 +760,58 @@ HTML;
      */
     public static function adminSslBackupPage(
         string $flashHtml,
+        string $activeTab,
         array $servers,
         array $files,
         string $csrfField,
     ): string {
-        $serverRows = '';
-        foreach ($servers as $s) {
-            $sid = (int) $s['id'];
-            $active = (int) ($s['is_active'] ?? 0) === 1;
-            $status = $active ? '<span class="xui-panel-dot on" title="فعال"></span>' : '<span class="xui-panel-dot off" title="غیرفعال"></span>';
-            $last = $s['last_backup_at'] ?? null;
-            $lastStr = is_string($last) && $last !== ''
-                ? htmlspecialchars(Format::jalaliOrGregorian($last), ENT_QUOTES, 'UTF-8')
-                : '—';
-            $err = trim((string) ($s['last_error'] ?? ''));
-            $errHtml = $err !== ''
-                ? '<p class="muted sub-mgmt-panel-err">' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</p>'
-                : '';
-            $toggleLabel = $active ? 'غیرفعال' : 'فعال';
-            $toggleVal = $active ? '0' : '1';
-            $serverRows .= '<div class="data-card-row backup-row ssl-server-row">'
-                . '<span class="backup-meta">' . $status . ' <strong>'
-                . htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8') . '</strong>'
-                . '<span class="muted mono ltr">' . htmlspecialchars((string) $s['ssh_username'], ENT_QUOTES, 'UTF-8')
-                . '@' . htmlspecialchars((string) $s['host'], ENT_QUOTES, 'UTF-8') . ':' . (int) $s['ssh_port'] . '</span>'
-                . '<span class="muted">مسیر: ' . htmlspecialchars((string) $s['cert_path'], ENT_QUOTES, 'UTF-8') . '</span>'
-                . $errHtml
-                . '</span><span class="ssl-server-actions">'
-                . 'آخرین بکاپ: ' . $lastStr
-                . ' <a class="btn btn-sm btn-ghost" href="/admin/ssl-backup/' . $sid . '/edit">ویرایش</a>'
-                . '<form method="post" action="/admin/ssl-backup/' . $sid . '/run" class="inline-form">' . $csrfField
-                . '<button type="submit" class="btn btn-sm btn-primary">بکاپ الان</button></form>'
-                . '<form method="post" action="/admin/ssl-backup/' . $sid . '/active" class="inline-form">' . $csrfField
-                . '<input type="hidden" name="is_active" value="' . $toggleVal . '">'
-                . '<button type="submit" class="btn btn-sm btn-ghost">' . $toggleLabel . '</button></form>'
-                . '</span></div>';
+        if (!in_array($activeTab, ['files', 'servers', 'add'], true)) {
+            $activeTab = 'files';
         }
-        if ($serverRows === '') {
-            $serverRows = '<p class="muted">هنوز سروری ثبت نشده — فرم پایین را پر کنید.</p>';
+        $tabDefs = [
+            'files' => ['label' => 'آخرین', 'icon' => 'doc'],
+            'servers' => ['label' => 'سرورها', 'icon' => 'clock'],
+            'add' => ['label' => 'افزودن', 'icon' => 'cal'],
+        ];
+        $nav = '';
+        foreach ($tabDefs as $key => $def) {
+            $cls = $key === $activeTab ? 'active' : '';
+            $href = '/admin/ssl-backup?tab=' . rawurlencode($key);
+            $nav .= '<a class="backup-hub-tab ' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
+                . '<span class="backup-hub-tab-ico">' . self::backupHubSvg($def['icon']) . '</span>'
+                . htmlspecialchars($def['label'], ENT_QUOTES, 'UTF-8') . '</a>';
         }
 
-        $fileRows = '';
-        foreach ($files as $f) {
-            $dl = '/admin/ssl-backup/download?server=' . (int) $f['server_id'] . '&file=' . rawurlencode((string) $f['filename']);
-            $ts = (int) ($f['mtime'] ?? 0);
-            $fileRows .= '<div class="data-card-row backup-row">'
-                . '<span class="backup-meta"><strong>'
-                . htmlspecialchars((string) $f['server_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
-                . '<span class="muted mono">' . htmlspecialchars((string) $f['filename'], ENT_QUOTES, 'UTF-8') . '</span></span>'
-                . '<span>' . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
-                . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8')
-                . ' <a class="btn btn-sm btn-ghost" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">دانلود</a>'
-                . '</span></div>';
-        }
-        if ($fileRows === '') {
-            $fileRows = '<p class="muted">هنوز فایل بکاپی ذخیره نشده.</p>';
-        }
-
-        $addForm = '<form class="stack" method="post" action="/admin/ssl-backup">' . $csrfField . '
+        $body = '';
+        $lastTs = 0;
+        if ($activeTab === 'files') {
+            $list = '';
+            $i = 0;
+            foreach ($files as $f) {
+                $ts = (int) ($f['mtime'] ?? 0);
+                if ($ts > $lastTs) {
+                    $lastTs = $ts;
+                }
+                $list .= self::backupSslFileCard($f, $i++);
+            }
+            if ($list === '') {
+                $list = '<div class="backup-hub-empty">هنوز فایل بکاپی ذخیره نشده.</div>';
+            }
+            $body = '<h2 class="backup-hub-section-title">' . self::backupHubSvg('doc') . ' آخرین بکاپ‌های SSL</h2>'
+                . '<div class="backup-hub-list">' . $list . '</div>';
+        } elseif ($activeTab === 'servers') {
+            $list = '';
+            $i = 0;
+            foreach ($servers as $s) {
+                $list .= self::backupSslServerCard($s, $csrfField, $i++);
+            }
+            if ($list === '') {
+                $list = '<div class="backup-hub-empty">هنوز سروری ثبت نشده — از تب «افزودن» ثبت کنید.</div>';
+            }
+            $body = '<h2 class="backup-hub-section-title">' . self::backupHubSvg('clock') . ' سرورهای ثبت‌شده</h2>'
+                . '<div class="backup-hub-list">' . $list . '</div>';
+        } else {
+            $body = '<div class="backup-hub-form-card"><form class="stack" method="post" action="/admin/ssl-backup">' . $csrfField . '
             <label>نام سرور</label>
             <input name="name" required placeholder="مثلاً Bell-SSL">
             <label>آدرس میزبان (IP یا دامنه)</label>
@@ -804,17 +829,154 @@ HTML;
             <textarea name="ssh_secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa"></textarea>
             <label>مسیر پوشهٔ گواهی روی سرور</label>
             <input name="cert_path" value="/root/cert" dir="ltr">
-            <p class="muted form-hint">هر هفته این پوشه با SSH zip و روی JaySub ذخیره می‌شود. روی سرور remote باید <code>zip</code> نصب باشد؛ برای SSH با پسورد روی JaySub <code>sshpass</code> لازم است.</p>
-            <button class="btn btn-primary" type="submit">ثبت سرور</button>
-        </form>';
+            <p class="muted form-hint">هر هفته این پوشه zip و روی JaySub ذخیره می‌شود. روی سرور: <code>zip</code>؛ برای پسورد روی JaySub: <code>sshpass</code>.</p>
+            <button class="btn btn-primary block" type="submit">ثبت سرور</button>
+        </form></div>';
+        }
+        foreach ($files as $f) {
+            $ts = (int) ($f['mtime'] ?? 0);
+            if ($ts > $lastTs) {
+                $lastTs = $ts;
+            }
+        }
 
-        return '<div class="backup-admin-page ssl-backup-page">' . $flashHtml
-            . '<form method="post" action="/admin/ssl-backup/run" class="toolbar backup-run-form">' . $csrfField
-            . '<button class="btn btn-primary" type="submit">بکاپ الان (همه سرورهای فعال)</button></form>'
-            . self::card($serverRows, 'سرورهای ثبت‌شده')
-            . self::card($fileRows, 'فایل‌های بکاپ')
-            . self::card($addForm, 'افزودن سرور جدید')
+        return '<div class="backup-hub-page ssl-backup-page">' . $flashHtml
+            . self::backupHubHero(
+                'بکاپ SSL',
+                'پشتیبان هفتگی پوشهٔ گواهی (/root/cert) از سرورها',
+                'lock',
+                true,
+            )
+            . '<nav class="backup-hub-tabs" aria-label="تب‌های بکاپ SSL">' . $nav . '</nav>'
+            . '<form method="post" action="/admin/ssl-backup/run" class="backup-hub-run-form">' . $csrfField
+            . '<button class="btn btn-primary backup-hub-run-btn" type="submit">'
+            . self::backupHubSvg('cloud') . ' بکاپ‌گیری آنی (همه سرورهای فعال)</button></form>'
+            . $body
+            . self::backupHubFooter($lastTs)
             . '</div>';
+    }
+
+    /** @param array<string, mixed> $f */
+    private static function backupSslFileCard(array $f, int $index): string
+    {
+        $dl = '/admin/ssl-backup/download?server=' . (int) $f['server_id'] . '&file=' . rawurlencode((string) $f['filename']);
+        $edit = '/admin/ssl-backup/' . (int) $f['server_id'] . '/edit';
+        $accent = 'accent-' . ($index % 4);
+        $name = htmlspecialchars((string) $f['server_name'], ENT_QUOTES, 'UTF-8');
+        $fname = htmlspecialchars((string) $f['filename'], ENT_QUOTES, 'UTF-8');
+        $ts = (int) ($f['mtime'] ?? 0);
+        $dateStr = htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8');
+        $sizeStr = htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8');
+
+        return '<article class="backup-hub-card ' . $accent . '"><div class="backup-hub-card-inner">'
+            . '<div class="backup-hub-card-main">'
+            . '<div class="backup-hub-card-head">'
+            . '<span class="backup-hub-card-avatar" aria-hidden="true">🔒</span>'
+            . '<div><p class="backup-hub-card-name">' . $name . '</p><span class="backup-hub-badge">SSL</span></div>'
+            . '</div>'
+            . '<div class="backup-hub-url-wrap"><span class="backup-hub-link-ico" aria-hidden="true">📦</span>'
+            . '<button type="button" class="backup-hub-url" data-copy-text="' . $fname . '">' . $fname . '</button></div>'
+            . '<a class="backup-hub-edit" href="' . htmlspecialchars($edit, ENT_QUOTES, 'UTF-8') . '">'
+            . self::backupHubSvg('pencil') . ' ویرایش سرور</a>'
+            . '</div>'
+            . '<div class="backup-hub-card-side">'
+            . '<span class="backup-hub-stat">' . self::backupHubSvg('db') . ' ' . $sizeStr . '</span>'
+            . '<span class="backup-hub-stat">' . self::backupHubSvg('cal') . ' ' . $dateStr . '</span>'
+            . '<a class="btn btn-primary backup-hub-dl" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">'
+            . self::backupHubSvg('down') . ' دانلود</a>'
+            . '</div></div></article>';
+    }
+
+    /** @param array<string, mixed> $s */
+    private static function backupSslServerCard(array $s, string $csrfField, int $index): string
+    {
+        $sid = (int) $s['id'];
+        $active = (int) ($s['is_active'] ?? 0) === 1;
+        $accent = 'accent-' . ($index % 4);
+        $name = htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8');
+        $endpoint = htmlspecialchars(
+            (string) $s['ssh_username'] . '@' . (string) $s['host'] . ':' . (int) $s['ssh_port'],
+            ENT_QUOTES,
+            'UTF-8',
+        );
+        $cert = htmlspecialchars((string) $s['cert_path'], ENT_QUOTES, 'UTF-8');
+        $copyAttr = $endpoint;
+        $last = $s['last_backup_at'] ?? null;
+        $lastStr = is_string($last) && $last !== ''
+            ? htmlspecialchars(Format::jalaliOrGregorian($last), ENT_QUOTES, 'UTF-8')
+            : '—';
+        $err = trim((string) ($s['last_error'] ?? ''));
+        $errHtml = $err !== ''
+            ? '<p class="backup-warn">' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</p>'
+            : '';
+        $toggleLabel = $active ? 'غیرفعال' : 'فعال';
+        $toggleVal = $active ? '0' : '1';
+        $badge = $active ? 'فعال' : 'غیرفعال';
+
+        return '<article class="backup-hub-card ' . $accent . '"><div class="backup-hub-card-inner">'
+            . '<div class="backup-hub-card-main">'
+            . '<div class="backup-hub-card-head">'
+            . '<span class="backup-hub-card-avatar" aria-hidden="true">🖥</span>'
+            . '<div><p class="backup-hub-card-name">' . $name . '</p><span class="backup-hub-badge">' . $badge . '</span></div>'
+            . '</div>'
+            . '<div class="backup-hub-url-wrap"><span class="backup-hub-link-ico" aria-hidden="true">🔗</span>'
+            . '<button type="button" class="backup-hub-url" data-copy-text="' . $copyAttr . '">' . $copyAttr . '</button></div>'
+            . '<span class="muted" style="font-size:0.72rem">مسیر: ' . $cert . '</span>'
+            . $errHtml
+            . '<div class="backup-hub-card-actions">'
+            . '<a class="btn btn-sm btn-ghost" href="/admin/ssl-backup/' . $sid . '/edit">ویرایش</a>'
+            . '<form method="post" action="/admin/ssl-backup/' . $sid . '/run" class="inline-form">' . $csrfField
+            . '<button type="submit" class="btn btn-sm btn-primary">بکاپ الان</button></form>'
+            . '<form method="post" action="/admin/ssl-backup/' . $sid . '/active" class="inline-form">' . $csrfField
+            . '<input type="hidden" name="is_active" value="' . $toggleVal . '">'
+            . '<button type="submit" class="btn btn-sm btn-ghost">' . $toggleLabel . '</button></form>'
+            . '</div></div>'
+            . '<div class="backup-hub-card-side">'
+            . '<span class="backup-hub-stat">' . self::backupHubSvg('clock') . ' ' . $lastStr . '</span>'
+            . '</div></div></article>';
+    }
+
+    private static function backupHubHero(string $title, string $subtitle, string $icon, bool $ssl): string
+    {
+        $t = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+        $sub = htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8');
+        $iconCls = $ssl ? ' backup-hub-hero-icon ssl' : ' backup-hub-hero-icon';
+        $inner = $icon === 'lock' ? '🔒' : self::backupHubSvg('case');
+
+        return '<header class="backup-hub-hero">'
+            . '<div class="' . trim($iconCls) . '" aria-hidden="true">' . $inner . '</div>'
+            . '<div><h1 class="backup-hub-hero-title">' . $t . '</h1><p class="backup-hub-hero-sub">' . $sub . '</p></div>'
+            . '<a class="backup-hub-back" href="/admin/dashboard" aria-label="بازگشت">←</a>'
+            . '</header>';
+    }
+
+    private static function backupHubFooter(int $lastTs): string
+    {
+        $updated = $lastTs > 0
+            ? htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $lastTs)), ENT_QUOTES, 'UTF-8')
+            : '—';
+
+        return '<footer class="backup-hub-footer">'
+            . '<span>' . self::backupHubSvg('shield') . ' فایل‌ها به‌صورت امن نگهداری می‌شوند</span>'
+            . '<span>' . self::backupHubSvg('clock') . ' آخرین بروزرسانی: ' . $updated . '</span>'
+            . '</footer>';
+    }
+
+    private static function backupHubSvg(string $id): string
+    {
+        $common = 'class="backup-hub-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+        return match ($id) {
+            'doc' => '<svg ' . $common . '><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>',
+            'clock' => '<svg ' . $common . '><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+            'cal' => '<svg ' . $common . '><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+            'cloud' => '<svg ' . $common . '><path d="M4 14.5A4.5 4.5 0 0 1 12 12a4.5 4.5 0 0 1 8 2.5"/><path d="M8 17h8"/><path d="M12 12v9"/></svg>',
+            'db' => '<svg ' . $common . '><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>',
+            'down' => '<svg ' . $common . '><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
+            'pencil' => '<svg ' . $common . '><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+            'shield' => '<svg ' . $common . '><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+            'case' => '<svg ' . $common . '><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>',
+            default => '',
+        };
     }
 
     /** @param array<string, mixed>|null $server */
@@ -850,7 +1012,8 @@ HTML;
                 <a class="btn btn-secondary" href="/admin/ssl-backup">بازگشت</a>
             </div>
         </form>';
-        return $flashHtml . self::card($form, 'ویرایش سرور SSL');
+        $inner = '<div class="backup-hub-page">' . $flashHtml . '<div class="backup-hub-form-card">' . $form . '</div></div>';
+        return $inner;
     }
 
     /**
