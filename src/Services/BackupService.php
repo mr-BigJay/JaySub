@@ -10,8 +10,6 @@ use App\Xui\XuiClient;
 
 final class BackupService
 {
-    private const MAX_FILES_PER_PANEL = 40;
-
     /** @param array<string, mixed> $config */
     public static function storageRoot(array $config): string
     {
@@ -63,8 +61,6 @@ final class BackupService
             throw new \RuntimeException('ذخیره فایل بک‌آپ روی سرور ناموفق بود.');
         }
 
-        self::prunePanelDir($dir, self::MAX_FILES_PER_PANEL);
-
         return [
             'filename' => $filename,
             'bytes' => (int) filesize($path),
@@ -106,11 +102,127 @@ final class BackupService
                 ];
             }
         }
+        self::applyWeeklyRetention($config);
         return $out;
     }
 
     /**
-     * @return list<array{panel_id:int, panel_name:string, filename:string, bytes:int, mtime:int}>
+     * Past weeks (before current Sat–Fri week): keep latest backup per panel per week; delete others.
+     *
+     * @param array<string, mixed> $config
+     */
+    public static function applyWeeklyRetention(array $config): void
+    {
+        $now = BackupCalendar::tehranNow();
+        $currentWeekStart = BackupCalendar::weekStartSaturday($now);
+        $root = self::storageRoot($config);
+        foreach (glob($root . '/*', GLOB_ONLYDIR) ?: [] as $panelDir) {
+            $paths = array_filter(glob($panelDir . '/*') ?: [], 'is_file');
+            /** @var array<string, list<string>> $byWeek */
+            $byWeek = [];
+            foreach ($paths as $path) {
+                $name = basename($path);
+                if (!self::isAllowedFilename($name)) {
+                    continue;
+                }
+                $ts = self::backupTimestamp($name, (int) filemtime($path));
+                $weekStart = BackupCalendar::weekStartSaturday(
+                    (new \DateTimeImmutable('@' . $ts))->setTimezone(new \DateTimeZone(BackupCalendar::TZ))
+                );
+                if ($weekStart >= $currentWeekStart) {
+                    continue;
+                }
+                $key = $weekStart->format('Y-m-d');
+                $byWeek[$key][] = $path;
+            }
+            foreach ($byWeek as $weekFiles) {
+                if (count($weekFiles) <= 1) {
+                    continue;
+                }
+                usort($weekFiles, static function (string $a, string $b): int {
+                    $ta = self::backupTimestamp(basename($a), (int) filemtime($a));
+                    $tb = self::backupTimestamp(basename($b), (int) filemtime($b));
+                    return $tb <=> $ta;
+                });
+                foreach (array_slice($weekFiles, 1) as $old) {
+                    @unlink($old);
+                }
+            }
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function listLatestPerPanel(array $config): array
+    {
+        $all = self::listFiles($config);
+        $best = [];
+        foreach ($all as $f) {
+            $pid = (int) $f['panel_id'];
+            if (!isset($best[$pid]) || (int) $f['backup_ts'] > (int) $best[$pid]['backup_ts']) {
+                $best[$pid] = $f;
+            }
+        }
+        $out = array_values($best);
+        usort($out, static fn ($a, $b) => strcmp((string) $a['panel_name'], (string) $b['panel_name']));
+        return $out;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function listCurrentWeek(array $config): array
+    {
+        $start = BackupCalendar::weekStartSaturday(BackupCalendar::tehranNow());
+        $end = BackupCalendar::weekEndFriday($start);
+        $from = $start->getTimestamp();
+        $to = $end->getTimestamp();
+        $out = [];
+        foreach (self::listFiles($config) as $f) {
+            $ts = (int) $f['backup_ts'];
+            if ($ts >= $from && $ts <= $to) {
+                $out[] = $f;
+            }
+        }
+        usort($out, static fn ($a, $b) => (int) $b['backup_ts'] <=> (int) $a['backup_ts']);
+        return $out;
+    }
+
+    /**
+     * One latest backup per panel per week in the given Jalali month.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function listMonthWeekly(array $config, int $jalaliYear, int $jalaliMonth): array
+    {
+        if ($jalaliMonth < 1 || $jalaliMonth > 12) {
+            return [];
+        }
+        $all = self::listFiles($config);
+        /** @var array<string, array<string, mixed>> $groups */
+        $groups = [];
+        foreach ($all as $f) {
+            $j = BackupCalendar::jalaliFromTimestamp((int) $f['backup_ts']);
+            if ($j['jy'] !== $jalaliYear || $j['jm'] !== $jalaliMonth) {
+                continue;
+            }
+            $weekKey = BackupCalendar::weekKey(
+                (new \DateTimeImmutable('@' . (int) $f['backup_ts']))->setTimezone(new \DateTimeZone(BackupCalendar::TZ))
+            );
+            $gkey = $f['panel_id'] . '|' . $weekKey;
+            if (!isset($groups[$gkey]) || (int) $f['backup_ts'] > (int) $groups[$gkey]['backup_ts']) {
+                $f['week_key'] = $weekKey;
+                $groups[$gkey] = $f;
+            }
+        }
+        $out = array_values($groups);
+        usort($out, static fn ($a, $b) => (int) $b['backup_ts'] <=> (int) $a['backup_ts']);
+        return $out;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
      */
     public static function listFiles(array $config): array
     {
@@ -141,6 +253,8 @@ final class BackupService
                 if (!self::isAllowedFilename($name)) {
                     continue;
                 }
+                $mtime = (int) filemtime($path);
+                $backupTs = self::backupTimestamp($name, $mtime);
                 $fileHost = self::hostFromBackupFilename($name);
                 $mismatch = $panelHost !== null && $fileHost !== null
                     && strtolower($fileHost) !== strtolower($panelHost);
@@ -150,14 +264,21 @@ final class BackupService
                     'panel_base_url' => $meta['base_url'],
                     'filename' => $name,
                     'bytes' => (int) filesize($path),
-                    'mtime' => (int) filemtime($path),
+                    'mtime' => $mtime,
+                    'backup_ts' => $backupTs,
                     'host_mismatch' => $mismatch,
                     'filename_host' => $fileHost,
                 ];
             }
         }
-        usort($out, static fn ($a, $b) => $b['mtime'] <=> $a['mtime']);
+        usort($out, static fn ($a, $b) => (int) $b['backup_ts'] <=> (int) $a['backup_ts']);
         return $out;
+    }
+
+    public static function backupTimestamp(string $filename, int $mtimeFallback): int
+    {
+        $fromName = BackupCalendar::timestampFromBackupFilename($filename);
+        return $fromName ?? $mtimeFallback;
     }
 
     /** @param array<string, mixed> $config */
@@ -197,7 +318,6 @@ final class BackupService
         return strtolower($host);
     }
 
-    /** Host prefix in 3x-ui backup names, e.g. bell2.jay-force.ir from bell2.jay-force.ir_2026-09-11_091435.db */
     public static function hostFromBackupFilename(string $filename): ?string
     {
         $base = preg_replace('/\.(db|dump)$/i', '', $filename) ?? $filename;
@@ -205,15 +325,5 @@ final class BackupService
             return $m[1];
         }
         return null;
-    }
-
-    private static function prunePanelDir(string $dir, int $keep): void
-    {
-        $files = glob($dir . '/*') ?: [];
-        $files = array_filter($files, 'is_file');
-        usort($files, static fn ($a, $b) => filemtime($b) <=> filemtime($a));
-        foreach (array_slice($files, $keep) as $old) {
-            @unlink($old);
-        }
     }
 }

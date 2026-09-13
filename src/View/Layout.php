@@ -637,42 +637,88 @@ HTML;
     }
 
     /**
-     * @param list<array{panel_id:int, panel_name:string, filename:string, bytes:int, mtime:int}> $files
+     * @param list<array<string, mixed>> $files
      */
-    public static function adminBackupPage(string $flashHtml, array $files, string $csrfField): string
-    {
-        $rows = '';
-        foreach ($files as $f) {
-            $dl = '/admin/backup/download?panel=' . (int) $f['panel_id'] . '&file=' . rawurlencode($f['filename']);
-            $edit = '/admin/panels/' . (int) $f['panel_id'] . '/edit';
-            $warn = !empty($f['host_mismatch'])
-                ? '<span class="backup-warn" title="نام فایل از 3x-ui است؛ دامنهٔ داخل نام با آدرس ثبت‌شده در JaySub یکی نیست — احتمالاً base URL پنل اشتباه است یا تنظیم دامنه در 3x-ui.">⚠ نام فایل: '
-                . htmlspecialchars((string) ($f['filename_host'] ?? ''), ENT_QUOTES, 'UTF-8')
-                . ' ≠ آدرس پنل</span>'
-                : '';
-            $urlLine = ($f['panel_base_url'] ?? '') !== ''
-                ? '<span class="muted backup-url">' . htmlspecialchars((string) $f['panel_base_url'], ENT_QUOTES, 'UTF-8')
-                . ' · <a href="' . htmlspecialchars($edit, ENT_QUOTES, 'UTF-8') . '">ویرایش پنل</a></span>'
-                : '';
-            $rows .= '<div class="data-card-row backup-row">'
-                . '<span class="backup-meta">'
-                . '<strong>' . htmlspecialchars($f['panel_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
-                . $urlLine
-                . '<span class="muted mono">' . htmlspecialchars($f['filename'], ENT_QUOTES, 'UTF-8') . '</span>'
-                . $warn
-                . '</span><span>'
-                . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
-                . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $f['mtime'])), ENT_QUOTES, 'UTF-8')
-                . ' <a class="btn btn-sm btn-ghost" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">دانلود</a>'
-                . '</span></div>';
+    public static function adminBackupPage(
+        string $flashHtml,
+        string $activeTab,
+        array $files,
+        int $jalaliYear,
+        int $jalaliMonth,
+        string $cardTitle,
+        string $csrfField,
+    ): string {
+        $tabs = [
+            'latest' => 'آخرین',
+            'week' => 'هفته جاری',
+            'month' => 'ماه',
+        ];
+        $nav = '';
+        foreach ($tabs as $key => $label) {
+            $cls = $key === $activeTab ? 'active' : '';
+            $href = '/admin/backup?tab=' . rawurlencode($key);
+            if ($key === 'month') {
+                $href .= '&jy=' . $jalaliYear . '&jm=' . $jalaliMonth;
+            }
+            $nav .= '<a class="tg-tab ' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</a>';
         }
 
-        return $flashHtml
-            . '<p class="muted form-hint">بک‌آپ همان فایل <code>.db</code> (یا <code>.dump</code>) پنل 3x-ui است — معادل «Back Up» در Backup &amp; Restore. نام فایل از پنل بدون تغییر ذخیره می‌شود (مثلاً <code>domain_2026-09-11_090912.db</code>).</p>'
-            . '<p class="muted form-hint">هر <strong>۴ ساعت</strong> از همهٔ پنل‌های <strong>فعال</strong> بک‌آپ گرفته می‌شود. کرون: <code>scripts/install-backup-cron.sh</code></p>'
-            . '<form method="post" action="/admin/backup" class="toolbar">' . $csrfField
+        $rows = '';
+        foreach ($files as $f) {
+            $rows .= self::backupFileRow($f);
+        }
+        $empty = '<p class="muted">موردی برای نمایش نیست.</p>';
+
+        $monthPills = '';
+        if ($activeTab === 'month') {
+            $monthPills = '<nav class="backup-month-nav" aria-label="انتخاب ماه شمسی">';
+            for ($m = 1; $m <= 12; ++$m) {
+                $cls = $m === $jalaliMonth ? 'active' : '';
+                $monthPills .= '<a class="backup-month-pill ' . $cls . '" href="/admin/backup?tab=month&jy='
+                    . $jalaliYear . '&jm=' . $m . '">' . $m . '</a>';
+            }
+            $monthPills .= '</nav>';
+        }
+
+        return '<div class="backup-admin-page">' . $flashHtml
+            . '<nav class="tg-tabs" aria-label="تب‌های بک‌آپ">' . $nav . '</nav>'
+            . '<form method="post" action="/admin/backup?tab=' . rawurlencode($activeTab) . '" class="toolbar backup-run-form">' . $csrfField
             . '<button class="btn btn-primary" type="submit">بک‌آپ الان (همه پنل‌های فعال)</button></form>'
-            . self::card($rows !== '' ? $rows : '<p class="muted">هنوز بک‌آپی ذخیره نشده — دکمه بالا را بزنید یا کرون را نصب کنید.</p>', 'فایل‌های ذخیره‌شده (حداکثر ۴۰ عدد به‌ازای هر پنل)');
+            . self::card($rows !== '' ? $rows : $empty, $cardTitle)
+            . $monthPills
+            . '</div>';
+    }
+
+    /** @param array<string, mixed> $f */
+    private static function backupFileRow(array $f): string
+    {
+        $dl = '/admin/backup/download?panel=' . (int) $f['panel_id'] . '&file=' . rawurlencode((string) $f['filename']);
+        $edit = '/admin/panels/' . (int) $f['panel_id'] . '/edit';
+        $warn = !empty($f['host_mismatch'])
+            ? '<span class="backup-warn" title="نام فایل با آدرس ثبت‌شده در JaySub یکی نیست">⚠ '
+            . htmlspecialchars((string) ($f['filename_host'] ?? ''), ENT_QUOTES, 'UTF-8') . ' ≠ آدرس پنل</span>'
+            : '';
+        $urlLine = ($f['panel_base_url'] ?? '') !== ''
+            ? '<span class="muted backup-url">' . htmlspecialchars((string) $f['panel_base_url'], ENT_QUOTES, 'UTF-8')
+            . ' · <a href="' . htmlspecialchars($edit, ENT_QUOTES, 'UTF-8') . '">ویرایش پنل</a></span>'
+            : '';
+        $ts = (int) ($f['backup_ts'] ?? $f['mtime'] ?? 0);
+        $weekNote = isset($f['week_key'])
+            ? '<span class="muted backup-week-tag">هفته ' . htmlspecialchars((string) $f['week_key'], ENT_QUOTES, 'UTF-8') . '</span> '
+            : '';
+
+        return '<div class="data-card-row backup-row">'
+            . '<span class="backup-meta">'
+            . '<strong>' . htmlspecialchars((string) $f['panel_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
+            . $urlLine
+            . '<span class="muted mono">' . $weekNote . htmlspecialchars((string) $f['filename'], ENT_QUOTES, 'UTF-8') . '</span>'
+            . $warn
+            . '</span><span>'
+            . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
+            . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8')
+            . ' <a class="btn btn-sm btn-ghost" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">دانلود</a>'
+            . '</span></div>';
     }
 
     /**

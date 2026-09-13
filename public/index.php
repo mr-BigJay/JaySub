@@ -1037,7 +1037,33 @@ if ($uri === '/admin/backup' && $method === 'GET') {
     if (is_string($flashOk) && $flashOk !== '') {
         $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">' . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
     }
-    $body = Layout::adminBackupPage($flashHtml, BackupService::listFiles($config), Csrf::field());
+    BackupService::applyWeeklyRetention($config);
+    $tab = trim($_GET['tab'] ?? 'latest');
+    if (!in_array($tab, ['latest', 'week', 'month'], true)) {
+        $tab = 'latest';
+    }
+    $jNow = \App\Services\BackupCalendar::jalaliFromTimestamp(time());
+    $jalaliYear = (int) ($_GET['jy'] ?? $jNow['jy']);
+    $jalaliMonth = (int) ($_GET['jm'] ?? $jNow['jm']);
+    if ($jalaliMonth < 1 || $jalaliMonth > 12) {
+        $jalaliMonth = $jNow['jm'];
+    }
+    if ($jalaliYear < 1300 || $jalaliYear > 1500) {
+        $jalaliYear = $jNow['jy'];
+    }
+    if ($tab === 'week') {
+        $files = BackupService::listCurrentWeek($config);
+        $wStart = \App\Services\BackupCalendar::weekStartSaturday(\App\Services\BackupCalendar::tehranNow());
+        $wEnd = \App\Services\BackupCalendar::weekEndFriday($wStart);
+        $cardTitle = 'هفته جاری (' . $wStart->format('Y/m/d') . ' – ' . $wEnd->format('Y/m/d') . ' تهران)';
+    } elseif ($tab === 'month') {
+        $files = BackupService::listMonthWeekly($config, $jalaliYear, $jalaliMonth);
+        $cardTitle = 'ماه ' . $jalaliMonth . ' سال ' . $jalaliYear . ' — آخرین بک‌آپ هر هفته';
+    } else {
+        $files = BackupService::listLatestPerPanel($config);
+        $cardTitle = 'آخرین بک‌آپ هر پنل';
+    }
+    $body = Layout::adminBackupPage($flashHtml, $tab, $files, $jalaliYear, $jalaliMonth, $cardTitle, Csrf::field());
     adminPage('بک‌آپ پنل‌های 3x-ui', 'backup', $body);
 }
 
@@ -1068,7 +1094,19 @@ if ($uri === '/admin/backup' && $method === 'POST') {
     } catch (\Throwable $e) {
         Session::set('flash_admin', $e->getMessage());
     }
-    Response::redirect('/admin/backup');
+    $tab = trim($_GET['tab'] ?? $_POST['tab'] ?? 'latest');
+    if (!in_array($tab, ['latest', 'week', 'month'], true)) {
+        $tab = 'latest';
+    }
+    $redir = '/admin/backup?tab=' . rawurlencode($tab);
+    if ($tab === 'month') {
+        $jy = (int) ($_GET['jy'] ?? $_POST['jy'] ?? 0);
+        $jm = (int) ($_GET['jm'] ?? $_POST['jm'] ?? 0);
+        if ($jy > 0 && $jm > 0) {
+            $redir .= '&jy=' . $jy . '&jm=' . $jm;
+        }
+    }
+    Response::redirect($redir);
 }
 
 if ($uri === '/admin/backup/download' && $method === 'GET') {

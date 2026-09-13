@@ -1456,6 +1456,35 @@ body.modal-open { overflow: hidden; }
 .backup-meta .mono { font-size: 0.78rem; }
 .backup-url { font-size: 0.75rem; display: block; }
 .backup-warn { display: block; font-size: 0.75rem; color: #fcd34d; margin-top: 0.2rem; }
+.backup-week-tag { font-size: 0.72rem; }
+.backup-admin-page { max-width: 640px; }
+.backup-admin-page .tg-tabs { margin-bottom: 0.75rem; }
+.backup-run-form { margin-bottom: 0.75rem; }
+.backup-month-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: center;
+  margin-top: 1rem;
+  padding: 0.5rem 0;
+}
+.backup-month-pill {
+  min-width: 2.1rem;
+  text-align: center;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.backup-month-pill.active {
+  color: #e9d5ff;
+  border-color: rgba(168, 85, 247, 0.45);
+  background: rgba(139, 92, 246, 0.18);
+}
 
 .tg-tab-panel textarea {
   width: 100%;
