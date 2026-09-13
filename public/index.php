@@ -30,6 +30,8 @@ use App\Services\SettingsService;
 use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
 use App\Services\BackupService;
+use App\Services\SslBackupService;
+use App\Services\SslServerService;
 use App\Services\DashboardService;
 use App\View\Layout;
 
@@ -1127,12 +1129,164 @@ if ($uri === '/admin/backup/download' && $method === 'GET') {
     exit;
 }
 
+if ($uri === '/admin/ssl-backup' && $method === 'GET') {
+    requireAdmin();
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $flashOk = Session::get('flash_admin_ok');
+    Session::remove('flash_admin_ok');
+    if (is_string($flashOk) && $flashOk !== '') {
+        $flashHtml .= '<div class="alert" style="background:rgba(34,197,94,.12);color:#86efac;border:1px solid rgba(34,197,94,.25)">'
+            . htmlspecialchars($flashOk, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    $servers = SslServerService::listAll();
+    $files = SslBackupService::listFiles($config);
+    $body = Layout::adminSslBackupPage($flashHtml, $servers, $files, Csrf::field());
+    adminPage('بکاپ SSL', 'ssl_backup', $body);
+}
+
+if ($uri === '/admin/ssl-backup' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $encryption = app_encryption($config);
+    try {
+        $secret = trim((string) ($_POST['ssh_secret'] ?? ''));
+        if ($secret === '') {
+            throw new \InvalidArgumentException('رمز یا کلید SSH الزامی است.');
+        }
+        SslServerService::create(
+            (string) ($_POST['name'] ?? ''),
+            (string) ($_POST['host'] ?? ''),
+            (int) ($_POST['ssh_port'] ?? 22),
+            (string) ($_POST['ssh_username'] ?? 'root'),
+            (string) ($_POST['auth_type'] ?? 'password'),
+            $secret,
+            (string) ($_POST['cert_path'] ?? '/root/cert'),
+            $encryption,
+        );
+        Session::set('flash_admin_ok', 'سرور ثبت شد.');
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
+    Response::redirect('/admin/ssl-backup');
+}
+
+if ($uri === '/admin/ssl-backup/run' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    try {
+        $encryption = app_encryption($config);
+        $results = SslBackupService::backupAllActive($config, $encryption);
+        $ok = array_filter($results, static fn ($r) => $r['ok']);
+        $fail = array_filter($results, static fn ($r) => !$r['ok']);
+        if ($ok === [] && $fail !== []) {
+            $first = reset($fail);
+            Session::set('flash_admin', ($first['error'] ?? 'خطا') . ' (' . ($first['server_name'] ?? '') . ')');
+        } elseif ($fail !== []) {
+            Session::set('flash_admin_ok', count($ok) . ' سرور OK، ' . count($fail) . ' خطا');
+            Session::set(
+                'flash_admin',
+                implode(' · ', array_map(static fn ($r) => $r['server_name'] . ': ' . ($r['error'] ?? ''), $fail))
+            );
+        } else {
+            $names = implode(', ', array_map(static fn ($r) => $r['server_name'] . ' → ' . $r['filename'], $ok));
+            Session::set('flash_admin_ok', 'بکاپ SSL: ' . $names);
+        }
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
+    Response::redirect('/admin/ssl-backup');
+}
+
+if (preg_match('#^/admin/ssl-backup/(\d+)/edit$#', $uri, $m) && $method === 'GET') {
+    requireAdmin();
+    $sid = (int) $m[1];
+    $server = SslServerService::findById($sid);
+    $flashHtml = '';
+    $flash = Session::get('flash_admin');
+    Session::remove('flash_admin');
+    if (is_string($flash) && $flash !== '') {
+        $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
+    }
+    adminPage('ویرایش سرور SSL', 'ssl_backup', Layout::adminSslServerEditPage($server, $flashHtml, Csrf::field()));
+}
+
+if (preg_match('#^/admin/ssl-backup/(\d+)/edit$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $sid = (int) $m[1];
+    $encryption = app_encryption($config);
+    $secret = trim((string) ($_POST['ssh_secret'] ?? ''));
+    try {
+        SslServerService::update(
+            $sid,
+            (string) ($_POST['name'] ?? ''),
+            (string) ($_POST['host'] ?? ''),
+            (int) ($_POST['ssh_port'] ?? 22),
+            (string) ($_POST['ssh_username'] ?? 'root'),
+            (string) ($_POST['auth_type'] ?? 'password'),
+            $secret !== '' ? $secret : null,
+            (string) ($_POST['cert_path'] ?? '/root/cert'),
+            $encryption,
+        );
+        Session::set('flash_admin_ok', 'سرور به‌روز شد.');
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
+    Response::redirect('/admin/ssl-backup');
+}
+
+if (preg_match('#^/admin/ssl-backup/(\d+)/run$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $sid = (int) $m[1];
+    try {
+        $r = SslBackupService::backupServer($config, $sid, app_encryption($config));
+        Session::set('flash_admin_ok', 'بکاپ: ' . $r['server_name'] . ' → ' . $r['filename']);
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
+    Response::redirect('/admin/ssl-backup');
+}
+
+if (preg_match('#^/admin/ssl-backup/(\d+)/active$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $sid = (int) $m[1];
+    $active = (int) ($_POST['is_active'] ?? 0) === 1;
+    SslServerService::setActive($sid, $active);
+    Session::set('flash_admin_ok', $active ? 'سرور فعال شد.' : 'سرور غیرفعال شد.');
+    Response::redirect('/admin/ssl-backup');
+}
+
+if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
+    requireAdmin();
+    $serverId = (int) ($_GET['server'] ?? 0);
+    $file = trim($_GET['file'] ?? '');
+    $path = SslBackupService::resolveDownloadPath($config, $serverId, $file);
+    if ($path === null) {
+        http_response_code(404);
+        echo 'فایل یافت نشد';
+        return;
+    }
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . basename($file) . '"');
+    header('Content-Length: ' . (string) filesize($path));
+    readfile($path);
+    exit;
+}
+
 if ($uri === '/admin/settings' && $method === 'GET') {
     requireAdmin();
     $body = '<p class="muted">تنظیمات تخصصی:</p>
         <ul>
             <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>
             <li><a href="/admin/backup">بک‌آپ</a> — پشتیبان دیتابیس 3x-ui (هر ۴ ساعت)</li>
+            <li><a href="/admin/ssl-backup">بکاپ ssl</a> — zip هفتگی <code>/root/cert</code> از سرورها (SSH)</li>
         </ul>
         <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
     adminPage('تنظیمات', 'settings', Layout::card($body));

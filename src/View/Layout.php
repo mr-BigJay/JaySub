@@ -21,6 +21,7 @@ final class Layout
         'notifications' => 'اعلان‌ها',
         'telegram' => 'ربات تلگرام',
         'backup' => 'بک‌آپ',
+        'ssl_backup' => 'بکاپ ssl',
         'settings' => 'تنظیمات',
     ];
 
@@ -52,6 +53,7 @@ final class Layout
             'notifications' => '/admin/notifications',
             'telegram' => '/admin/telegram',
             'backup' => '/admin/backup',
+            'ssl_backup' => '/admin/ssl-backup',
             'settings' => '/admin/settings',
         ];
         foreach (self::ADMIN_NAV as $key => $label) {
@@ -722,6 +724,136 @@ HTML;
     }
 
     /**
+     * @param list<array<string, mixed>> $servers
+     * @param list<array<string, mixed>> $files
+     */
+    public static function adminSslBackupPage(
+        string $flashHtml,
+        array $servers,
+        array $files,
+        string $csrfField,
+    ): string {
+        $serverRows = '';
+        foreach ($servers as $s) {
+            $sid = (int) $s['id'];
+            $active = (int) ($s['is_active'] ?? 0) === 1;
+            $status = $active ? '<span class="xui-panel-dot on" title="فعال"></span>' : '<span class="xui-panel-dot off" title="غیرفعال"></span>';
+            $last = $s['last_backup_at'] ?? null;
+            $lastStr = is_string($last) && $last !== ''
+                ? htmlspecialchars(Format::jalaliOrGregorian($last), ENT_QUOTES, 'UTF-8')
+                : '—';
+            $err = trim((string) ($s['last_error'] ?? ''));
+            $errHtml = $err !== ''
+                ? '<p class="muted sub-mgmt-panel-err">' . htmlspecialchars($err, ENT_QUOTES, 'UTF-8') . '</p>'
+                : '';
+            $toggleLabel = $active ? 'غیرفعال' : 'فعال';
+            $toggleVal = $active ? '0' : '1';
+            $serverRows .= '<div class="data-card-row backup-row ssl-server-row">'
+                . '<span class="backup-meta">' . $status . ' <strong>'
+                . htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8') . '</strong>'
+                . '<span class="muted mono ltr">' . htmlspecialchars((string) $s['ssh_username'], ENT_QUOTES, 'UTF-8')
+                . '@' . htmlspecialchars((string) $s['host'], ENT_QUOTES, 'UTF-8') . ':' . (int) $s['ssh_port'] . '</span>'
+                . '<span class="muted">مسیر: ' . htmlspecialchars((string) $s['cert_path'], ENT_QUOTES, 'UTF-8') . '</span>'
+                . $errHtml
+                . '</span><span class="ssl-server-actions">'
+                . 'آخرین بکاپ: ' . $lastStr
+                . ' <a class="btn btn-sm btn-ghost" href="/admin/ssl-backup/' . $sid . '/edit">ویرایش</a>'
+                . '<form method="post" action="/admin/ssl-backup/' . $sid . '/run" class="inline-form">' . $csrfField
+                . '<button type="submit" class="btn btn-sm btn-primary">بکاپ الان</button></form>'
+                . '<form method="post" action="/admin/ssl-backup/' . $sid . '/active" class="inline-form">' . $csrfField
+                . '<input type="hidden" name="is_active" value="' . $toggleVal . '">'
+                . '<button type="submit" class="btn btn-sm btn-ghost">' . $toggleLabel . '</button></form>'
+                . '</span></div>';
+        }
+        if ($serverRows === '') {
+            $serverRows = '<p class="muted">هنوز سروری ثبت نشده — فرم پایین را پر کنید.</p>';
+        }
+
+        $fileRows = '';
+        foreach ($files as $f) {
+            $dl = '/admin/ssl-backup/download?server=' . (int) $f['server_id'] . '&file=' . rawurlencode((string) $f['filename']);
+            $ts = (int) ($f['mtime'] ?? 0);
+            $fileRows .= '<div class="data-card-row backup-row">'
+                . '<span class="backup-meta"><strong>'
+                . htmlspecialchars((string) $f['server_name'], ENT_QUOTES, 'UTF-8') . '</strong>'
+                . '<span class="muted mono">' . htmlspecialchars((string) $f['filename'], ENT_QUOTES, 'UTF-8') . '</span></span>'
+                . '<span>' . htmlspecialchars(Format::bytesAuto((float) $f['bytes']), ENT_QUOTES, 'UTF-8')
+                . ' · ' . htmlspecialchars(Format::jalaliOrGregorian(date('Y-m-d H:i:s', $ts)), ENT_QUOTES, 'UTF-8')
+                . ' <a class="btn btn-sm btn-ghost" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">دانلود</a>'
+                . '</span></div>';
+        }
+        if ($fileRows === '') {
+            $fileRows = '<p class="muted">هنوز فایل بکاپی ذخیره نشده.</p>';
+        }
+
+        $addForm = '<form class="stack" method="post" action="/admin/ssl-backup">' . $csrfField . '
+            <label>نام سرور</label>
+            <input name="name" required placeholder="مثلاً Bell-SSL">
+            <label>آدرس میزبان (IP یا دامنه)</label>
+            <input name="host" required dir="ltr" placeholder="203.0.113.10">
+            <label>پورت SSH</label>
+            <input name="ssh_port" type="number" min="1" max="65535" value="22" dir="ltr">
+            <label>کاربر SSH</label>
+            <input name="ssh_username" value="root" dir="ltr">
+            <label>نوع احراز هویت</label>
+            <select name="auth_type">
+                <option value="password">رمز عبور</option>
+                <option value="key">کلید خصوصی (PEM)</option>
+            </select>
+            <label>رمز SSH یا کلید خصوصی</label>
+            <textarea name="ssh_secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa"></textarea>
+            <label>مسیر پوشهٔ گواهی روی سرور</label>
+            <input name="cert_path" value="/root/cert" dir="ltr">
+            <p class="muted form-hint">هر هفته این پوشه با SSH zip و روی JaySub ذخیره می‌شود. روی سرور remote باید <code>zip</code> نصب باشد؛ برای SSH با پسورد روی JaySub <code>sshpass</code> لازم است.</p>
+            <button class="btn btn-primary" type="submit">ثبت سرور</button>
+        </form>';
+
+        return '<div class="backup-admin-page ssl-backup-page">' . $flashHtml
+            . '<form method="post" action="/admin/ssl-backup/run" class="toolbar backup-run-form">' . $csrfField
+            . '<button class="btn btn-primary" type="submit">بکاپ الان (همه سرورهای فعال)</button></form>'
+            . self::card($serverRows, 'سرورهای ثبت‌شده')
+            . self::card($fileRows, 'فایل‌های بکاپ')
+            . self::card($addForm, 'افزودن سرور جدید')
+            . '</div>';
+    }
+
+    /** @param array<string, mixed>|null $server */
+    public static function adminSslServerEditPage(?array $server, string $flashHtml, string $csrfField): string
+    {
+        if ($server === null) {
+            return self::card('<p class="muted">سرور یافت نشد.</p><p><a href="/admin/ssl-backup">بازگشت</a></p>');
+        }
+        $sid = (int) $server['id'];
+        $auth = (string) ($server['auth_type'] ?? 'password');
+        $passSel = $auth === 'key' ? '' : ' selected';
+        $keySel = $auth === 'key' ? ' selected' : '';
+        $form = '<form class="stack" method="post" action="/admin/ssl-backup/' . $sid . '/edit">' . $csrfField . '
+            <label>نام سرور</label>
+            <input name="name" required value="' . htmlspecialchars((string) $server['name'], ENT_QUOTES, 'UTF-8') . '">
+            <label>آدرس میزبان</label>
+            <input name="host" required dir="ltr" value="' . htmlspecialchars((string) $server['host'], ENT_QUOTES, 'UTF-8') . '">
+            <label>پورت SSH</label>
+            <input name="ssh_port" type="number" min="1" max="65535" value="' . (int) $server['ssh_port'] . '" dir="ltr">
+            <label>کاربر SSH</label>
+            <input name="ssh_username" dir="ltr" value="' . htmlspecialchars((string) $server['ssh_username'], ENT_QUOTES, 'UTF-8') . '">
+            <label>نوع احراز هویت</label>
+            <select name="auth_type">
+                <option value="password"' . $passSel . '>رمز عبور</option>
+                <option value="key"' . $keySel . '>کلید خصوصی</option>
+            </select>
+            <label>رمز یا کلید جدید (خالی = بدون تغییر)</label>
+            <textarea name="ssh_secret" rows="4" dir="ltr"></textarea>
+            <label>مسیر پوشهٔ گواهی</label>
+            <input name="cert_path" dir="ltr" value="' . htmlspecialchars((string) $server['cert_path'], ENT_QUOTES, 'UTF-8') . '">
+            <div class="sub-mgmt-actions" style="margin-top:0.75rem">
+                <button class="btn btn-primary" type="submit">ذخیره</button>
+                <a class="btn btn-secondary" href="/admin/ssl-backup">بازگشت</a>
+            </div>
+        </form>';
+        return $flashHtml . self::card($form, 'ویرایش سرور SSL');
+    }
+
+    /**
      * @param array{token:string, enabled:bool, admin_chat_id:string, proxy_enabled:bool, proxy_url:string, v2ray_config:string, bot_info:array{ok:bool, username?:string, name?:string, error?:string}} $state
      */
     public static function adminTelegramPage(string $activeTab, string $flashHtml, array $state, string $csrfField): string
@@ -1139,6 +1271,7 @@ HTML;
             'notifications' => '🔔',
             'telegram' => '✈',
             'backup' => '💾',
+            'ssl_backup' => '🔒',
             'settings' => '⚙',
             default => '•',
         };

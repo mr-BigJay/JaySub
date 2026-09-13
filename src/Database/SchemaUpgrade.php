@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 5;
+    public const VERSION = 6;
 
     public static function apply(PDO $pdo): void
     {
@@ -45,6 +45,30 @@ final class SchemaUpgrade
                 self::addColumnIfMissing($pdo, 'customers', 'usage_view_token', 'VARCHAR(64) NULL');
                 self::backfillUsageViewTokens($pdo);
                 self::writeVersion($pdo, 5);
+                $current = 5;
+            }
+            if ($current < 6) {
+                $pdo->exec(
+                    <<<'SQL'
+CREATE TABLE IF NOT EXISTS ssl_servers (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    host VARCHAR(255) NOT NULL,
+    ssh_port INT UNSIGNED NOT NULL DEFAULT 22,
+    ssh_username VARCHAR(64) NOT NULL DEFAULT 'root',
+    auth_type ENUM('password', 'key') NOT NULL DEFAULT 'password',
+    ssh_secret_encrypted TEXT NOT NULL,
+    cert_path VARCHAR(512) NOT NULL DEFAULT '/root/cert',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    last_backup_at DATETIME NULL,
+    last_error TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ssl_servers_active (is_active)
+) ENGINE=InnoDB
+SQL
+                );
+                self::writeVersion($pdo, 6);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());
