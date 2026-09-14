@@ -374,16 +374,13 @@ final class CustomerService
     {
         $stmt = Database::pdo()->prepare(
             'SELECT vp.id, vp.name,
-                COALESCE(SUM(GREATEST(0, CAST(vc.base_upload_bytes AS SIGNED) + CAST(vc.last_xui_upload AS SIGNED)
-                    - CAST(vc.xui_baseline_upload AS SIGNED))), 0) AS upload_bytes,
-                COALESCE(SUM(GREATEST(0, CAST(vc.base_download_bytes AS SIGNED) + CAST(vc.last_xui_download AS SIGNED)
-                    - CAST(vc.xui_baseline_download AS SIGNED))), 0) AS download_bytes
+                CAST(vp.xui_inbound_up AS UNSIGNED) AS upload_bytes,
+                CAST(vp.xui_inbound_down AS UNSIGNED) AS download_bytes
              FROM vpn_panels vp
-             LEFT JOIN vpn_clients vc ON vc.panel_id = vp.id AND vc.customer_id = :cid
-             WHERE vp.customer_id = :cid2 AND vp.is_active = 1
-             GROUP BY vp.id, vp.name'
+             WHERE vp.customer_id = :cid AND vp.is_active = 1
+             ORDER BY vp.id'
         );
-        $stmt->execute(['cid' => $customerId, 'cid2' => $customerId]);
+        $stmt->execute(['cid' => $customerId]);
         return $stmt->fetchAll();
     }
 }

@@ -89,6 +89,14 @@ final class TrafficSyncService
         }
 
         $statsByEmail = InboundTraffic::statsByEmail($obj);
+        $panelTotals = InboundTraffic::panelTrafficTotals($obj);
+        $pdo->prepare(
+            'UPDATE vpn_panels SET xui_inbound_up = :u, xui_inbound_down = :d, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+        )->execute([
+            'u' => $panelTotals['up'],
+            'd' => $panelTotals['down'],
+            'id' => $panelId,
+        ]);
 
         $customerId = (int) $panel['customer_id'];
         $subscription = CustomerService::ensureTrafficSubscription($customerId);
@@ -205,7 +213,7 @@ final class TrafficSyncService
     {
         $pdo = Database::pdo();
         $sub = $pdo->prepare(
-            "SELECT * FROM subscriptions WHERE customer_id = :cid AND status = 'active' ORDER BY id DESC LIMIT 1"
+            "SELECT * FROM subscriptions WHERE customer_id = :cid AND status IN ('active', 'exhausted') ORDER BY id DESC LIMIT 1"
         );
         $sub->execute(['cid' => $customerId]);
         $subscription = $sub->fetch();
@@ -214,23 +222,13 @@ final class TrafficSyncService
         }
 
         $subId = (int) $subscription['id'];
-        // Per-email MAX avoids double-count if the same XUI is registered on two panel rows.
+        // Same as 3x-ui inbounds page: sum of inbound up/down per panel (stored on sync).
         $sum = $pdo->prepare(
-            'SELECT COALESCE(SUM(per_email.up), 0) AS up, COALESCE(SUM(per_email.down), 0) AS down
-             FROM (
-                SELECT
-                    vc.xui_email,
-                    MAX(GREATEST(0, CAST(vc.base_upload_bytes AS SIGNED) + CAST(vc.last_xui_upload AS SIGNED)
-                        - CAST(vc.xui_baseline_upload AS SIGNED))) AS up,
-                    MAX(GREATEST(0, CAST(vc.base_download_bytes AS SIGNED) + CAST(vc.last_xui_download AS SIGNED)
-                        - CAST(vc.xui_baseline_download AS SIGNED))) AS down
-                FROM vpn_clients vc
-                INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
-                WHERE vc.customer_id = :cid AND vc.subscription_id = :sid
-                GROUP BY vc.xui_email
-             ) per_email'
+            'SELECT COALESCE(SUM(xui_inbound_up), 0) AS up, COALESCE(SUM(xui_inbound_down), 0) AS down
+             FROM vpn_panels
+             WHERE customer_id = :cid AND is_active = 1'
         );
-        $sum->execute(['cid' => $customerId, 'sid' => $subId]);
+        $sum->execute(['cid' => $customerId]);
         $totals = $sum->fetch();
         $upload = (int) ($totals['up'] ?? 0);
         $download = (int) ($totals['down'] ?? 0);

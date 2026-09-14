@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 6;
+    public const VERSION = 7;
 
     public static function apply(PDO $pdo): void
     {
@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS ssl_servers (
 SQL
                 );
                 self::writeVersion($pdo, 6);
+                $current = 6;
+            }
+            if ($current < 7) {
+                self::addColumnIfMissing($pdo, 'vpn_panels', 'xui_inbound_up', 'BIGINT UNSIGNED NOT NULL DEFAULT 0');
+                self::addColumnIfMissing($pdo, 'vpn_panels', 'xui_inbound_down', 'BIGINT UNSIGNED NOT NULL DEFAULT 0');
+                self::writeVersion($pdo, 7);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());

@@ -60,6 +60,8 @@ CREATE TABLE vpn_panels (
     connection_status ENUM('connected', 'sync_error', 'offline', 'unknown') NOT NULL DEFAULT 'unknown',
     last_sync_at DATETIME NULL,
     last_error TEXT NULL,
+    xui_inbound_up BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    xui_inbound_down BIGINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_panels_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,

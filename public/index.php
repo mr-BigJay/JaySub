@@ -766,17 +766,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
         }
         $breakRows .= '<div class="data-card-row"><span>' . htmlspecialchars($b['name'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesToGb($t) . '</span></div>';
     }
-    $endsVal = '';
-    if ($sub && $sub['ends_at']) {
-        $endsVal = Format::jalaliOrGregorian((string) $sub['ends_at']);
-        if (strlen($endsVal) >= 10) {
-            $endsVal = str_replace('/', '-', substr($endsVal, 0, 10));
-            $parts = explode('-', $endsVal);
-            if (count($parts) === 3 && strlen($parts[0]) === 4) {
-                $endsVal = $parts[0] . '-' . $parts[1] . '-' . $parts[2];
-            }
-        }
-    }
+    $endsVal = $sub && $sub['ends_at'] ? Format::gregorianDateForInput((string) $sub['ends_at']) : '';
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
         <p class="muted">مصرف تجمیعی (پنل‌های فعال): <strong>' . Format::bytesToGb($used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
         . ($breakRows ? Layout::card($breakRows, 'مصرف به تفکیک پنل (ادمین)') : '')

@@ -5,10 +5,38 @@ declare(strict_types=1);
 namespace App\Xui;
 
 /**
- * Extract per-client traffic from 3x-ui inbound list response.
+ * Extract traffic from 3x-ui GET /panel/api/inbounds/list (same fields as inbounds UI).
  */
 final class InboundTraffic
 {
+    /**
+     * Totals shown on 3x-ui inbounds page: sum of each inbound's up/down (not clientStats).
+     *
+     * @param list<mixed> $inbounds
+     * @return array{up: int, down: int, total: int, inbound_count: int}
+     */
+    public static function panelTrafficTotals(array $inbounds): array
+    {
+        $up = 0;
+        $down = 0;
+        $count = 0;
+        foreach ($inbounds as $inbound) {
+            if (!is_array($inbound)) {
+                continue;
+            }
+            ++$count;
+            $up += (int) ($inbound['up'] ?? 0);
+            $down += (int) ($inbound['down'] ?? 0);
+        }
+
+        return [
+            'up' => $up,
+            'down' => $down,
+            'total' => $up + $down,
+            'inbound_count' => $count,
+        ];
+    }
+
     /**
      * @param list<mixed> $inbounds
      * @return array<string, array{inbound_id:int, protocol:?string, up:int, down:int, enable:bool, uuid:?string}>
