@@ -10,6 +10,8 @@ use App\Xui\InboundTraffic;
 use App\Xui\XuiClient;
 use PDO;
 
+/** Subscription usage = sum of 3x-ui inbound up/down (inbounds page totals), not per-client JaySub math. */
+
 final class TrafficSyncService
 {
     public function __construct(
@@ -110,25 +112,14 @@ final class TrafficSyncService
         $insertVc = $pdo->prepare(
             'INSERT INTO vpn_clients (
                 customer_id, panel_id, subscription_id, inbound_id, xui_email, uuid, protocol,
-                xui_baseline_upload, xui_baseline_download, last_xui_upload, last_xui_download
+                last_xui_upload, last_xui_download, enabled_in_xui
              ) VALUES (
                 :cid, :pid, :sid, :inbound, :email, :uuid, :protocol,
-                :bup, :bdown, :last_up, :last_down
+                :last_up, :last_down, :enabled
              )'
-        );
-        $freezeBaseline = $pdo->prepare(
-            'UPDATE vpn_clients SET
-                xui_baseline_upload = :bup,
-                xui_baseline_download = :bdown,
-                last_xui_upload = :last_up,
-                last_xui_download = :last_down,
-                updated_at = CURRENT_TIMESTAMP
-             WHERE id = :id'
         );
         $upd = $pdo->prepare(
             'UPDATE vpn_clients SET
-                base_upload_bytes = :base_up,
-                base_download_bytes = :base_down,
                 last_xui_upload = :last_up,
                 last_xui_download = :last_down,
                 enabled_in_xui = :enabled,
@@ -152,40 +143,15 @@ final class TrafficSyncService
                     'email' => $email,
                     'uuid' => $s['uuid'],
                     'protocol' => $s['protocol'],
-                    'bup' => $s['up'],
-                    'bdown' => $s['down'],
                     'last_up' => $s['up'],
                     'last_down' => $s['down'],
+                    'enabled' => $s['enable'] ? 1 : 0,
                 ]);
                 continue;
             }
-            $baselineUp = (int) ($vc['xui_baseline_upload'] ?? 0);
-            $baselineDown = (int) ($vc['xui_baseline_download'] ?? 0);
-            if ($baselineUp === 0 && $baselineDown === 0
-                && (int) $vc['last_xui_upload'] === 0 && (int) $vc['last_xui_download'] === 0
-                && ($s['up'] > 0 || $s['down'] > 0)) {
-                $freezeBaseline->execute([
-                    'bup' => $s['up'],
-                    'bdown' => $s['down'],
-                    'last_up' => $s['up'],
-                    'last_down' => $s['down'],
-                    'id' => $vc['id'],
-                ]);
-                continue;
-            }
-            $result = TrafficCounter::applyReading(
-                (int) $vc['base_upload_bytes'],
-                (int) $vc['base_download_bytes'],
-                (int) $vc['last_xui_upload'],
-                (int) $vc['last_xui_download'],
-                $s['up'],
-                $s['down'],
-            );
             $upd->execute([
-                'base_up' => $result['base_up'],
-                'base_down' => $result['base_down'],
-                'last_up' => $result['last_up'],
-                'last_down' => $result['last_down'],
+                'last_up' => $s['up'],
+                'last_down' => $s['down'],
                 'enabled' => $s['enable'] ? 1 : 0,
                 'uuid' => $s['uuid'],
                 'protocol' => $s['protocol'],
@@ -194,6 +160,8 @@ final class TrafficSyncService
                 'id' => $vc['id'],
             ]);
         }
+
+        $this->aggregateCustomer($customerId);
 
         $ok = $pdo->prepare(
             "UPDATE vpn_panels SET connection_status = 'connected', last_sync_at = NOW(), last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = :id"

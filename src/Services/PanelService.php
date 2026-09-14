@@ -125,12 +125,11 @@ final class PanelService
         $rows = $stmt->fetchAll();
         $out = [];
         foreach ($rows as $r) {
-            $up = max(0, (int) $r['base_upload_bytes'] + (int) $r['last_xui_upload'] - (int) $r['xui_baseline_upload']);
-            $down = max(0, (int) $r['base_download_bytes'] + (int) $r['last_xui_download'] - (int) $r['xui_baseline_download']);
-            $xuiTotal = (int) $r['last_xui_upload'] + (int) $r['last_xui_download'];
+            $up = (int) $r['last_xui_upload'];
+            $down = (int) $r['last_xui_download'];
             $out[] = [
                 'email' => (string) $r['xui_email'],
-                'bytes' => $xuiTotal,
+                'bytes' => $up + $down,
                 'tracked_bytes' => $up + $down,
                 'enabled' => (int) $r['enabled_in_xui'] === 1,
             ];

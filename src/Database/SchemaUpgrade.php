@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 7;
+    public const VERSION = 8;
 
     public static function apply(PDO $pdo): void
     {
@@ -75,6 +75,11 @@ SQL
                 self::addColumnIfMissing($pdo, 'vpn_panels', 'xui_inbound_up', 'BIGINT UNSIGNED NOT NULL DEFAULT 0');
                 self::addColumnIfMissing($pdo, 'vpn_panels', 'xui_inbound_down', 'BIGINT UNSIGNED NOT NULL DEFAULT 0');
                 self::writeVersion($pdo, 7);
+                $current = 7;
+            }
+            if ($current < 8) {
+                self::resetTrafficForPanelInboundTotals($pdo);
+                self::writeVersion($pdo, 8);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());
@@ -114,6 +119,36 @@ SQL
         } catch (\Throwable $e) {
             error_log('JaySub usage_view_token backfill: ' . $e->getMessage());
         }
+    }
+
+    /** Wipe JaySub per-client traffic accounting; usage comes from 3x-ui inbound up/down sums after sync. */
+    private static function resetTrafficForPanelInboundTotals(PDO $pdo): void
+    {
+        $pdo->exec('DELETE FROM traffic_snapshots');
+        $pdo->exec('DELETE FROM traffic_alerts');
+        $pdo->exec(
+            'UPDATE subscriptions SET used_upload_bytes = 0, used_download_bytes = 0, status = \'active\'
+             WHERE status IN (\'active\', \'exhausted\')'
+        );
+        $pdo->exec(
+            "UPDATE customers SET service_status = 'active', vpn_enabled = 1
+             WHERE service_status IN ('exhausted', 'warning')"
+        );
+        $pdo->exec(
+            'UPDATE vpn_clients SET
+                base_upload_bytes = 0,
+                base_download_bytes = 0,
+                last_xui_upload = 0,
+                last_xui_download = 0,
+                xui_baseline_upload = 0,
+                xui_baseline_download = 0,
+                disabled_by_quota = 0'
+        );
+        $pdo->exec('UPDATE vpn_panels SET xui_inbound_up = 0, xui_inbound_down = 0');
+        $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value) VALUES (\'traffic_source\', :v)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+        )->execute(['v' => 'xui_inbound_totals']);
     }
 
     private static function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void
