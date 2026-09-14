@@ -17,8 +17,29 @@ final class Format
     /** e.g. "GB 1.32" for public usage mockup */
     public static function gbPrefix(float $bytes, int $decimals = 2): string
     {
+        if ($bytes <= 0) {
+            return 'GB 0.00';
+        }
         $gb = $bytes / (1024 ** 3);
+        if ($gb < 0.01) {
+            return self::bytesAuto($bytes);
+        }
+
         return 'GB ' . number_format($gb, $decimals, '.', '');
+    }
+
+    /** مصرف واقعی — زیر ۰.۰۱ گیگ به MB/KB تا «۰.۰۰ GB» گمراه‌کننده نباشد. */
+    public static function usageVolume(float $bytes, int $gbDecimals = 2): string
+    {
+        if ($bytes <= 0) {
+            return '0 GB';
+        }
+        $gb = $bytes / (1024 ** 3);
+        if ($gb < 0.01) {
+            return self::bytesAuto($bytes);
+        }
+
+        return self::bytesToGb($bytes, $gbDecimals);
     }
 
     public static function bytesToGbNumber(float $bytes): float

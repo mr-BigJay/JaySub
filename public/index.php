@@ -111,6 +111,12 @@ function customerPage(string $title, string $activeNav, string $content): void
     Response::html(Layout::customer($title, $activeNav, $content));
 }
 
+/** @return array{upload:int, download:int, total:int, source:string} */
+function customerTrafficUsage(int $customerId): array
+{
+    return CustomerService::trafficUsageForCustomer($customerId);
+}
+
 function adminPlaceholder(string $title, string $activeNav, string $description): void
 {
     requireAdmin();
@@ -218,9 +224,10 @@ if (preg_match('#^/u/([a-f0-9]{64})$#i', $uri, $m) && $method === 'GET') {
         Response::html(Layout::publicUsagePage('مصرف سرویس', '<div class="usage-view-page"><p class="uv-empty muted">سرویس فعالی ثبت نشده است.</p></div>'));
         return;
     }
-    $upload = (int) $sub['used_upload_bytes'];
-    $download = (int) $sub['used_download_bytes'];
-    $total = $upload + $download;
+    $traffic = customerTrafficUsage($cid);
+    $upload = $traffic['upload'];
+    $download = $traffic['download'];
+    $total = $traffic['total'];
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $endsAt = $sub['ends_at'] ?? null;
@@ -253,9 +260,10 @@ if ($uri === '/dashboard' && $method === 'GET') {
         return;
     }
 
-    $upload = (int) $sub['used_upload_bytes'];
-    $download = (int) $sub['used_download_bytes'];
-    $total = $upload + $download;
+    $traffic = customerTrafficUsage($cid);
+    $upload = $traffic['upload'];
+    $download = $traffic['download'];
+    $total = $traffic['total'];
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $remaining = max(0, $quota - $total);
@@ -283,7 +291,7 @@ if ($uri === '/dashboard' && $method === 'GET') {
     ' . Layout::usageProgress((float) $total, (float) $quota, $pct) . '
     ' . Layout::card('
         <div class="data-card-row"><span>حجم کل</span><span>' . Format::bytesToGb($quota) . '</span></div>
-        <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::bytesToGb($total) . '</span></div>
+        <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::usageVolume((float) $total) . '</span></div>
         <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb($remaining) . '</span></div>
         <div class="data-card-row"><span>تاریخ انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
     ', 'اشتراک من') . '
@@ -305,7 +313,8 @@ if ($uri === '/app/subscription' && $method === 'GET') {
         customerPage('اشتراک من', 'subscription', Layout::card('<p class="muted">اشتراک فعالی ثبت نشده است.</p>'));
         return;
     }
-    $total = (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'];
+    $traffic = customerTrafficUsage($cid);
+    $total = $traffic['total'];
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $endsAt = $sub['ends_at'] ?? null;
@@ -313,7 +322,9 @@ if ($uri === '/app/subscription' && $method === 'GET') {
     $body = Layout::usageProgress((float) $total, (float) $quota, $pct)
         . Layout::card('
         <div class="data-card-row"><span>حجم کل</span><span>' . Format::bytesToGb($quota) . '</span></div>
-        <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::bytesToGb($total) . '</span></div>
+        <div class="data-card-row"><span>مصرف‌شده</span><span>' . Format::usageVolume((float) $total) . '</span></div>
+        <div class="data-card-row"><span>آپلود (Sent)</span><span>' . Format::bytesAuto((float) $traffic['upload']) . '</span></div>
+        <div class="data-card-row"><span>دانلود (Received)</span><span>' . Format::bytesAuto((float) $traffic['download']) . '</span></div>
         <div class="data-card-row"><span>باقی‌مانده</span><span>' . Format::bytesToGb(max(0, $quota - $total)) . '</span></div>
         <div class="data-card-row"><span>انقضا</span><span>' . htmlspecialchars($expiryText, ENT_QUOTES, 'UTF-8') . '</span></div>
         <div class="data-card-row"><span>وضعیت</span><span>' . serviceStatusBadge((string) $customer['service_status']) . '</span></div>
@@ -580,7 +591,8 @@ if ($uri === '/admin/services' && $method === 'GET') {
     $rows = CustomerService::listAll();
     $tableRows = [];
     foreach ($rows as $r) {
-        $used = (int) ($r['used_upload_bytes'] ?? 0) + (int) ($r['used_download_bytes'] ?? 0);
+        $traffic = customerTrafficUsage((int) $r['id']);
+        $used = $traffic['total'];
         $quota = (int) ($r['quota_bytes'] ?? 0);
         $pct = $quota > 0 ? Format::percent($used, $quota) : 0;
         $clientCount = (int) ($r['client_count'] ?? 0);
@@ -614,7 +626,7 @@ if ($uri === '/admin/reports' && $method === 'GET') {
     $users = CustomerService::listAll();
     $userRows = '';
     foreach ($users as $u) {
-        $used = (int) ($u['used_upload_bytes'] ?? 0) + (int) ($u['used_download_bytes'] ?? 0);
+        $used = customerTrafficUsage((int) $u['id'])['total'];
         $userRows .= '<div class="data-card-row"><span>' . htmlspecialchars($u['username'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesAuto((float) $used) . '</span></div>';
     }
     $body = Layout::card('
@@ -673,7 +685,8 @@ if ($uri === '/admin/customers' && $method === 'GET') {
         if ($statusFilter !== '' && (string) $r['service_status'] !== $statusFilter) {
             continue;
         }
-        $used = (int) ($r['used_upload_bytes'] ?? 0) + (int) ($r['used_download_bytes'] ?? 0);
+        $traffic = customerTrafficUsage((int) $r['id']);
+        $used = $traffic['total'];
         $quota = (int) ($r['quota_bytes'] ?? 0);
         $pct = $quota > 0 ? Format::percent($used, $quota) . '٪' : '—';
         $ends = $r['ends_at'] ?? null;
@@ -750,7 +763,8 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
     $sub = CustomerService::activeSubscription($id);
     $panels = PanelService::forCustomer($id);
     $breakdown = CustomerService::panelUsageBreakdown($id);
-    $used = $sub ? (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'] : 0;
+    $traffic = customerTrafficUsage($id);
+    $used = $traffic['total'];
     $quota = $sub ? (int) $sub['quota_bytes'] : 0;
     $panelChecks = '';
     foreach ($panels as $p) {
@@ -761,10 +775,9 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
     $breakRows = '';
     foreach ($breakdown as $b) {
         $t = (int) $b['upload_bytes'] + (int) $b['download_bytes'];
-        if ($t <= 0) {
-            continue;
-        }
-        $breakRows .= '<div class="data-card-row"><span>' . htmlspecialchars($b['name'], ENT_QUOTES, 'UTF-8') . '</span><span>' . Format::bytesToGb($t) . '</span></div>';
+        $breakRows .= '<div class="data-card-row"><span>' . htmlspecialchars($b['name'], ENT_QUOTES, 'UTF-8') . '</span><span>'
+            . Format::bytesAuto((float) $b['upload_bytes']) . ' ↑ / ' . Format::bytesAuto((float) $b['download_bytes']) . ' ↓'
+            . ' · ' . Format::bytesToGb($t) . '</span></div>';
     }
     $endsVal = $sub && $sub['ends_at'] ? Format::gregorianDateForInput((string) $sub['ends_at']) : '';
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
@@ -808,7 +821,8 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
         Response::redirect('/admin/customers');
     }
     $sub = CustomerService::activeSubscription($id);
-    $used = $sub ? (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'] : 0;
+    $traffic = customerTrafficUsage($id);
+    $used = $traffic['total'];
     $quota = $sub ? (int) $sub['quota_bytes'] : 0;
     $usageViewUrl = '';
     try {
@@ -1321,10 +1335,11 @@ if ($uri === '/api/customer/dashboard' && $method === 'GET') {
     if (!$sub) {
         Response::json(['error' => 'no subscription'], 404);
     }
-    $total = (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'];
+    $traffic = customerTrafficUsage($cid);
+    $total = $traffic['total'];
     Response::json([
-        'upload_bytes' => (int) $sub['used_upload_bytes'],
-        'download_bytes' => (int) $sub['used_download_bytes'],
+        'upload_bytes' => $traffic['upload'],
+        'download_bytes' => $traffic['download'],
         'total_bytes' => $total,
         'quota_bytes' => (int) $sub['quota_bytes'],
         'percent' => Format::percent($total, (int) $sub['quota_bytes']),

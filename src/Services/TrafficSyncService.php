@@ -73,10 +73,7 @@ final class TrafficSyncService
         $client = new XuiClient($panel['base_url'], $token);
 
         $status = $client->getServerStatus();
-        if (!$status['ok']) {
-            $this->markPanelError($panelId, $status['error'] ?? 'status failed');
-            return;
-        }
+        $statusOk = $status['ok'];
 
         $list = $client->listInbounds();
         if (!$list['ok']) {
@@ -84,11 +81,12 @@ final class TrafficSyncService
             return;
         }
 
-        $obj = $list['data']['obj'] ?? [];
-        if (!is_array($obj)) {
+        $data = $list['data'] ?? null;
+        if (!is_array($data)) {
             $this->markPanelError($panelId, 'Invalid inbounds response');
             return;
         }
+        $obj = InboundTraffic::inboundsFromListResult($list);
 
         $statsByEmail = InboundTraffic::statsByEmail($obj);
         $panelTotals = InboundTraffic::panelTrafficTotals($obj);
@@ -163,10 +161,12 @@ final class TrafficSyncService
 
         $this->aggregateCustomer($customerId);
 
+        $connStatus = $statusOk ? 'connected' : 'sync_error';
+        $lastErr = $statusOk ? null : mb_substr((string) ($status['error'] ?? 'status failed'), 0, 2000);
         $ok = $pdo->prepare(
-            "UPDATE vpn_panels SET connection_status = 'connected', last_sync_at = NOW(), last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = :id"
+            "UPDATE vpn_panels SET connection_status = :st, last_sync_at = NOW(), last_error = :err, updated_at = CURRENT_TIMESTAMP WHERE id = :id"
         );
-        $ok->execute(['id' => $panelId]);
+        $ok->execute(['st' => $connStatus, 'err' => $lastErr, 'id' => $panelId]);
     }
 
     private function markPanelError(int $panelId, string $error): void

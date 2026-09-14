@@ -92,8 +92,8 @@ final class PanelService
         $mapped = array_column($mappedStmt->fetchAll(), 'xui_email');
         $mappedSet = array_flip($mapped);
 
-        $obj = $list['data']['obj'] ?? [];
-        if (!is_array($obj)) {
+        $obj = \App\Xui\InboundTraffic::inboundsFromListResult($list);
+        if ($obj === []) {
             return [];
         }
         $statsByEmail = \App\Xui\InboundTraffic::statsByEmail($obj);

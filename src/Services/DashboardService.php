@@ -24,7 +24,8 @@ final class DashboardService
             "SELECT COUNT(*) FROM vpn_panels WHERE connection_status = 'connected'"
         )->fetchColumn();
         $totalTraffic = (int) $pdo->query(
-            'SELECT COALESCE(SUM(used_upload_bytes + used_download_bytes), 0) FROM subscriptions'
+            'SELECT COALESCE(SUM(CAST(xui_inbound_up AS UNSIGNED) + CAST(xui_inbound_down AS UNSIGNED)), 0)
+             FROM vpn_panels WHERE is_active = 1'
         )->fetchColumn();
 
         return [

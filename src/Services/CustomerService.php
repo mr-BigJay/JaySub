@@ -332,6 +332,68 @@ final class CustomerService
         return $bytes / (1024 * 1024 * 1024);
     }
 
+    /**
+     * مصرف نمایشی = جمع up/down اینباند پنل (بعد از sync)، مثل صفحه Inbounds.
+     *
+     * @return array{upload:int, download:int, total:int, source:string}
+     */
+    public static function trafficUsageForCustomer(int $customerId): array
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT COALESCE(SUM(xui_inbound_up), 0) AS up,
+                    COALESCE(SUM(xui_inbound_down), 0) AS down,
+                    SUM(CASE WHEN last_sync_at IS NOT NULL THEN 1 ELSE 0 END) AS synced_panels
+             FROM vpn_panels
+             WHERE customer_id = :cid AND is_active = 1'
+        );
+        $stmt->execute(['cid' => $customerId]);
+        $row = $stmt->fetch();
+        $up = (int) ($row['up'] ?? 0);
+        $down = (int) ($row['down'] ?? 0);
+        $synced = (int) ($row['synced_panels'] ?? 0);
+        if ($synced > 0) {
+            return [
+                'upload' => $up,
+                'download' => $down,
+                'total' => $up + $down,
+                'source' => 'xui_inbound_totals',
+            ];
+        }
+        $sub = self::activeSubscription($customerId);
+        if ($sub === null) {
+            return ['upload' => 0, 'download' => 0, 'total' => 0, 'source' => 'none'];
+        }
+        $u = (int) $sub['used_upload_bytes'];
+        $d = (int) $sub['used_download_bytes'];
+
+        return [
+            'upload' => $u,
+            'download' => $d,
+            'total' => $u + $d,
+            'source' => 'subscription',
+        ];
+    }
+
+    /** هم‌خوان‌کردن subscriptions.used_* با جمع پنل (بعد از sync). */
+    public static function persistTrafficUsageFromPanels(int $customerId): void
+    {
+        $usage = self::trafficUsageForCustomer($customerId);
+        if ($usage['source'] !== 'xui_inbound_totals') {
+            return;
+        }
+        $sub = self::activeSubscription($customerId);
+        if ($sub === null) {
+            return;
+        }
+        Database::pdo()->prepare(
+            'UPDATE subscriptions SET used_upload_bytes = :u, used_download_bytes = :d, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+        )->execute([
+            'u' => $usage['upload'],
+            'd' => $usage['download'],
+            'id' => (int) $sub['id'],
+        ]);
+    }
+
     /** @return array<string, mixed>|null */
     public static function activeSubscription(int $customerId): ?array
     {

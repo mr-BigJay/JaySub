@@ -55,16 +55,22 @@ foreach ($customers as $c) {
     $used = $s ? (int) $s['used_upload_bytes'] + (int) $s['used_download_bytes'] : 0;
     echo '--- ' . $c['username'] . ' (' . $c['name'] . ") ---\n";
     echo "  panels: {$c['panels']} (active: {$c['panels_active']}), mapped clients: {$c['clients']}\n";
+    $display = \App\Services\CustomerService::trafficUsageForCustomer((int) $c['id']);
     if ($s) {
-        echo '  subscription: ' . $s['status'] . ', used bytes: ' . $used . ', quota: ' . $s['quota_bytes'] . "\n";
+        echo '  subscription: ' . $s['status'] . ', sub_used bytes: ' . $used . ', quota: ' . $s['quota_bytes'] . "\n";
     } else {
         echo "  subscription: NONE — run service setup\n";
     }
-    $panels = $pdo->prepare('SELECT id, name, is_active, connection_status, last_sync_at, last_error FROM vpn_panels WHERE customer_id = :id');
+    echo '  UI display: ' . $display['total'] . ' bytes (source=' . $display['source'] . ")\n";
+    $panels = $pdo->prepare(
+        'SELECT id, name, is_active, connection_status, last_sync_at, last_error,
+                xui_inbound_up, xui_inbound_down FROM vpn_panels WHERE customer_id = :id'
+    );
     $panels->execute(['id' => $c['id']]);
     foreach ($panels->fetchAll() as $p) {
+        $px = (int) ($p['xui_inbound_up'] ?? 0) + (int) ($p['xui_inbound_down'] ?? 0);
         echo '  panel #' . $p['id'] . ' ' . $p['name'] . ': active=' . $p['is_active'] . ', ' . $p['connection_status'];
-        echo ', last_sync=' . ($p['last_sync_at'] ?? 'never') . "\n";
+        echo ', last_sync=' . ($p['last_sync_at'] ?? 'never') . ', xui_total=' . $px . " bytes\n";
         if (!empty($p['last_error'])) {
             echo '    error: ' . mb_substr((string) $p['last_error'], 0, 120) . "\n";
         }

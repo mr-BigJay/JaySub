@@ -389,7 +389,7 @@ HTML;
         $progClass = $pct >= 90 ? 'danger' : ($pct >= 80 ? 'warn' : '');
         return '<div class="usage-progress-block">
             <div class="usage-progress-head">
-                <span>مصرف: <strong>' . Format::bytesToGb($used) . ' / ' . Format::bytesToGb($quota) . '</strong></span>
+                <span>مصرف: <strong>' . Format::usageVolume($used) . ' / ' . Format::bytesToGb($quota) . '</strong></span>
                 <span class="usage-pct">' . $pct . '٪</span>
             </div>
             <div class="progress ' . $progClass . '" data-progress="' . $pct . '"><span style="width:' . $pct . '%"></span></div>
