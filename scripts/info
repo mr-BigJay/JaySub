@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Neshan dadan-e address panel + credentials (bad az nasb ya har zaman)
+#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/info | bash
+set -euo pipefail
+
+INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
+CONFIG="${INSTALL_DIR}/config/config.php"
+CRED="${INSTALL_DIR}/storage/install-credentials.txt"
+
+if [[ -f "$CRED" ]]; then
+  # shellcheck disable=SC1090
+  DOMAIN=$(grep -m1 '^Domain:' "$CRED" | cut -d' ' -f2-)
+  ADMIN_URL=$(grep -m1 '^Admin URL:' "$CRED" | cut -d' ' -f3-)
+  CUSTOMER_URL="${ADMIN_URL%/admin/login}/login"
+  ADMIN_USER=$(grep -m1 '^Admin user:' "$CRED" | cut -d' ' -f3-)
+  ADMIN_PASS=$(grep -m1 '^Admin password:' "$CRED" | cut -d' ' -f3-)
+  echo ""
+  echo "=============================================="
+  echo " JaySub installed successfully"
+  echo "=============================================="
+  echo " Admin:    ${ADMIN_URL}"
+  echo " Customer: ${CUSTOMER_URL}"
+  echo " Public:   ${CUSTOMER_URL%/login}"
+  echo " Admin:    ${ADMIN_USER} / ${ADMIN_PASS}"
+  echo " Domain:   ${DOMAIN}"
+  echo " Credentials file: ${CRED}"
+  echo "=============================================="
+  exit 0
+fi
+
+if [[ ! -f "$CONFIG" ]]; then
+  echo "JaySub nasb nashode ya masir eshtebah ast."
+  echo "Masir pishfarz: ${INSTALL_DIR}"
+  echo "Baraye nasb:"
+  echo '  curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash'
+  exit 1
+fi
+
+APP_URL=$(php -r "\$c=require '$CONFIG'; echo rtrim(\$c['app']['url']??'','/');")
+DB_USER=$(php -r "\$c=require '$CONFIG'; echo \$c['database']['user']??'';")
+DB_PASS=$(php -r "\$c=require '$CONFIG'; echo \$c['database']['password']??'';")
+DOMAIN=$(php -r "echo parse_url('$APP_URL', PHP_URL_HOST) ?: '';")
+
+echo ""
+echo "=============================================="
+echo " JaySub installed successfully"
+echo "=============================================="
+echo " Panel:    ${APP_URL}/admin/login"
+echo " Customer: ${APP_URL}/login"
+echo " Domain:   ${DOMAIN}"
+echo " Admin:    admin  (ramz dar install-credentials.txt nist — reset konid)"
+echo " MySQL:    ${DB_USER} / (dar config.php)"
+echo "----------------------------------------------"
+echo " File credentials: ${CRED} (vojud nadarad)"
+echo " Config:           ${CONFIG}"
+echo "=============================================="
+echo ""
+echo "Reset ramz admin:"
+echo "  php ${INSTALL_DIR}/scripts/install.php 'Ramz-e-New'"
