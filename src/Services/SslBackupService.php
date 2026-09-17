@@ -46,11 +46,17 @@ final class SslBackupService
             throw new \RuntimeException('سرور غیرفعال است.');
         }
 
-        $result = SshRemoteZip::zipCertDirectory($server, $encryption);
+        $storageBase = (string) ($config['paths']['storage'] ?? dirname(__DIR__, 2) . '/storage');
+        $result = SshRemoteZip::zipCertDirectory($server, $encryption, $storageBase);
         if (!$result['ok'] || !isset($result['body'])) {
             $msg = $result['error'] ?? 'SSH/zip ناموفق';
             SslServerService::markBackupResult($serverId, false, $msg);
             throw new \RuntimeException($msg);
+        }
+
+        $ext = (string) ($result['extension'] ?? '.zip');
+        if (!in_array($ext, ['.zip', '.tar.gz'], true)) {
+            $ext = '.zip';
         }
 
         $hostSlug = preg_replace('/[^a-zA-Z0-9._-]+/', '-', (string) $server['host']) ?? 'server';
@@ -59,8 +65,8 @@ final class SslBackupService
             $hostSlug = 'server';
         }
         $now = BackupCalendar::tehranNow();
-        $filename = $hostSlug . '_' . $now->format('Y-m-d_His') . '.zip';
-        if (!preg_match('/^[A-Za-z0-9._-]+$/', $filename)) {
+        $filename = $hostSlug . '_' . $now->format('Y-m-d_His') . $ext;
+        if (!preg_match('/^[A-Za-z0-9._-]+(\.zip|\.tar\.gz)$/', $filename)) {
             throw new \RuntimeException('نام فایل نامعتبر.');
         }
 
@@ -126,7 +132,7 @@ final class SslBackupService
         $out = [];
         foreach (glob($root . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
             $sid = (int) basename($dir);
-            foreach (glob($dir . '/*.zip') ?: [] as $path) {
+            foreach (array_merge(glob($dir . '/*.zip') ?: [], glob($dir . '/*.tar.gz') ?: []) as $path) {
                 if (!is_file($path)) {
                     continue;
                 }
@@ -147,7 +153,7 @@ final class SslBackupService
     /** @param array<string, mixed> $config */
     public static function resolveDownloadPath(array $config, int $serverId, string $filename): ?string
     {
-        if ($serverId <= 0 || !preg_match('/^[A-Za-z0-9._-]+\\.zip$/', $filename)) {
+        if ($serverId <= 0 || !preg_match('/^[A-Za-z0-9._-]+\\.(zip|tar\\.gz)$/', $filename)) {
             return null;
         }
         $path = self::serverDir($config, $serverId) . '/' . $filename;
@@ -156,7 +162,7 @@ final class SslBackupService
 
     private static function pruneServerDir(string $dir, int $keep): void
     {
-        $files = glob($dir . '/*.zip') ?: [];
+        $files = array_merge(glob($dir . '/*.zip') ?: [], glob($dir . '/*.tar.gz') ?: []);
         usort($files, static fn ($a, $b) => filemtime($b) <=> filemtime($a));
         foreach (array_slice($files, $keep) as $old) {
             @unlink($old);

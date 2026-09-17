@@ -887,7 +887,7 @@ HTML;
             <textarea name="ssh_secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa"></textarea>
             <label>مسیر پوشهٔ گواهی روی سرور</label>
             <input name="cert_path" value="/root/cert" dir="ltr">
-            <p class="muted form-hint">هر هفته این پوشه zip و روی JaySub ذخیره می‌شود. روی سرور: <code>zip</code>؛ برای پسورد روی JaySub: <code>sshpass</code>.</p>
+            <p class="muted form-hint">هر هفته این پوشه zip (یا tar.gz) و روی JaySub ذخیره می‌شود. روی سرور remote: <code>zip</code> یا <code>tar</code>؛ برای پسورد روی JaySub: <code>sshpass</code> و پوشهٔ <code>storage/ssl-ssh</code> برای www-data.</p>
             <button class="btn btn-primary block" type="submit">ثبت سرور</button>
         </form>';
     }

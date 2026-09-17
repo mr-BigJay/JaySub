@@ -1302,7 +1302,8 @@ if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
         echo 'فایل یافت نشد';
         return;
     }
-    header('Content-Type: application/zip');
+    $mime = str_ends_with($file, '.tar.gz') ? 'application/gzip' : 'application/zip';
+    header('Content-Type: ' . $mime);
     header('Content-Disposition: attachment; filename="' . basename($file) . '"');
     header('Content-Length: ' . (string) filesize($path));
     readfile($path);

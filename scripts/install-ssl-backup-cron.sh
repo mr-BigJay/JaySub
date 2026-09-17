@@ -11,8 +11,11 @@ if [[ ! -f "${INSTALL_DIR}/worker/ssl_backup_worker.php" ]]; then
   exit 1
 fi
 
-mkdir -p "${INSTALL_DIR}/logs" "${INSTALL_DIR}/storage/backups/ssl"
-chown -R www-data:www-data "${INSTALL_DIR}/logs" "${INSTALL_DIR}/storage/backups" 2>/dev/null || true
+mkdir -p "${INSTALL_DIR}/logs" "${INSTALL_DIR}/storage/backups/ssl" "${INSTALL_DIR}/storage/ssl-ssh"
+touch "${INSTALL_DIR}/storage/ssl-ssh/known_hosts"
+chmod 700 "${INSTALL_DIR}/storage/ssl-ssh"
+chmod 600 "${INSTALL_DIR}/storage/ssl-ssh/known_hosts" 2>/dev/null || true
+chown -R www-data:www-data "${INSTALL_DIR}/logs" "${INSTALL_DIR}/storage/backups" "${INSTALL_DIR}/storage/ssl-ssh" 2>/dev/null || true
 
 # Weekly: Saturday 03:15 (adjust TZ on VPS if you want exact Asia/Tehran)
 CRON_LINE="15 3 * * 6 cd ${INSTALL_DIR} && ${PHP_BIN} worker/ssl_backup_worker.php >> ${LOG_FILE} 2>&1"
@@ -23,7 +26,8 @@ echo "Cron installed:"
 echo "  $CRON_LINE"
 echo ""
 echo "On JaySub host for password SSH: apt install -y sshpass"
-echo "On each remote server: apt install -y zip"
+echo "On each remote server (recommended): apt install -y zip"
+echo "If zip is missing, JaySub falls back to tar.gz over SSH."
 echo ""
 echo "Test once:"
 echo "  cd ${INSTALL_DIR} && ${PHP_BIN} worker/ssl_backup_worker.php"
