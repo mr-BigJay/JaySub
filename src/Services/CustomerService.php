@@ -419,19 +419,54 @@ final class CustomerService
             ];
         }
 
-        $panel = self::panelInboundTotalsForCustomer($customerId);
-        if ($panel['source'] === 'xui_inbound_totals') {
-            return $panel;
-        }
         if ($sub === null) {
             return ['upload' => 0, 'download' => 0, 'total' => 0, 'source' => 'none'];
         }
 
+        // بدون کلاینت ثبت‌شده سقف را با «کل پنل» مقایسه نمی‌کنیم (منبع خطای قطع اشتباه).
         return [
-            'upload' => (int) $sub['used_upload_bytes'],
-            'download' => (int) $sub['used_download_bytes'],
-            'total' => (int) $sub['used_upload_bytes'] + (int) $sub['used_download_bytes'],
-            'source' => 'subscription',
+            'upload' => 0,
+            'download' => 0,
+            'total' => 0,
+            'source' => 'no_mapped_clients',
+        ];
+    }
+
+    /** @return array{client_count:int, mapped_total:int, panel_total:int, quota_bytes:int, percent:float, would_cut:bool, cut_reason:?string} */
+    public static function quotaDiagnosis(int $customerId): array
+    {
+        $sub = self::activeSubscription($customerId);
+        $quota = $sub !== null ? (int) $sub['quota_bytes'] : 0;
+        $subId = $sub !== null ? (int) $sub['id'] : null;
+        $mapped = self::mappedClientTrafficTotals($customerId, $subId);
+        $panel = self::panelInboundTotalsForCustomer($customerId);
+        $usage = self::quotaUsageForCustomer($customerId);
+        $total = $usage['total'];
+        $percent = $quota > 0 ? ($total / $quota) * 100 : 0.0;
+        $wouldCut = false;
+        $reason = null;
+        if ($quota <= 0) {
+            $reason = 'سقف حجم صفر است — JaySub قطع خودکار نمی‌زند.';
+        } elseif ($mapped['client_count'] === 0) {
+            $reason = 'کلاینت sync‌شده در JaySub نیست — قطع خودکار نباید رخ دهد.';
+        } elseif ($percent >= 100) {
+            $wouldCut = true;
+            $reason = 'مصرف کلاینت‌های ثبت‌شده ≥ سقف (' . round($percent, 1) . '٪).';
+            if ($panel['total'] > $mapped['total'] * 1.05 && $panel['total'] > 0) {
+                $reason .= ' (کل اینباند پنل بیشتر از جمع کلاینت‌هاست — شاید کلاینت اضافه یا پنل مشترک باشد.)';
+            }
+        } else {
+            $reason = 'زیر سقف (' . round($percent, 1) . '٪) — اگر قطع است احتمالاً قطع قبلی یا دستی در 3x-ui.';
+        }
+
+        return [
+            'client_count' => $mapped['client_count'],
+            'mapped_total' => $mapped['total'],
+            'panel_total' => $panel['total'],
+            'quota_bytes' => $quota,
+            'percent' => $percent,
+            'would_cut' => $wouldCut,
+            'cut_reason' => $reason,
         ];
     }
 
@@ -439,7 +474,7 @@ final class CustomerService
     public static function persistTrafficUsageFromPanels(int $customerId): void
     {
         $usage = self::quotaUsageForCustomer($customerId);
-        if (!in_array($usage['source'], ['xui_mapped_clients', 'xui_inbound_totals'], true)) {
+        if ($usage['source'] !== 'xui_mapped_clients') {
             return;
         }
         $sub = self::activeSubscription($customerId);

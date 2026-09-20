@@ -190,10 +190,12 @@ final class TrafficSyncService
         }
 
         $subId = (int) $subscription['id'];
+        $mapped = CustomerService::mappedClientTrafficTotals($customerId, $subId);
         $usage = CustomerService::quotaUsageForCustomer($customerId);
         $upload = $usage['upload'];
         $download = $usage['download'];
         $total = $usage['total'];
+        $mappedClientCount = $mapped['client_count'];
         $quota = (int) $subscription['quota_bytes'];
 
         $pdo->prepare(
@@ -232,14 +234,14 @@ final class TrafficSyncService
             AuditLogService::log('system', null, 'warning_sent', 'customer', (int) $customer['id'], ['level' => 'warning_2']);
         });
 
-        if ($quota > 0 && $percent >= 100 && $subscription['status'] === 'active') {
-            $this->enforceQuotaLimit($customerId, $subId, (float) $quota);
+        if ($quota > 0 && $mappedClientCount > 0 && $percent >= 100 && $subscription['status'] === 'active') {
+            $this->enforceQuotaLimit($customerId, $subId, (float) $quota, $total, $mappedClientCount);
         } elseif ($quota > 0 && $percent < 100) {
             $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent);
         }
 
         $serviceStatus = 'active';
-        if ($percent >= 100) {
+        if ($mappedClientCount > 0 && $percent >= 100) {
             $serviceStatus = 'exhausted';
         } elseif ($percent >= $w2) {
             $serviceStatus = 'warning';
@@ -353,7 +355,7 @@ final class TrafficSyncService
         }
     }
 
-    private function enforceQuotaLimit(int $customerId, int $subId, float $quota): void
+    private function enforceQuotaLimit(int $customerId, int $subId, float $quota, int $usedTotal, int $clientCount): void
     {
         $pdo = Database::pdo();
         $check = $pdo->prepare(
@@ -416,7 +418,11 @@ final class TrafficSyncService
             )->execute(['c' => $customerId, 's' => $subId]);
 
             $pdo->commit();
-            AuditLogService::log('system', null, 'clients_disabled_quota', 'customer', $customerId);
+            AuditLogService::log('system', null, 'clients_disabled_quota', 'customer', $customerId, [
+                'used_bytes' => $usedTotal,
+                'quota_bytes' => (int) $quota,
+                'mapped_clients' => $clientCount,
+            ]);
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
