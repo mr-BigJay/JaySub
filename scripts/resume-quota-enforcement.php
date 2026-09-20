@@ -12,10 +12,8 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-require dirname(__DIR__) . '/src/bootstrap-cli.php';
+require __DIR__ . '/lib/cli.php';
 
-use App\Services\QuotaEnforcementService;
-
-QuotaEnforcementService::setEnabled(true);
+\App\Services\QuotaEnforcementService::setEnabled(true);
 fwrite(STDOUT, "quota_enforcement_enabled = ON\n");
 fwrite(STDOUT, "از sync بعدی، در صورت رسیدن به سقف، قطع خودکار دوباره اعمال می‌شود.\n");

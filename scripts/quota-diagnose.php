@@ -14,8 +14,7 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
-unset($config);
+require __DIR__ . '/lib/cli.php';
 
 $filter = null;
 $cutOnly = false;
