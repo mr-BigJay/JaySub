@@ -14,14 +14,8 @@ if (PHP_SAPI !== 'cli') {
 
 $config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
 
-use App\Core\Encryption;
-use App\Services\QuotaEnforcementService;
-use App\Services\SettingsService;
-use App\Services\TelegramService;
-use App\Services\TrafficSyncService;
-
-QuotaEnforcementService::setEnabled(false);
-$off = QuotaEnforcementService::isEnabled() ? 'ON' : 'OFF';
+\App\Services\QuotaEnforcementService::setEnabled(false);
+$off = \App\Services\QuotaEnforcementService::isEnabled() ? 'ON' : 'OFF';
 fwrite(STDOUT, "quota_enforcement_enabled = {$off} (sync پنل‌ها از cron/worker همچنان فعال است)\n");
 if ($off !== 'OFF') {
     fwrite(STDERR, "ERROR: setting did not save — check DB system_settings.\n");

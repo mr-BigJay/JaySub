@@ -14,10 +14,8 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-require dirname(__DIR__) . '/src/bootstrap-cli.php';
-
-use App\Services\CustomerService;
-use App\Services\QuotaEnforcementService;
+$config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
+unset($config);
 
 $filter = null;
 $cutOnly = false;
@@ -45,7 +43,7 @@ $customers = $pdo->query(
      FROM customers c ORDER BY c.id'
 )->fetchAll();
 
-$enforce = QuotaEnforcementService::isEnabled();
+$enforce = \App\Services\QuotaEnforcementService::isEnabled();
 fwrite(STDOUT, 'JaySub quota-diagnose — قطع خودکار: ' . ($enforce ? 'ON' : 'OFF (فقط sync)') . "\n\n");
 
 foreach ($customers as $c) {
@@ -70,8 +68,8 @@ foreach ($customers as $c) {
         continue;
     }
 
-    $d = CustomerService::quotaDiagnosis($cid);
-    $usage = CustomerService::quotaUsageForCustomer($cid);
+    $d = \App\Services\CustomerService::quotaDiagnosis($cid);
+    $usage = \App\Services\CustomerService::quotaUsageForCustomer($cid);
 
     echo "========== {$c['username']} ({$c['name']}) #{$cid} ==========\n";
     echo '  JaySub: vpn_enabled=' . $c['vpn_enabled'] . ', service_status=' . $c['service_status'] . "\n";
