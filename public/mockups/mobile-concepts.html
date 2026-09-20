@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JaySub — انتخاب طرح UI موبایل</title>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b1020; --surface: #161f35; --border: rgba(148,163,184,.12);
+      --text: #eef2ff; --muted: #94a3b8; --accent: #8b5cf6; --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Vazirmatn, Tahoma, sans-serif; background: #060912; color: var(--text); padding: 1rem 1rem 2rem; }
+    h1 { text-align: center; font-size: 1.15rem; margin: 0 0 .35rem; }
+    .badge { display: inline-block; background: rgba(139,92,246,.2); color: #c4b5fd; font-size: .7rem; padding: .2rem .55rem; border-radius: 999px; margin-bottom: .5rem; }
+    .page-intro { text-align: center; color: var(--muted); font-size: .85rem; margin-bottom: 1rem; max-width: 44rem; margin-inline: auto; line-height: 1.65; }
+    .tabs { display: flex; flex-wrap: wrap; gap: .45rem; justify-content: center; margin-bottom: 1rem; max-width: 36rem; margin-inline: auto; }
+    .tabs button {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      padding: .55rem .85rem; border-radius: 12px; cursor: pointer; font-family: inherit; font-size: .8rem; flex: 1 1 42%;
+      min-width: 140px;
+    }
+    .tabs button.active { background: linear-gradient(135deg, rgba(139,92,246,.35), rgba(109,40,217,.2)); border-color: rgba(139,92,246,.55); font-weight: 600; }
+    .concept { display: none; }
+    .concept.active { display: block; }
+    .concept-head { text-align: center; margin-bottom: .75rem; }
+    .concept-desc { max-width: 42rem; margin: 0 auto 1rem; font-size: .86rem; color: var(--muted); line-height: 1.7; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem 1rem; }
+    .pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; font-size: .75rem; margin-top: .65rem; }
+    .pros-cons div { padding: .5rem; border-radius: 10px; }
+    .pros-cons .p { background: rgba(34,197,94,.08); color: #86efac; }
+    .pros-cons .c { background: rgba(239,68,68,.08); color: #fca5a5; }
+    .phones { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; align-items: flex-start; }
+    .phone-wrap { flex: 0 0 auto; }
+    .phone-label { text-align: center; font-size: .8rem; font-weight: 600; margin-bottom: .4rem; color: #c4b5fd; }
+    .phone {
+      width: 280px; background: var(--bg); border-radius: 32px; border: 2px solid #334155;
+      overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.5);
+    }
+    .status-bar { height: 26px; background: #080c16; display: flex; align-items: center; justify-content: center; font-size: .6rem; color: #64748b; }
+    .app-head {
+      padding: .7rem 1rem; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border); font-weight: 600; font-size: .92rem;
+    }
+    .app-body { padding: .75rem; min-height: 440px; padding-bottom: 58px; position: relative; }
+    .widget {
+      background: linear-gradient(160deg, var(--surface), rgba(139,92,246,.14));
+      border: 1px solid rgba(139,92,246,.28); border-radius: var(--radius);
+      padding: .75rem; margin-bottom: .65rem; text-align: center; font-size: .78rem; line-height: 1.45;
+    }
+    .widget strong { display: block; font-size: .95rem; margin-bottom: .15rem; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+    .tile {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: .75rem .4rem; text-align: center; font-size: .76rem; color: var(--text);
+      min-height: 82px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .3rem;
+    }
+    .tile .ico { font-size: 1.35rem; line-height: 1; }
+    .tile.accent { border-color: rgba(139,92,246,.45); background: rgba(139,92,246,.12); }
+    .tile.ghost { opacity: .45; border-style: dashed; }
+    .mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; margin-bottom: .55rem; }
+    .mini { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .45rem .5rem; font-size: .68rem; }
+    .mini span { display: block; color: var(--muted); margin-bottom: .1rem; }
+    .mini b { font-size: .9rem; }
+    .bottom-nav {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 52px;
+      display: flex; align-items: center; background: rgba(18,26,46,.98); border-top: 1px solid var(--border);
+    }
+    .bottom-nav span { flex: 1; text-align: center; font-size: .6rem; color: var(--muted); }
+    .bottom-nav span.on { color: #c4b5fd; font-weight: 600; }
+    .section-title { font-size: .68rem; color: var(--muted); margin: .55rem 0 .35rem; padding-right: .15rem; }
+    .arrow-hint { font-size: .65rem; color: #a78bfa; text-align: center; margin-top: .45rem; }
+    .pick-hint {
+      margin: 2rem auto 0; max-width: 28rem; text-align: center; padding: 1rem;
+      border: 1px dashed rgba(139,92,246,.4); border-radius: var(--radius); font-size: .85rem; color: var(--muted);
+    }
+    @media print {
+      .tabs { display: none; }
+      .concept { display: block !important; page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+  <h1>انتخاب طرح پنل موبایل JaySub</h1>
+  <p class="page-intro">هر طرح: دکمه‌ها <strong>دوتایی (۲ ستون)</strong> — هر دکمه صفحهٔ جدا. دکمه‌های تب بالا را بزنید و ادمین + مشتری را با هم مقایسه کنید.</p>
+
+  <div class="tabs">
+    <button type="button" class="active" data-c="1">۱ — هاب ساده</button>
+    <button type="button" data-c="2">۲ — ویجت + میانبر</button>
+    <button type="button" data-c="3">۳ — دو سطحی</button>
+    <button type="button" data-c="4">۴ — داشبورد کارتی</button>
+  </div>
+
+  <!-- 1 -->
+  <section class="concept active" id="c1">
+    <div class="concept-head"><span class="badge">پیشنهاد پیش‌فرض</span></div>
+    <div class="concept-desc">
+      <strong>طرح ۱ — هاب ساده</strong> — بدون نوار چیپ اسکرول. خانه = گرید ۲×۴ (ادمین) یا ۲×۳ (مشتری). نوار پایین ۴ تب.
+      <div class="pros-cons"><div class="p">+ شبیه اپ واقعی<br>+ همه منو یک‌جا</div><div class="c">− ادمین ۸ دکمه<br>− یک اسکرول کوتاه</div></div>
+    </div>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone-label">ادمین</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۱</div>
+          <div class="app-head"><span>JaySub ادمین</span></div>
+          <div class="app-body">
+            <div class="mini-stats">
+              <div class="mini"><span>فعال</span><b>۱۲</b></div>
+              <div class="mini"><span>مصرف کل</span><b>۴۲ GB</b></div>
+            </div>
+            <div class="grid2">
+              <div class="tile accent"><span class="ico">👤</span>کاربران</div>
+              <div class="tile"><span class="ico">◈</span>اشتراک‌ها</div>
+              <div class="tile"><span class="ico">₪</span>فروش</div>
+              <div class="tile"><span class="ico">💳</span>پرداخت‌ها</div>
+              <div class="tile"><span class="ico">✉</span>پیام‌ها</div>
+              <div class="tile"><span class="ico">📊</span>گزارش‌ها</div>
+              <div class="tile"><span class="ico">⚙</span>تنظیمات</div>
+              <div class="tile accent"><span class="ico">＋</span>مشتری جدید</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">خانه</span><span>کاربران</span><span>گزارش</span><span>بیشتر</span></nav>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">مشتری</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۱</div>
+          <div class="app-head"><span>سلام، کاربر</span></div>
+          <div class="app-body">
+            <div class="widget"><strong>VPN · آماده</strong>۲.۴ GB مانده · انقضا ۲۰/۰۶</div>
+            <div class="grid2">
+              <div class="tile accent"><span class="ico">🛒</span>خرید</div>
+              <div class="tile"><span class="ico">↻</span>تمدید</div>
+              <div class="tile"><span class="ico">🔗</span>لینک</div>
+              <div class="tile"><span class="ico">◈</span>اشتراک من</div>
+              <div class="tile"><span class="ico">✉</span>پیام‌ها</div>
+              <div class="tile"><span class="ico">🎧</span>پشتیبانی</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">خانه</span><span>اشتراک</span><span>پیام</span><span>بیشتر</span></nav>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="concept" id="c2">
+    <div class="concept-desc">
+      <strong>طرح ۲ — ویجت + میانبر</strong> — بالا یک بلوک وضعیت بزرگ؛ فقط ۴ کار پرتکرار ۲×۲؛ بقیه در بخش «مدیریت» یا تب بیشتر.
+      <div class="pros-cons"><div class="p">+ تمرکز روی VPN/آمار<br>+ خانه خلوت</div><div class="c">− منوی کامل پنهان‌تر</div></div>
+    </div>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone-label">ادمین</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۲</div>
+          <div class="app-head">داشبورد</div>
+          <div class="app-body">
+            <div class="widget"><strong>۸ پنل متصل</strong>۴۵ کلاینت · sync ۵ دقیقه پیش</div>
+            <p class="section-title">میانبرها</p>
+            <div class="grid2">
+              <div class="tile accent"><span class="ico">👤</span>کاربران</div>
+              <div class="tile"><span class="ico">＋</span>جدید</div>
+              <div class="tile"><span class="ico">📊</span>گزارش</div>
+              <div class="tile"><span class="ico">⚙</span>تنظیمات</div>
+            </div>
+            <p class="section-title">سایر</p>
+            <div class="grid2">
+              <div class="tile"><span class="ico">₪</span>فروش</div>
+              <div class="tile"><span class="ico">💳</span>پرداخت</div>
+              <div class="tile"><span class="ico">◈</span>اشتراک</div>
+              <div class="tile"><span class="ico">✉</span>پیام</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">خانه</span><span>آمار</span><span>کاربران</span><span>منو</span></nav>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">مشتری</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۲</div>
+          <div class="app-head">اتصال VPN</div>
+          <div class="app-body">
+            <div class="widget" style="padding:1.1rem"><strong style="font-size:1.05rem">● قطع</strong>اتصال در اپ VPN گوشی</div>
+            <div class="mini-stats">
+              <div class="mini"><span>مانده</span><b>۲.۴ GB</b></div>
+              <div class="mini"><span>پلن</span><b>۱۰۰ GB</b></div>
+            </div>
+            <p class="section-title">اقدامات</p>
+            <div class="grid2">
+              <div class="tile accent"><span class="ico">🔗</span>لینک</div>
+              <div class="tile"><span class="ico">↻</span>تمدید</div>
+              <div class="tile"><span class="ico">🛒</span>خرید</div>
+              <div class="tile"><span class="ico">◈</span>جزئیات</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">خانه</span><span>اشتراک</span><span>پیام</span><span>پروفایل</span></nav>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="concept" id="c3">
+    <div class="concept-desc">
+      <strong>طرح ۳ — دو سطحی</strong> — خانه فقط ۶ دسته (۳ ردیف دوتایی). هر دسته → صفحهٔ میانی با ۴ دکمهٔ دیگر.
+      <div class="pros-cons"><div class="p">+ خانه همیشه کوتاه<br>+ گروه‌بندی منطقی</div><div class="c">− یک کلیک بیشتر</div></div>
+    </div>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone-label">ادمین — صفحهٔ میانی</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۳</div>
+          <div class="app-head">← کاربران</div>
+          <div class="app-body">
+            <div class="grid2">
+              <div class="tile accent"><span class="ico">📋</span>لیست</div>
+              <div class="tile"><span class="ico">＋</span>جدید</div>
+              <div class="tile"><span class="ico">◈</span>پلن‌ها</div>
+              <div class="tile"><span class="ico">🔄</span>Sync</div>
+            </div>
+            <p class="arrow-hint">خانه ادمین (۶ دسته):</p>
+            <div class="grid2" style="margin-top:.35rem">
+              <div class="tile ghost">کاربران</div><div class="tile ghost">مالی</div>
+              <div class="tile ghost">گزارش</div><div class="tile ghost">پیام</div>
+              <div class="tile ghost">سرور</div><div class="tile ghost">تنظیمات</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">خانه</span><span>—</span><span>—</span><span>بازگشت</span></nav>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">مشتری — صفحهٔ میانی</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۳</div>
+          <div class="app-head">← اشتراک</div>
+          <div class="app-body">
+            <div class="grid2">
+              <div class="tile"><span class="ico">🛒</span>خرید</div>
+              <div class="tile"><span class="ico">↻</span>تمدید</div>
+              <div class="tile"><span class="ico">📄</span>اشتراک من</div>
+              <div class="tile"><span class="ico">💳</span>پرداخت‌ها</div>
+            </div>
+            <p class="arrow-hint">خانه مشتری:</p>
+            <div class="grid2" style="margin-top:.35rem">
+              <div class="tile ghost">VPN</div><div class="tile ghost">اشتراک</div>
+              <div class="tile ghost">پیام</div><div class="tile ghost">پشتیبانی</div>
+              <div class="tile ghost">پروفایل</div><div class="tile ghost">راهنما</div>
+            </div>
+            <nav class="bottom-nav"><span>خانه</span><span class="on">اشتراک</span><span>پیام</span><span>بیشتر</span></nav>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="concept" id="c4">
+    <div class="concept-desc">
+      <strong>طرح ۴ — داشبورد کارتی</strong> — ردیف اول: دو کارت آماری بزرگ (کلیک → گزارش). ردیف‌های بعد: دکمه‌های دوتایی مثل اپ iOS.
+      <div class="pros-cons"><div class="p">+ آمار روی خانه<br>+ حس داشبورد حرفه‌ای</div><div class="c">− شلوغ‌تر از طرح ۱</div></div>
+    </div>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone-label">ادمین</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۴</div>
+          <div class="app-head">داشبورد</div>
+          <div class="app-body">
+            <div class="grid2">
+              <div class="tile accent" style="min-height:72px"><span class="ico">۱۲</span>مشتری فعال</div>
+              <div class="tile accent" style="min-height:72px"><span class="ico">۴۲</span>GB مصرف</div>
+            </div>
+            <p class="section-title">مدیریت</p>
+            <div class="grid2">
+              <div class="tile"><span class="ico">👤</span>کاربران</div>
+              <div class="tile"><span class="ico">◈</span>اشتراک</div>
+              <div class="tile"><span class="ico">₪</span>فروش</div>
+              <div class="tile"><span class="ico">💳</span>پرداخت</div>
+            </div>
+            <p class="section-title">سیستم</p>
+            <div class="grid2">
+              <div class="tile"><span class="ico">✉</span>پیام</div>
+              <div class="tile"><span class="ico">📊</span>گزارش</div>
+              <div class="tile"><span class="ico">⚙</span>تنظیمات</div>
+              <div class="tile"><span class="ico">＋</span>جدید</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">داشبورد</span><span>کاربران</span><span>گزارش</span><span>تنظیم</span></nav>
+          </div>
+        </div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">مشتری</div>
+        <div class="phone">
+          <div class="status-bar">طرح ۴</div>
+          <div class="app-head">سرویس من</div>
+          <div class="app-body">
+            <div class="grid2">
+              <div class="tile accent" style="min-height:72px"><span class="ico">۲۴٪</span>مصرف</div>
+              <div class="tile accent" style="min-height:72px"><span class="ico">۱۸</span>روز مانده</div>
+            </div>
+            <p class="section-title">سرویس VPN</p>
+            <div class="grid2">
+              <div class="tile"><span class="ico">🔗</span>لینک</div>
+              <div class="tile"><span class="ico">↻</span>تمدید</div>
+            </div>
+            <p class="section-title">حساب</p>
+            <div class="grid2">
+              <div class="tile"><span class="ico">🛒</span>خرید</div>
+              <div class="tile"><span class="ico">◈</span>اشتراک</div>
+              <div class="tile"><span class="ico">✉</span>پیام</div>
+              <div class="tile"><span class="ico">👤</span>پروفایل</div>
+            </div>
+            <nav class="bottom-nav"><span class="on">خانه</span><span>اشتراک</span><span>پیام</span><span>بیشتر</span></nav>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="pick-hint">بعد از انتخاب، به پشتیبانی/ادمین بگویید: <strong>«طرح ۱»</strong> تا <strong>«طرح ۴»</strong> روی پنل پیاده شود.</p>
+
+  <script>
+    function showConcept(id) {
+      document.querySelectorAll('.tabs button').forEach((b) => {
+        b.classList.toggle('active', b.dataset.c === id);
+      });
+      document.querySelectorAll('.concept').forEach((c) => c.classList.remove('active'));
+      const el = document.getElementById('c' + id);
+      if (el) el.classList.add('active');
+    }
+    document.querySelectorAll('.tabs button').forEach((btn) => {
+      btn.addEventListener('click', () => showConcept(btn.dataset.c));
+    });
+    const hash = (location.hash || '').replace(/^#/, '');
+    if (/^c[1-4]$/.test(hash)) showConcept(hash.slice(1));
+  </script>
+</body>
+</html>
