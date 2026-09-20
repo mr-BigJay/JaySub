@@ -10,7 +10,7 @@ use App\Xui\InboundTraffic;
 use App\Xui\XuiClient;
 use PDO;
 
-/** Subscription usage = sum of 3x-ui inbound up/down (inbounds page totals), not per-client JaySub math. */
+/** Panel columns store inbound totals; quota / cut-off uses mapped XUI clients only. */
 
 final class TrafficSyncService
 {
@@ -190,17 +190,10 @@ final class TrafficSyncService
         }
 
         $subId = (int) $subscription['id'];
-        // Same as 3x-ui inbounds page: sum of inbound up/down per panel (stored on sync).
-        $sum = $pdo->prepare(
-            'SELECT COALESCE(SUM(xui_inbound_up), 0) AS up, COALESCE(SUM(xui_inbound_down), 0) AS down
-             FROM vpn_panels
-             WHERE customer_id = :cid AND is_active = 1'
-        );
-        $sum->execute(['cid' => $customerId]);
-        $totals = $sum->fetch();
-        $upload = (int) ($totals['up'] ?? 0);
-        $download = (int) ($totals['down'] ?? 0);
-        $total = $upload + $download;
+        $usage = CustomerService::quotaUsageForCustomer($customerId);
+        $upload = $usage['upload'];
+        $download = $usage['download'];
+        $total = $usage['total'];
         $quota = (int) $subscription['quota_bytes'];
 
         $pdo->prepare(
@@ -239,10 +232,10 @@ final class TrafficSyncService
             AuditLogService::log('system', null, 'warning_sent', 'customer', (int) $customer['id'], ['level' => 'warning_2']);
         });
 
-        if ($percent >= 100 && $subscription['status'] === 'active') {
+        if ($quota > 0 && $percent >= 100 && $subscription['status'] === 'active') {
             $this->enforceQuotaLimit($customerId, $subId, (float) $quota);
-        } elseif ($percent < 100 && (int) $customer['vpn_enabled'] === 0 && $subscription['status'] === 'active') {
-            // still exhausted until admin recharges — no auto enable
+        } elseif ($quota > 0 && $percent < 100) {
+            $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent);
         }
 
         $serviceStatus = 'active';
@@ -274,6 +267,90 @@ final class TrafficSyncService
         $pdo->prepare(
             'INSERT INTO traffic_alerts (customer_id, subscription_id, alert_type, sent_at) VALUES (:c, :s, :t, NOW())'
         )->execute(['c' => $customerId, 's' => $subId, 't' => $type]);
+    }
+
+    /**
+     * اگر قبلاً به‌خاطر جمع اشتباه «کل پنل» قطع شده‌اند و مصرف واقعی کلاینت‌ها زیر سقف است، سرویس را برمی‌گرداند.
+     *
+     * @param array<string, mixed> $subscription
+     * @param array<string, mixed> $customer
+     */
+    private function maybeRestoreAfterQuotaRecalc(
+        int $customerId,
+        int $subId,
+        array $subscription,
+        array $customer,
+        float $percent,
+    ): void {
+        if ($subscription['status'] !== 'exhausted' && (int) $customer['vpn_enabled'] === 1) {
+            return;
+        }
+
+        $pdo = Database::pdo();
+        $disabled = $pdo->prepare(
+            'SELECT COUNT(*) FROM vpn_clients WHERE customer_id = :cid AND subscription_id = :sid AND disabled_by_quota = 1'
+        );
+        $disabled->execute(['cid' => $customerId, 'sid' => $subId]);
+        $disabledCount = (int) $disabled->fetchColumn();
+        $limitAlert = $pdo->prepare(
+            "SELECT id FROM traffic_alerts WHERE subscription_id = :sid AND alert_type = 'limit_reached' LIMIT 1"
+        );
+        $limitAlert->execute(['sid' => $subId]);
+        $hadLimit = $limitAlert->fetch() !== false;
+        if ($disabledCount === 0 && !$hadLimit && $subscription['status'] !== 'exhausted') {
+            return;
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE id = :id")->execute(['id' => $subId]);
+            $pdo->prepare('UPDATE customers SET vpn_enabled = 1, service_status = :st WHERE id = :id')->execute([
+                'st' => $percent >= (int) $customer['warning2_percent'] ? 'warning' : 'active',
+                'id' => $customerId,
+            ]);
+            $pdo->prepare(
+                "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
+            )->execute(['sid' => $subId]);
+
+            $clients = $pdo->prepare(
+                'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
+                 FROM vpn_clients vc INNER JOIN vpn_panels vp ON vp.id = vc.panel_id
+                 WHERE vc.customer_id = :cid AND vc.subscription_id = :sid AND vc.disabled_by_quota = 1'
+            );
+            $clients->execute(['cid' => $customerId, 'sid' => $subId]);
+            $rows = $clients->fetchAll();
+
+            /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
+            $byPanel = [];
+            foreach ($rows as $row) {
+                $pid = (int) $row['panel_id'];
+                if (!isset($byPanel[$pid])) {
+                    $byPanel[$pid] = [
+                        'base_url' => $row['base_url'],
+                        'token' => $row['api_token_encrypted'],
+                        'emails' => [],
+                    ];
+                }
+                $byPanel[$pid]['emails'][] = $row['xui_email'];
+            }
+            foreach ($byPanel as $info) {
+                if ($info['emails'] === []) {
+                    continue;
+                }
+                $xui = new XuiClient($info['base_url'], $this->encryption->decrypt($info['token']));
+                $xui->bulkEnable($info['emails']);
+            }
+            $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid')
+                ->execute(['cid' => $customerId, 'sid' => $subId]);
+
+            $pdo->commit();
+            AuditLogService::log('system', null, 'quota_restore_under_limit', 'customer', $customerId, [
+                'percent' => $percent,
+            ]);
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 
     private function enforceQuotaLimit(int $customerId, int $subId, float $quota): void

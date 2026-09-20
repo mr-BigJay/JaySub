@@ -61,7 +61,9 @@ foreach ($customers as $c) {
     } else {
         echo "  subscription: NONE — run service setup\n";
     }
-    echo '  UI display: ' . $display['total'] . ' bytes (source=' . $display['source'] . ")\n";
+    $panel = \App\Services\CustomerService::panelInboundTotalsForCustomer((int) $c['id']);
+    echo '  quota usage: ' . $display['total'] . ' bytes (source=' . $display['source'] . ")\n";
+    echo '  panel inbound total: ' . $panel['total'] . ' bytes (source=' . $panel['source'] . ")\n";
     $panels = $pdo->prepare(
         'SELECT id, name, is_active, connection_status, last_sync_at, last_error,
                 xui_inbound_up, xui_inbound_down FROM vpn_panels WHERE customer_id = :id'
