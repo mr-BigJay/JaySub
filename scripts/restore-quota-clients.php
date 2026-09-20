@@ -12,21 +12,15 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
-
-use App\Core\Encryption;
-use App\Services\SettingsService;
-use App\Services\TelegramService;
-use App\Services\TrafficSyncService;
+require __DIR__ . '/lib/cli.php';
 
 try {
-    $encryption = new Encryption($config['security']['encryption_key']);
-    $telegram = new TelegramService(SettingsService::get('telegram_bot_token'));
-    $sync = new TrafficSyncService($encryption, $telegram);
+    $sync = jaysub_cli_traffic_sync()['sync'];
     fwrite(STDOUT, "Running full traffic sync (quota = mapped clients)…\n");
     $sync->syncAllPanels();
-    fwrite(STDOUT, "Done. Check admin customers / 3x-ui client enable state.\n");
+    fwrite(STDOUT, "Done.\n");
 } catch (\Throwable $e) {
     fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+    fwrite(STDERR, $e->getFile() . ':' . $e->getLine() . "\n");
     exit(1);
 }

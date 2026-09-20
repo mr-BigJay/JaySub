@@ -12,21 +12,13 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
+require __DIR__ . '/lib/cli.php';
 
-use App\Core\Encryption;
-use App\Services\QuotaEnforcementService;
-use App\Services\SettingsService;
-use App\Services\TelegramSyncService;
-use App\Services\TelegramService;
-use App\Services\TrafficSyncService;
-
-if (QuotaEnforcementService::isEnabled()) {
+if (\App\Services\QuotaEnforcementService::isEnabled()) {
     fwrite(STDERR, "ابتدا: php scripts/pause-quota-enforcement.php\n");
     exit(1);
 }
 
-$encryption = new Encryption($config['security']['encryption_key']);
-$sync = new TrafficSyncService($encryption, new TelegramService(SettingsService::get('telegram_bot_token')));
+$sync = jaysub_cli_traffic_sync()['sync'];
 $sync->reenableEveryCustomerWhileEnforcementPaused();
 fwrite(STDOUT, "All mapped clients bulkEnable requested. Run: php scripts/quota-diagnose.php --cut-only\n");

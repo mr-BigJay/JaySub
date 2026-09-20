@@ -12,7 +12,7 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
-$config = require dirname(__DIR__) . '/src/bootstrap-cli.php';
+require __DIR__ . '/lib/cli.php';
 
 \App\Services\QuotaEnforcementService::setEnabled(false);
 $off = \App\Services\QuotaEnforcementService::isEnabled() ? 'ON' : 'OFF';
@@ -23,9 +23,7 @@ if ($off !== 'OFF') {
 }
 
 try {
-    $encryption = new Encryption($config['security']['encryption_key']);
-    $telegram = new TelegramService(SettingsService::get('telegram_bot_token'));
-    $sync = new TrafficSyncService($encryption, $telegram);
+    $sync = jaysub_cli_traffic_sync()['sync'];
     fwrite(STDOUT, "Enabling all mapped clients in 3x-ui…\n");
     $sync->reenableEveryCustomerWhileEnforcementPaused();
     fwrite(STDOUT, "Running traffic sync…\n");
@@ -34,5 +32,6 @@ try {
     fwrite(STDOUT, "برای فعال‌کردن دوباره قطع سقف: php scripts/resume-quota-enforcement.php\n");
 } catch (\Throwable $e) {
     fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+    fwrite(STDERR, $e->getFile() . ':' . $e->getLine() . "\n");
     exit(1);
 }

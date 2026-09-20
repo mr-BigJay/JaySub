@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Database;
-use App\Core\Encryption;
 use App\Xui\InboundTraffic;
 use App\Xui\XuiClient;
 use PDO;
@@ -15,7 +14,7 @@ use PDO;
 final class TrafficSyncService
 {
     public function __construct(
-        private readonly Encryption $encryption,
+        private readonly \App\Core\Encryption $encryption,
         private readonly TelegramService $telegram,
     ) {
     }
