@@ -45,8 +45,6 @@ $customers = $pdo->query(
      FROM customers c ORDER BY c.id'
 )->fetchAll();
 
-use App\Services\QuotaEnforcementService;
-
 $enforce = QuotaEnforcementService::isEnabled();
 fwrite(STDOUT, 'JaySub quota-diagnose — قطع خودکار: ' . ($enforce ? 'ON' : 'OFF (فقط sync)') . "\n\n");
 

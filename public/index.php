@@ -268,14 +268,18 @@ if ($uri === '/dashboard' && $method === 'GET') {
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $remaining = max(0, $quota - $total);
-    $vpnReady = (int) $customer['vpn_enabled'] === 1 && $sub['status'] === 'active' && $pct < 100;
+    $quotaEnforceOn = QuotaEnforcementService::isEnabled();
+    $vpnReady = (int) $customer['vpn_enabled'] === 1 && $sub['status'] === 'active';
+    if ($quotaEnforceOn) {
+        $vpnReady = $vpnReady && $pct < 100;
+    }
     $dotClass = $vpnReady ? 'on' : 'off';
     $connLabel = $vpnReady ? 'فعال' : 'قطع‌شده';
 
     $endsAt = $sub['ends_at'] ?? null;
     $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
     $statusKey = (string) $customer['service_status'];
-    if ($sub['status'] === 'exhausted' || $pct >= 100) {
+    if ($quotaEnforceOn && ($sub['status'] === 'exhausted' || $pct >= 100)) {
         $statusKey = 'exhausted';
     }
     $statusBadge = serviceStatusBadge($statusKey);

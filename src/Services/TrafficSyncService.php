@@ -242,7 +242,7 @@ final class TrafficSyncService
                 $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, false);
             }
         } else {
-            $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, true);
+            $this->applyEnforcementPausedForCustomer($customerId, $subId, $percent, $w2);
         }
 
         $serviceStatus = 'active';
@@ -251,14 +251,107 @@ final class TrafficSyncService
         } elseif ($percent >= $w2) {
             $serviceStatus = 'warning';
         }
+        if (!$enforcementOn) {
+            $serviceStatus = $percent >= $w2 ? 'warning' : 'active';
+        }
         $pdo->prepare('UPDATE customers SET service_status = :st WHERE id = :id')->execute([
             'st' => $serviceStatus,
             'id' => $customerId,
         ]);
-        if (!$enforcementOn && (string) $customer['service_status'] === 'exhausted') {
-            $pdo->prepare(
-                "UPDATE customers SET vpn_enabled = 1 WHERE id = :id AND service_status NOT IN ('disabled', 'expired')"
-            )->execute(['id' => $customerId]);
+    }
+
+    /** قطع سقف خاموش: DB را active می‌کند و همه کلاینت‌های ثبت‌شده را در 3x-ui enable می‌زند. */
+    private function applyEnforcementPausedForCustomer(int $customerId, int $subId, float $percent, int $w2): void
+    {
+        $pdo = Database::pdo();
+        $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE id = :id")->execute(['id' => $subId]);
+        $pdo->prepare(
+            "UPDATE customers SET vpn_enabled = 1, service_status = :st WHERE id = :id AND service_status NOT IN ('disabled', 'expired')"
+        )->execute([
+            'st' => $percent >= $w2 ? 'warning' : 'active',
+            'id' => $customerId,
+        ]);
+        $pdo->prepare(
+            "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
+        )->execute(['sid' => $subId]);
+
+        $errors = $this->bulkEnableAllMappedClients($customerId, $subId);
+        $pdo->prepare(
+            'UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid'
+        )->execute(['cid' => $customerId, 'sid' => $subId]);
+
+        if ($errors !== []) {
+            AuditLogService::log('system', null, 'quota_enable_errors', 'customer', $customerId, [
+                'errors' => array_slice($errors, 0, 20),
+            ]);
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bulkEnableAllMappedClients(int $customerId, int $subId): array
+    {
+        $pdo = Database::pdo();
+        $clients = $pdo->prepare(
+            'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
+             FROM vpn_clients vc
+             INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
+             WHERE vc.customer_id = :cid AND vc.subscription_id = :sid'
+        );
+        $clients->execute(['cid' => $customerId, 'sid' => $subId]);
+        $rows = $clients->fetchAll();
+
+        /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
+        $byPanel = [];
+        foreach ($rows as $row) {
+            $pid = (int) $row['panel_id'];
+            if (!isset($byPanel[$pid])) {
+                $byPanel[$pid] = [
+                    'base_url' => $row['base_url'],
+                    'token' => $row['api_token_encrypted'],
+                    'emails' => [],
+                ];
+            }
+            $byPanel[$pid]['emails'][] = $row['xui_email'];
+        }
+
+        $errors = [];
+        foreach ($byPanel as $info) {
+            if ($info['emails'] === []) {
+                continue;
+            }
+            $xui = new XuiClient($info['base_url'], $this->encryption->decrypt($info['token']));
+            $res = $xui->bulkEnable($info['emails']);
+            if (!($res['ok'] ?? false)) {
+                $errors[] = ($info['base_url'] ?? 'panel') . ': ' . ($res['error'] ?? 'bulkEnable failed');
+            }
+        }
+
+        return $errors;
+    }
+
+    public function reenableEveryCustomerWhileEnforcementPaused(): void
+    {
+        if (QuotaEnforcementService::isEnabled()) {
+            throw new \RuntimeException('quota_enforcement_enabled is ON — aborting mass enable.');
+        }
+        $pdo = Database::pdo();
+        $rows = $pdo->query(
+            "SELECT c.id AS customer_id, s.id AS sub_id, c.warning2_percent
+             FROM customers c
+             INNER JOIN subscriptions s ON s.customer_id = c.id AND s.status IN ('active', 'exhausted')
+             WHERE c.is_active = 1"
+        )->fetchAll();
+        foreach ($rows as $row) {
+            $cid = (int) $row['customer_id'];
+            $sid = (int) $row['sub_id'];
+            $usage = CustomerService::quotaUsageForCustomer($cid);
+            $sub = $pdo->prepare('SELECT quota_bytes FROM subscriptions WHERE id = :id');
+            $sub->execute(['id' => $sid]);
+            $quota = (int) ($sub->fetchColumn() ?: 0);
+            $pct = $quota > 0 ? ($usage['total'] / $quota) * 100 : 0;
+            $this->applyEnforcementPausedForCustomer($cid, $sid, $pct, (int) $row['warning2_percent']);
         }
     }
 

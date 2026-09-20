@@ -21,13 +21,20 @@ use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
 
 QuotaEnforcementService::setEnabled(false);
-fwrite(STDOUT, "quota_enforcement_enabled = OFF (sync پنل‌ها از cron/worker همچنان فعال است)\n");
+$off = QuotaEnforcementService::isEnabled() ? 'ON' : 'OFF';
+fwrite(STDOUT, "quota_enforcement_enabled = {$off} (sync پنل‌ها از cron/worker همچنان فعال است)\n");
+if ($off !== 'OFF') {
+    fwrite(STDERR, "ERROR: setting did not save — check DB system_settings.\n");
+    exit(1);
+}
 
 try {
     $encryption = new Encryption($config['security']['encryption_key']);
     $telegram = new TelegramService(SettingsService::get('telegram_bot_token'));
     $sync = new TrafficSyncService($encryption, $telegram);
-    fwrite(STDOUT, "Running traffic sync + restore clients…\n");
+    fwrite(STDOUT, "Enabling all mapped clients in 3x-ui…\n");
+    $sync->reenableEveryCustomerWhileEnforcementPaused();
+    fwrite(STDOUT, "Running traffic sync…\n");
     $sync->syncAllPanels();
     fwrite(STDOUT, "Done.\n");
     fwrite(STDOUT, "برای فعال‌کردن دوباره قطع سقف: php scripts/resume-quota-enforcement.php\n");
