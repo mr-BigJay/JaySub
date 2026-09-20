@@ -1320,8 +1320,8 @@ if ($uri === '/admin/settings' && $method === 'GET') {
     $enforceOn = QuotaEnforcementService::isEnabled();
     $enforceChecked = $enforceOn ? 'checked' : '';
     $enforceLabel = $enforceOn
-        ? '<span class="badge badge-success">فعال</span> — در صورت پر شدن سقف، کلاینت‌ها در 3x-ui قطع می‌شوند.'
-        : '<span class="badge badge-warning">خاموش</span> — فقط sync و نمایش مصرف؛ قطع خودکار نمی‌شود.';
+        ? '<span class="badge badge-success">فعال</span> — در JaySub وضعیت «اتمام سقف» ثبت می‌شود (3x-ui دست‌نخورده).'
+        : '<span class="badge badge-warning">خاموش</span> — فقط sync و نمایش مصرف.';
     $body = '<p class="muted">تنظیمات تخصصی:</p>
         <ul>
             <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>

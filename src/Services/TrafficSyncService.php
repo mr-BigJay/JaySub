@@ -158,10 +158,6 @@ final class TrafficSyncService
             ]);
         }
 
-        if (!QuotaEnforcementService::isEnabled()) {
-            $this->enableDisabledClientsOnPanelInbounds($client, $obj);
-        }
-
         $this->aggregateCustomer($customerId);
 
         $connStatus = $statusOk ? 'connected' : 'sync_error';
@@ -263,7 +259,7 @@ final class TrafficSyncService
         ]);
     }
 
-    /** قطع سقف خاموش: DB را active می‌کند و همه کلاینت‌های ثبت‌شده را در 3x-ui enable می‌زند. */
+    /** قطع سقف خاموش: فقط وضعیت JaySub (بدون تغییر کلاینت در 3x-ui). */
     private function applyEnforcementPausedForCustomer(int $customerId, int $subId, float $percent, int $w2): void
     {
         $pdo = Database::pdo();
@@ -277,62 +273,11 @@ final class TrafficSyncService
         $pdo->prepare(
             "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
         )->execute(['sid' => $subId]);
-
-        $errors = $this->bulkEnableAllMappedClients($customerId);
         $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid')
             ->execute(['cid' => $customerId]);
-
-        if ($errors !== []) {
-            AuditLogService::log('system', null, 'quota_enable_errors', 'customer', $customerId, [
-                'errors' => array_slice($errors, 0, 20),
-            ]);
-        }
     }
 
-    /**
-     * @return list<string>
-     */
-    private function bulkEnableAllMappedClients(int $customerId): array
-    {
-        $pdo = Database::pdo();
-        $clients = $pdo->prepare(
-            'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
-             FROM vpn_clients vc
-             INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
-             WHERE vc.customer_id = :cid'
-        );
-        $clients->execute(['cid' => $customerId]);
-        $rows = $clients->fetchAll();
-
-        /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
-        $byPanel = [];
-        foreach ($rows as $row) {
-            $pid = (int) $row['panel_id'];
-            if (!isset($byPanel[$pid])) {
-                $byPanel[$pid] = [
-                    'base_url' => $row['base_url'],
-                    'token' => $row['api_token_encrypted'],
-                    'emails' => [],
-                ];
-            }
-            $byPanel[$pid]['emails'][] = $row['xui_email'];
-        }
-
-        $errors = [];
-        foreach ($byPanel as $info) {
-            if ($info['emails'] === []) {
-                continue;
-            }
-            $xui = new XuiClient($info['base_url'], $this->encryption->decrypt($info['token']));
-            $res = $xui->bulkEnable($info['emails']);
-            if (!($res['ok'] ?? false)) {
-                $errors[] = ($info['base_url'] ?? 'panel') . ': ' . ($res['error'] ?? 'bulkEnable failed');
-            }
-        }
-
-        return $errors;
-    }
-
+    /** فقط DB JaySub — کلاینت‌های 3x-ui دست‌نخورده می‌مانند. */
     public function reenableEveryCustomerWhileEnforcementPaused(): void
     {
         if (QuotaEnforcementService::isEnabled()) {
@@ -427,35 +372,6 @@ final class TrafficSyncService
             $pdo->prepare(
                 "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
             )->execute(['sid' => $subId]);
-
-            $clients = $pdo->prepare(
-                'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
-                 FROM vpn_clients vc INNER JOIN vpn_panels vp ON vp.id = vc.panel_id
-                 WHERE vc.customer_id = :cid AND vc.subscription_id = :sid AND vc.disabled_by_quota = 1'
-            );
-            $clients->execute(['cid' => $customerId, 'sid' => $subId]);
-            $rows = $clients->fetchAll();
-
-            /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
-            $byPanel = [];
-            foreach ($rows as $row) {
-                $pid = (int) $row['panel_id'];
-                if (!isset($byPanel[$pid])) {
-                    $byPanel[$pid] = [
-                        'base_url' => $row['base_url'],
-                        'token' => $row['api_token_encrypted'],
-                        'emails' => [],
-                    ];
-                }
-                $byPanel[$pid]['emails'][] = $row['xui_email'];
-            }
-            foreach ($byPanel as $info) {
-                if ($info['emails'] === []) {
-                    continue;
-                }
-                $xui = new XuiClient($info['base_url'], $this->encryption->decrypt($info['token']));
-                $xui->bulkEnable($info['emails']);
-            }
             $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid')
                 ->execute(['cid' => $customerId, 'sid' => $subId]);
 
@@ -467,20 +383,6 @@ final class TrafficSyncService
         } catch (\Throwable $e) {
             $pdo->rollBack();
             throw $e;
-        }
-    }
-
-    /**
-     * @param list<array<string, mixed>> $inbounds
-     */
-    private function enableDisabledClientsOnPanelInbounds(XuiClient $client, array $inbounds): void
-    {
-        $emails = InboundTraffic::disabledEmails($inbounds);
-        if ($emails === []) {
-            return;
-        }
-        foreach (array_chunk($emails, 80) as $chunk) {
-            $client->bulkEnable($chunk);
         }
     }
 
@@ -504,40 +406,6 @@ final class TrafficSyncService
             $pdo->prepare('UPDATE customers SET vpn_enabled = 0, service_status = \'exhausted\' WHERE id = :id')
                 ->execute(['id' => $customerId]);
 
-            $clients = $pdo->prepare('SELECT vc.*, vp.base_url, vp.api_token_encrypted FROM vpn_clients vc
-                INNER JOIN vpn_panels vp ON vp.id = vc.panel_id
-                WHERE vc.customer_id = :cid AND vc.subscription_id = :sid');
-            $clients->execute(['cid' => $customerId, 'sid' => $subId]);
-            $rows = $clients->fetchAll();
-
-            /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $emailsByPanel */
-            $emailsByPanel = [];
-            foreach ($rows as $row) {
-                $pid = (int) $row['panel_id'];
-                if (!isset($emailsByPanel[$pid])) {
-                    $emailsByPanel[$pid] = [
-                        'base_url' => $row['base_url'],
-                        'token' => $row['api_token_encrypted'],
-                        'emails' => [],
-                    ];
-                }
-                $emailsByPanel[$pid]['emails'][] = $row['xui_email'];
-            }
-
-            foreach ($emailsByPanel as $panelId => $info) {
-                if ($info['emails'] === []) {
-                    continue;
-                }
-                $token = $this->encryption->decrypt($info['token']);
-                $xui = new XuiClient($info['base_url'], $token);
-                $xui->bulkDisable($info['emails']);
-                $placeholders = implode(',', array_fill(0, count($info['emails']), '?'));
-                $params = array_merge([$panelId], $info['emails']);
-                $pdo->prepare(
-                    "UPDATE vpn_clients SET disabled_by_quota = 1 WHERE panel_id = ? AND xui_email IN ({$placeholders})"
-                )->execute($params);
-            }
-
             $cust = $pdo->prepare('SELECT telegram_chat_id FROM customers WHERE id = :id');
             $cust->execute(['id' => $customerId]);
             $c = $cust->fetch();
@@ -550,7 +418,7 @@ final class TrafficSyncService
             )->execute(['c' => $customerId, 's' => $subId]);
 
             $pdo->commit();
-            AuditLogService::log('system', null, 'clients_disabled_quota', 'customer', $customerId, [
+            AuditLogService::log('system', null, 'quota_limit_jaysub', 'customer', $customerId, [
                 'used_bytes' => $usedTotal,
                 'quota_bytes' => (int) $quota,
                 'mapped_clients' => $clientCount,

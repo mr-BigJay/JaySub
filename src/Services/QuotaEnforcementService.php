@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-/** قطع خودکار کلاینت در 3x-ui هنگام پر شدن سقف — قابل خاموش کردن بدون توقف sync پنل. */
+/** علامت‌گذاری سقف در JaySub (بدون bulkEnable/bulkDisable در 3x-ui). */
 final class QuotaEnforcementService
 {
     public const SETTING_KEY = 'quota_enforcement_enabled';

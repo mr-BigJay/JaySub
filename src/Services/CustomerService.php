@@ -270,33 +270,6 @@ final class CustomerService
                 $pdo->prepare('DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN (\'warning_1\', \'warning_2\', \'limit_reached\')')
                     ->execute(['sid' => $subId]);
 
-                $clients = $pdo->prepare(
-                    'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
-                     FROM vpn_clients vc INNER JOIN vpn_panels vp ON vp.id = vc.panel_id
-                     WHERE vc.customer_id = :cid AND vc.subscription_id = :sid AND vc.disabled_by_quota = 1'
-                );
-                $clients->execute(['cid' => $customerId, 'sid' => $subId]);
-                $rows = $clients->fetchAll();
-
-                /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
-                $byPanel = [];
-                foreach ($rows as $row) {
-                    $pid = (int) $row['panel_id'];
-                    if (!isset($byPanel[$pid])) {
-                        $byPanel[$pid] = [
-                            'base_url' => $row['base_url'],
-                            'token' => $row['api_token_encrypted'],
-                            'emails' => [],
-                        ];
-                    }
-                    $byPanel[$pid]['emails'][] = $row['xui_email'];
-                }
-
-                foreach ($byPanel as $info) {
-                    $xui = new \App\Xui\XuiClient($info['base_url'], $encryption->decrypt($info['token']));
-                    $xui->bulkEnable($info['emails']);
-                }
-
                 $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid')
                     ->execute(['cid' => $customerId, 'sid' => $subId]);
 

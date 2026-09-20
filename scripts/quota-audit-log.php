@@ -36,7 +36,7 @@ $stmt = $pdo->prepare(
     "SELECT al.created_at, al.entity_id AS customer_id, c.username, al.details
      FROM audit_logs al
      LEFT JOIN customers c ON c.id = al.entity_id
-     WHERE al.action = 'clients_disabled_quota'
+     WHERE al.action IN ('clients_disabled_quota', 'quota_limit_jaysub')
      ORDER BY al.id DESC
      LIMIT :lim"
 );
