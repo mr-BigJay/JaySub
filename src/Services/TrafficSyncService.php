@@ -194,7 +194,6 @@ final class TrafficSyncService
         $upload = $usage['upload'];
         $download = $usage['download'];
         $total = $usage['total'];
-        $mappedClientCount = $mapped['client_count'];
         $quota = (int) $subscription['quota_bytes'];
 
         $pdo->prepare(
@@ -233,27 +232,25 @@ final class TrafficSyncService
             AuditLogService::log('system', null, 'warning_sent', 'customer', (int) $customer['id'], ['level' => 'warning_2']);
         });
 
-        $enforcementOn = QuotaEnforcementService::isEnabled();
-        if ($enforcementOn) {
-            if ($quota > 0 && $mappedClientCount > 0 && $percent >= 100 && $subscription['status'] === 'active') {
-                $this->enforceQuotaLimit($customerId, $subId, (float) $quota, $total, $mappedClientCount);
-            } elseif ($quota > 0 && $percent < 100) {
-                $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, false);
-            }
-        } elseif ($quota > 0 && $percent < 100) {
-            $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, false);
+        // فقط محاسبه و نمایش — JaySub سرویس را قطع نمی‌کند.
+        if ($subscription['status'] === 'exhausted') {
+            $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE id = :id")->execute(['id' => $subId]);
+        }
+        $st = (string) $customer['service_status'];
+        if ($st === 'exhausted') {
+            $pdo->prepare(
+                "UPDATE customers SET vpn_enabled = 1, service_status = 'active' WHERE id = :id AND service_status NOT IN ('disabled', 'expired')"
+            )->execute(['id' => $customerId]);
+            $st = 'active';
         }
 
-        $serviceStatus = 'active';
-        if ($enforcementOn && $mappedClientCount > 0 && $percent >= 100) {
-            $serviceStatus = 'exhausted';
-        } elseif ($percent >= $w2) {
-            $serviceStatus = 'warning';
+        $serviceStatus = $percent >= $w2 ? 'warning' : 'active';
+        if (!in_array($st, ['disabled', 'expired'], true)) {
+            $pdo->prepare('UPDATE customers SET service_status = :st WHERE id = :id')->execute([
+                'st' => $serviceStatus,
+                'id' => $customerId,
+            ]);
         }
-        $pdo->prepare('UPDATE customers SET service_status = :st WHERE id = :id')->execute([
-            'st' => $serviceStatus,
-            'id' => $customerId,
-        ]);
     }
 
     private function maybeSendAlert(int $customerId, int $subId, string $type, bool $condition, callable $send): void
@@ -275,107 +272,4 @@ final class TrafficSyncService
         )->execute(['c' => $customerId, 's' => $subId, 't' => $type]);
     }
 
-    /**
-     * اگر قبلاً به‌خاطر جمع اشتباه «کل پنل» قطع شده‌اند و مصرف واقعی کلاینت‌ها زیر سقف است، سرویس را برمی‌گرداند.
-     *
-     * @param array<string, mixed> $subscription
-     * @param array<string, mixed> $customer
-     */
-    private function maybeRestoreAfterQuotaRecalc(
-        int $customerId,
-        int $subId,
-        array $subscription,
-        array $customer,
-        float $percent,
-        bool $enforcementPaused,
-    ): void {
-        $pdo = Database::pdo();
-        $disabled = $pdo->prepare(
-            'SELECT COUNT(*) FROM vpn_clients WHERE customer_id = :cid AND subscription_id = :sid AND disabled_by_quota = 1'
-        );
-        $disabled->execute(['cid' => $customerId, 'sid' => $subId]);
-        $disabledCount = (int) $disabled->fetchColumn();
-        $limitAlert = $pdo->prepare(
-            "SELECT id FROM traffic_alerts WHERE subscription_id = :sid AND alert_type = 'limit_reached' LIMIT 1"
-        );
-        $limitAlert->execute(['sid' => $subId]);
-        $hadLimit = $limitAlert->fetch() !== false;
-
-        if (!$enforcementPaused) {
-            if ($subscription['status'] !== 'exhausted' && (int) $customer['vpn_enabled'] === 1) {
-                return;
-            }
-            if ($disabledCount === 0 && !$hadLimit && $subscription['status'] !== 'exhausted') {
-                return;
-            }
-        } elseif ($disabledCount === 0 && !$hadLimit && $subscription['status'] !== 'exhausted') {
-            return;
-        }
-
-        $pdo->beginTransaction();
-        try {
-            $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE id = :id")->execute(['id' => $subId]);
-            $pdo->prepare('UPDATE customers SET vpn_enabled = 1, service_status = :st WHERE id = :id')->execute([
-                'st' => $percent >= (int) $customer['warning2_percent'] ? 'warning' : 'active',
-                'id' => $customerId,
-            ]);
-            $pdo->prepare(
-                "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
-            )->execute(['sid' => $subId]);
-            $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid')
-                ->execute(['cid' => $customerId, 'sid' => $subId]);
-
-            $pdo->commit();
-            AuditLogService::log('system', null, 'quota_restore_under_limit', 'customer', $customerId, [
-                'percent' => $percent,
-                'enforcement_paused' => $enforcementPaused,
-            ]);
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-    }
-
-    private function enforceQuotaLimit(int $customerId, int $subId, float $quota, int $usedTotal, int $clientCount): void
-    {
-        if (!QuotaEnforcementService::isEnabled()) {
-            return;
-        }
-        $pdo = Database::pdo();
-        $check = $pdo->prepare(
-            "SELECT id FROM traffic_alerts WHERE subscription_id = :sid AND alert_type = 'limit_reached' LIMIT 1"
-        );
-        $check->execute(['sid' => $subId]);
-        if ($check->fetch() !== false) {
-            return;
-        }
-
-        $pdo->beginTransaction();
-        try {
-            $pdo->prepare("UPDATE subscriptions SET status = 'exhausted' WHERE id = :id")->execute(['id' => $subId]);
-            $pdo->prepare('UPDATE customers SET vpn_enabled = 0, service_status = \'exhausted\' WHERE id = :id')
-                ->execute(['id' => $customerId]);
-
-            $cust = $pdo->prepare('SELECT telegram_chat_id FROM customers WHERE id = :id');
-            $cust->execute(['id' => $customerId]);
-            $c = $cust->fetch();
-            if ($c && !empty($c['telegram_chat_id'])) {
-                $this->telegram->sendMessage((string) $c['telegram_chat_id'], TelegramService::limitMessage($quota));
-            }
-
-            $pdo->prepare(
-                'INSERT INTO traffic_alerts (customer_id, subscription_id, alert_type, sent_at) VALUES (:c, :s, \'limit_reached\', NOW())'
-            )->execute(['c' => $customerId, 's' => $subId]);
-
-            $pdo->commit();
-            AuditLogService::log('system', null, 'quota_limit_jaysub', 'customer', $customerId, [
-                'used_bytes' => $usedTotal,
-                'quota_bytes' => (int) $quota,
-                'mapped_clients' => $clientCount,
-            ]);
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-    }
 }

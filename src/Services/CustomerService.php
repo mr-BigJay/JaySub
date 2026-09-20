@@ -252,19 +252,16 @@ final class CustomerService
             $subId = (int) $subscription['id'];
             $oldQuota = (int) $subscription['quota_bytes'];
             $newQuota = self::gbToBytes($quotaGb);
-            $used = self::quotaUsageForCustomer($customerId)['total'];
-            $exhausted = $newQuota > 0 && $used >= $newQuota;
             $increased = $newQuota > $oldQuota;
 
             $pdo->prepare(
-                'UPDATE subscriptions SET quota_bytes = :q, status = :st WHERE id = :id'
+                'UPDATE subscriptions SET quota_bytes = :q, status = \'active\' WHERE id = :id'
             )->execute([
                 'q' => $newQuota,
-                'st' => $exhausted ? 'exhausted' : 'active',
                 'id' => $subId,
             ]);
 
-            if ($increased && !$exhausted) {
+            if ($increased) {
                 $pdo->prepare('UPDATE customers SET vpn_enabled = 1, service_status = \'active\' WHERE id = :id')
                     ->execute(['id' => $customerId]);
                 $pdo->prepare('DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN (\'warning_1\', \'warning_2\', \'limit_reached\')')
@@ -283,9 +280,6 @@ final class CustomerService
                      VALUES (:c, :s, \'quota_recharged\', NOW())
                      ON DUPLICATE KEY UPDATE sent_at = NOW()'
                 )->execute(['c' => $customerId, 's' => $subId]);
-            } elseif ($exhausted) {
-                $pdo->prepare('UPDATE customers SET service_status = \'exhausted\' WHERE id = :id')
-                    ->execute(['id' => $customerId]);
             }
 
             $pdo->commit();
@@ -417,21 +411,9 @@ final class CustomerService
         $total = $usage['total'];
         $percent = $quota > 0 ? ($total / $quota) * 100 : 0.0;
         $wouldCut = false;
-        $reason = null;
-        if (!QuotaEnforcementService::isEnabled()) {
-            $reason = 'علامت‌گذاری سقف در JaySub خاموش است (3x-ui جداگانه مدیریت می‌شود).';
-        } elseif ($quota <= 0) {
-            $reason = 'سقف حجم صفر است — JaySub قطع خودکار نمی‌زند.';
-        } elseif ($mapped['client_count'] === 0) {
-            $reason = 'کلاینت sync‌شده در JaySub نیست — قطع خودکار نباید رخ دهد.';
-        } elseif ($percent >= 100) {
-            $wouldCut = true;
-            $reason = 'مصرف کلاینت‌های ثبت‌شده ≥ سقف (' . round($percent, 1) . '٪).';
-            if ($panel['total'] > $mapped['total'] * 1.05 && $panel['total'] > 0) {
-                $reason .= ' (کل اینباند پنل بیشتر از جمع کلاینت‌هاست — شاید کلاینت اضافه یا پنل مشترک باشد.)';
-            }
-        } else {
-            $reason = 'زیر سقف (' . round($percent, 1) . '٪) — اگر قطع است احتمالاً قطع قبلی یا دستی در 3x-ui.';
+        $reason = 'JaySub فقط مصرف را محاسبه می‌کند؛ قطع خودکار ندارد (' . round($percent, 1) . '٪ از سقف).';
+        if ($mapped['client_count'] === 0) {
+            $reason .= ' هنوز کلاینت sync نشده — worker را چک کنید.';
         }
 
         return [

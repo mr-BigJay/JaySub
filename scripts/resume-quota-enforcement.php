@@ -15,5 +15,5 @@ if (PHP_SAPI !== 'cli') {
 require __DIR__ . '/lib/cli.php';
 
 \App\Services\QuotaEnforcementService::setEnabled(true);
-fwrite(STDOUT, "quota_enforcement_enabled = ON\n");
+fwrite(STDOUT, "JaySub: قطع خودکار سقف حذف شده — quota_enforcement همیشه OFF می‌ماند.\n");
 fwrite(STDOUT, "از sync بعدی، در صورت رسیدن به سقف، قطع خودکار دوباره اعمال می‌شود.\n");

@@ -26,7 +26,6 @@ use App\Core\Database;
 use App\Core\Session;
 use App\Services\CustomerService;
 use App\Services\PanelService;
-use App\Services\QuotaEnforcementService;
 use App\Services\SettingsService;
 use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
@@ -136,11 +135,28 @@ function customerPlaceholder(string $title, string $activeNav, string $descripti
     customerPage($title, $activeNav, $body);
 }
 
+/** وضعیت نمایشی مشتری — JaySub سرویس را به‌خاطر سقف قطع نمی‌کند. */
+function customerDisplayStatusKey(array $customer, int $quotaBytes, float $pct): string
+{
+    $statusKey = (string) ($customer['service_status'] ?? 'inactive');
+    if (in_array($statusKey, ['disabled', 'expired', 'inactive'], true)) {
+        return $statusKey;
+    }
+    if ($statusKey === 'exhausted') {
+        $statusKey = 'active';
+    }
+    if ($quotaBytes > 0 && $pct >= 100) {
+        return 'warning';
+    }
+
+    return $statusKey;
+}
+
 function serviceStatusBadge(string $status): string
 {
     $map = [
         'active' => ['badge-success', 'فعال'],
-        'exhausted' => ['badge-danger', 'قطع‌شده / اتمام حجم'],
+        'exhausted' => ['badge-warning', 'اتمام سقف (نمایشی)'],
         'disabled' => ['badge-danger', 'غیرفعال'],
         'expired' => ['badge-danger', 'منقضی'],
         'warning' => ['badge-warning', 'هشدار مصرف'],
@@ -232,10 +248,7 @@ if (preg_match('#^/u/([a-f0-9]{64})$#i', $uri, $m) && $method === 'GET') {
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $endsAt = $sub['ends_at'] ?? null;
-    $statusKey = (string) $customer['service_status'];
-    if ($sub['status'] === 'exhausted' || ($quota > 0 && $pct >= 100)) {
-        $statusKey = 'exhausted';
-    }
+    $statusKey = customerDisplayStatusKey($customer, $quota, $pct);
     $brand = trim((string) ($customer['username'] ?? '')) !== ''
         ? (string) $customer['username']
         : (string) $customer['name'];
@@ -268,20 +281,15 @@ if ($uri === '/dashboard' && $method === 'GET') {
     $quota = (int) $sub['quota_bytes'];
     $pct = Format::percent($total, $quota);
     $remaining = max(0, $quota - $total);
-    $quotaEnforceOn = QuotaEnforcementService::isEnabled();
-    $vpnReady = (int) $customer['vpn_enabled'] === 1 && $sub['status'] === 'active';
-    if ($quotaEnforceOn) {
-        $vpnReady = $vpnReady && $pct < 100;
-    }
+    $vpnReady = (int) $customer['vpn_enabled'] === 1
+        && in_array((string) $customer['service_status'], ['active', 'warning'], true)
+        && $sub['status'] === 'active';
     $dotClass = $vpnReady ? 'on' : 'off';
-    $connLabel = $vpnReady ? 'فعال' : 'قطع‌شده';
+    $connLabel = $vpnReady ? 'فعال' : 'غیرفعال';
 
     $endsAt = $sub['ends_at'] ?? null;
     $expiryText = $endsAt ? Format::jalaliOrGregorian((string) $endsAt) : '—';
-    $statusKey = (string) $customer['service_status'];
-    if ($quotaEnforceOn && ($sub['status'] === 'exhausted' || $pct >= 100)) {
-        $statusKey = 'exhausted';
-    }
+    $statusKey = customerDisplayStatusKey($customer, $quota, $pct);
     $statusBadge = serviceStatusBadge($statusKey);
     $subLink = DashboardService::subscriptionLinkForCustomer($cid);
     $userName = htmlspecialchars((string) $customer['name'], ENT_QUOTES, 'UTF-8');
@@ -853,12 +861,11 @@ if (preg_match('#^/admin/customers/(\d+)$#', $uri, $m) && $method === 'GET') {
     $displayName = trim((string) ($customer['username'] ?? '')) !== ''
         ? (string) $customer['username']
         : (string) $customer['name'];
-    $statusKey = (string) ($customer['service_status'] ?? 'inactive');
-    if ($sub && ($sub['status'] ?? '') === 'exhausted') {
-        $statusKey = 'exhausted';
-    } elseif ($quota > 0 && $used >= $quota) {
-        $statusKey = 'exhausted';
-    }
+    $statusKey = customerDisplayStatusKey(
+        $customer,
+        $quota,
+        $quota > 0 ? Format::percent($used, $quota) : 0.0,
+    );
     $heroSub = $statusKey === 'active'
         ? 'اشتراک فعال و در حال استفاده'
         : 'وضعیت سرویس را در پایین بررسی کنید';
@@ -1317,38 +1324,19 @@ if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
 
 if ($uri === '/admin/settings' && $method === 'GET') {
     requireAdmin();
-    $enforceOn = QuotaEnforcementService::isEnabled();
-    $enforceChecked = $enforceOn ? 'checked' : '';
-    $enforceLabel = $enforceOn
-        ? '<span class="badge badge-success">فعال</span> — در JaySub وضعیت «اتمام سقف» ثبت می‌شود (3x-ui دست‌نخورده).'
-        : '<span class="badge badge-warning">خاموش</span> — فقط sync و نمایش مصرف.';
     $body = '<p class="muted">تنظیمات تخصصی:</p>
         <ul>
             <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>
             <li><a href="/admin/backup">بک‌آپ</a> — پشتیبان دیتابیس 3x-ui (هر ۴ ساعت)</li>
             <li><a href="/admin/ssl-backup">بکاپ ssl</a> — zip هفتگی <code>/root/cert</code> از سرورها (SSH)</li>
         </ul>
-        <form class="stack" method="post" action="/admin/settings">' . Csrf::field() . '
         <fieldset>
-            <legend>سقف حجم (قطع خودکار)</legend>
-            <p>' . $enforceLabel . '</p>
-            <label class="check-row"><input type="checkbox" name="quota_enforcement_enabled" value="1" ' . $enforceChecked . '> علامت‌گذاری اتمام سقف در JaySub</label>
-            <p class="muted form-hint">JaySub کلاینت‌های 3x-ui را enable/disable نمی‌کند. worker فقط ترافیک پنل را sync می‌کند.</p>
-            <button class="btn btn-primary" type="submit">ذخیره</button>
+            <legend>مصرف و سقف حجم</legend>
+            <p><span class="badge badge-success">فقط محاسبه</span> — JaySub ترافیک را از 3x-ui sync می‌کند و درصد مصرف را نشان می‌دهد. سرویس به‌خاطر سقف قطع نمی‌شود و کلاینت‌های پنل دست‌نخورده می‌مانند.</p>
+            <p class="muted form-hint">برای پاک‌کردن وضعیت «قطع‌شده» قدیمی در دیتابیس: <code>php scripts/reset-jaysub-service-state.php</code></p>
         </fieldset>
-        </form>
         <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
     adminPage('تنظیمات', 'settings', Layout::card($body));
-}
-
-if ($uri === '/admin/settings' && $method === 'POST') {
-    requireAdmin();
-    requireCsrf();
-    QuotaEnforcementService::setEnabled(isset($_POST['quota_enforcement_enabled']));
-    Session::set('flash_admin_ok', isset($_POST['quota_enforcement_enabled'])
-        ? 'قطع خودکار سقف فعال شد.'
-        : 'قطع خودکار سقف خاموش شد — sync پنل‌ها ادامه دارد.');
-    Response::redirect('/admin/settings');
 }
 
 // API JSON

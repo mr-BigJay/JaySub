@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 8;
+    public const VERSION = 9;
 
     public static function apply(PDO $pdo): void
     {
@@ -80,6 +80,11 @@ SQL
             if ($current < 8) {
                 self::resetTrafficForPanelInboundTotals($pdo);
                 self::writeVersion($pdo, 8);
+                $current = 8;
+            }
+            if ($current < 9) {
+                self::enableMonitorOnlyTrafficMode($pdo);
+                self::writeVersion($pdo, 9);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());
@@ -119,6 +124,26 @@ SQL
         } catch (\Throwable $e) {
             error_log('JaySub usage_view_token backfill: ' . $e->getMessage());
         }
+    }
+
+    /** بدون قطع سرویس: فقط محاسبه مصرف — پاک‌کردن وضعیت exhausted قدیمی. */
+    private static function enableMonitorOnlyTrafficMode(PDO $pdo): void
+    {
+        $pdo->exec("UPDATE subscriptions SET status = 'active' WHERE status = 'exhausted'");
+        $pdo->exec(
+            "UPDATE customers SET vpn_enabled = 1, service_status = 'active'
+             WHERE service_status IN ('exhausted', 'warning')"
+        );
+        $pdo->exec("DELETE FROM traffic_alerts WHERE alert_type IN ('limit_reached', 'warning_1', 'warning_2')");
+        $pdo->exec('UPDATE vpn_clients SET disabled_by_quota = 0');
+        $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value) VALUES (\'quota_enforcement_enabled\', \'0\')
+             ON DUPLICATE KEY UPDATE setting_value = \'0\''
+        )->execute();
+        $pdo->prepare(
+            'INSERT INTO system_settings (setting_key, setting_value) VALUES (\'traffic_mode\', \'monitor_only\')
+             ON DUPLICATE KEY UPDATE setting_value = \'monitor_only\''
+        )->execute();
     }
 
     /** Wipe JaySub per-client traffic accounting; usage comes from 3x-ui inbound up/down sums after sync. */

@@ -42,8 +42,7 @@ $customers = $pdo->query(
      FROM customers c ORDER BY c.id'
 )->fetchAll();
 
-$enforce = \App\Services\QuotaEnforcementService::isEnabled();
-fwrite(STDOUT, 'JaySub quota-diagnose — قطع خودکار: ' . ($enforce ? 'ON' : 'OFF (فقط sync)') . "\n\n");
+fwrite(STDOUT, 'JaySub quota-diagnose — حالت: فقط محاسبه مصرف (قطع خودکار غیرفعال دائمی)' . "\n\n");
 
 foreach ($customers as $c) {
     if ($filter !== null
@@ -81,7 +80,7 @@ foreach ($customers as $c) {
     echo '  mapped clients: ' . $d['client_count'] . ', usage(source=' . $usage['source'] . ')=' . fmtGb($usage['total']) . "\n";
     echo '  panel inbound total (3x-ui Inbounds): ' . fmtGb($d['panel_total']) . "\n";
     echo '  percent vs quota: ' . round($d['percent'], 2) . "%\n";
-    echo '  auto-cut now? ' . ($d['would_cut'] ? 'YES' : 'NO') . "\n";
+    echo '  would auto-cut? ' . ($d['would_cut'] ? 'YES (unexpected)' : 'NO') . "\n";
     echo '  => ' . ($d['cut_reason'] ?? '') . "\n";
 
     $dup = $pdo->prepare(
@@ -136,8 +135,8 @@ foreach ($customers as $c) {
     if ($d['client_count'] === 0 && (int) $panelCount->fetchColumn() > 0) {
         echo "  FIX: php worker/traffic_worker.php  (import clients from 3x-ui)\n";
     }
-    if ($isCutState && !$d['would_cut']) {
-        echo "  FIX: php scripts/restore-quota-clients.php  (بازگردانی بعد از اصلاح سقف)\n";
+    if ($isCutState) {
+        echo "  FIX: php scripts/reset-jaysub-service-state.php  (پاک‌کردن پرچم‌های قطع قدیمی JaySub)\n";
     }
     echo "\n";
 }
