@@ -143,6 +143,5 @@ foreach ($customers as $c) {
     echo "\n";
 }
 
-echo "برای همهٔ لاگ‌های قطع سهمیه:\n";
-echo "  mysql ... -e \"SELECT created_at, entity_id, details FROM audit_logs WHERE action='clients_disabled_quota' ORDER BY id DESC LIMIT 20;\"\n";
+echo "تاریخچه قطع خودکار: php scripts/quota-audit-log.php\n";
 echo "Done.\n";
