@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Core\Database;
 use App\Core\Encryption;
+use App\Services\QuotaEnforcementService;
 
 final class CustomerService
 {
@@ -445,7 +446,9 @@ final class CustomerService
         $percent = $quota > 0 ? ($total / $quota) * 100 : 0.0;
         $wouldCut = false;
         $reason = null;
-        if ($quota <= 0) {
+        if (!QuotaEnforcementService::isEnabled()) {
+            $reason = 'قطع خودکار در تنظیمات خاموش است — sync ادامه دارد، قطع نمی‌شود.';
+        } elseif ($quota <= 0) {
             $reason = 'سقف حجم صفر است — JaySub قطع خودکار نمی‌زند.';
         } elseif ($mapped['client_count'] === 0) {
             $reason = 'کلاینت sync‌شده در JaySub نیست — قطع خودکار نباید رخ دهد.';

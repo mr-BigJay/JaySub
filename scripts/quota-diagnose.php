@@ -17,6 +17,7 @@ if (PHP_SAPI !== 'cli') {
 require dirname(__DIR__) . '/src/bootstrap-cli.php';
 
 use App\Services\CustomerService;
+use App\Services\QuotaEnforcementService;
 
 $filter = null;
 $cutOnly = false;
@@ -44,7 +45,10 @@ $customers = $pdo->query(
      FROM customers c ORDER BY c.id'
 )->fetchAll();
 
-fwrite(STDOUT, "JaySub quota-diagnose — قطع خودکار فقط وقتی: کلاینت sync‌شده + مصرف ≥ سقف\n\n");
+use App\Services\QuotaEnforcementService;
+
+$enforce = QuotaEnforcementService::isEnabled();
+fwrite(STDOUT, 'JaySub quota-diagnose — قطع خودکار: ' . ($enforce ? 'ON' : 'OFF (فقط sync)') . "\n\n");
 
 foreach ($customers as $c) {
     if ($filter !== null

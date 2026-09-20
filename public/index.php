@@ -26,6 +26,7 @@ use App\Core\Database;
 use App\Core\Session;
 use App\Services\CustomerService;
 use App\Services\PanelService;
+use App\Services\QuotaEnforcementService;
 use App\Services\SettingsService;
 use App\Services\TelegramService;
 use App\Services\TrafficSyncService;
@@ -1312,12 +1313,26 @@ if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
 
 if ($uri === '/admin/settings' && $method === 'GET') {
     requireAdmin();
+    $enforceOn = QuotaEnforcementService::isEnabled();
+    $enforceChecked = $enforceOn ? 'checked' : '';
+    $enforceLabel = $enforceOn
+        ? '<span class="badge badge-success">فعال</span> — در صورت پر شدن سقف، کلاینت‌ها در 3x-ui قطع می‌شوند.'
+        : '<span class="badge badge-warning">خاموش</span> — فقط sync و نمایش مصرف؛ قطع خودکار نمی‌شود.';
     $body = '<p class="muted">تنظیمات تخصصی:</p>
         <ul>
             <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>
             <li><a href="/admin/backup">بک‌آپ</a> — پشتیبان دیتابیس 3x-ui (هر ۴ ساعت)</li>
             <li><a href="/admin/ssl-backup">بکاپ ssl</a> — zip هفتگی <code>/root/cert</code> از سرورها (SSH)</li>
         </ul>
+        <form class="stack" method="post" action="/admin/settings">' . Csrf::field() . '
+        <fieldset>
+            <legend>سقف حجم (قطع خودکار)</legend>
+            <p>' . $enforceLabel . '</p>
+            <label class="check-row"><input type="checkbox" name="quota_enforcement_enabled" value="1" ' . $enforceChecked . '> قطع خودکار کلاینت‌ها هنگام اتمام سقف</label>
+            <p class="muted form-hint">برای توقف موقت: تیک را بردارید و ذخیره کنید — worker همچنان پنل‌ها را sync می‌کند.</p>
+            <button class="btn btn-primary" type="submit">ذخیره</button>
+        </fieldset>
+        </form>
         <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
     adminPage('تنظیمات', 'settings', Layout::card($body));
 }
@@ -1325,6 +1340,10 @@ if ($uri === '/admin/settings' && $method === 'GET') {
 if ($uri === '/admin/settings' && $method === 'POST') {
     requireAdmin();
     requireCsrf();
+    QuotaEnforcementService::setEnabled(isset($_POST['quota_enforcement_enabled']));
+    Session::set('flash_admin_ok', isset($_POST['quota_enforcement_enabled'])
+        ? 'قطع خودکار سقف فعال شد.'
+        : 'قطع خودکار سقف خاموش شد — sync پنل‌ها ادامه دارد.');
     Response::redirect('/admin/settings');
 }
 

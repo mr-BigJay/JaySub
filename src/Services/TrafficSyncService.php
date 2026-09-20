@@ -234,14 +234,19 @@ final class TrafficSyncService
             AuditLogService::log('system', null, 'warning_sent', 'customer', (int) $customer['id'], ['level' => 'warning_2']);
         });
 
-        if ($quota > 0 && $mappedClientCount > 0 && $percent >= 100 && $subscription['status'] === 'active') {
-            $this->enforceQuotaLimit($customerId, $subId, (float) $quota, $total, $mappedClientCount);
-        } elseif ($quota > 0 && $percent < 100) {
-            $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent);
+        $enforcementOn = QuotaEnforcementService::isEnabled();
+        if ($enforcementOn) {
+            if ($quota > 0 && $mappedClientCount > 0 && $percent >= 100 && $subscription['status'] === 'active') {
+                $this->enforceQuotaLimit($customerId, $subId, (float) $quota, $total, $mappedClientCount);
+            } elseif ($quota > 0 && $percent < 100) {
+                $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, false);
+            }
+        } else {
+            $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, true);
         }
 
         $serviceStatus = 'active';
-        if ($mappedClientCount > 0 && $percent >= 100) {
+        if ($enforcementOn && $mappedClientCount > 0 && $percent >= 100) {
             $serviceStatus = 'exhausted';
         } elseif ($percent >= $w2) {
             $serviceStatus = 'warning';
@@ -250,6 +255,11 @@ final class TrafficSyncService
             'st' => $serviceStatus,
             'id' => $customerId,
         ]);
+        if (!$enforcementOn && (string) $customer['service_status'] === 'exhausted') {
+            $pdo->prepare(
+                "UPDATE customers SET vpn_enabled = 1 WHERE id = :id AND service_status NOT IN ('disabled', 'expired')"
+            )->execute(['id' => $customerId]);
+        }
     }
 
     private function maybeSendAlert(int $customerId, int $subId, string $type, bool $condition, callable $send): void
@@ -283,11 +293,8 @@ final class TrafficSyncService
         array $subscription,
         array $customer,
         float $percent,
+        bool $enforcementPaused,
     ): void {
-        if ($subscription['status'] !== 'exhausted' && (int) $customer['vpn_enabled'] === 1) {
-            return;
-        }
-
         $pdo = Database::pdo();
         $disabled = $pdo->prepare(
             'SELECT COUNT(*) FROM vpn_clients WHERE customer_id = :cid AND subscription_id = :sid AND disabled_by_quota = 1'
@@ -299,7 +306,15 @@ final class TrafficSyncService
         );
         $limitAlert->execute(['sid' => $subId]);
         $hadLimit = $limitAlert->fetch() !== false;
-        if ($disabledCount === 0 && !$hadLimit && $subscription['status'] !== 'exhausted') {
+
+        if (!$enforcementPaused) {
+            if ($subscription['status'] !== 'exhausted' && (int) $customer['vpn_enabled'] === 1) {
+                return;
+            }
+            if ($disabledCount === 0 && !$hadLimit && $subscription['status'] !== 'exhausted') {
+                return;
+            }
+        } elseif ($disabledCount === 0 && !$hadLimit && $subscription['status'] !== 'exhausted') {
             return;
         }
 
@@ -348,6 +363,7 @@ final class TrafficSyncService
             $pdo->commit();
             AuditLogService::log('system', null, 'quota_restore_under_limit', 'customer', $customerId, [
                 'percent' => $percent,
+                'enforcement_paused' => $enforcementPaused,
             ]);
         } catch (\Throwable $e) {
             $pdo->rollBack();
