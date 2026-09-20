@@ -126,6 +126,22 @@ final class InboundTraffic
      * @param list<mixed> $inbounds
      * @return array<string, array{inbound_id:int, protocol:?string, up:int, down:int, enable:bool, uuid:?string}>
      */
+    /**
+     * @param list<array<string, mixed>> $inbounds
+     * @return list<string>
+     */
+    public static function disabledEmails(array $inbounds): array
+    {
+        $out = [];
+        foreach (self::statsByEmail($inbounds) as $email => $s) {
+            if ($s['enable'] === false) {
+                $out[] = $email;
+            }
+        }
+
+        return $out;
+    }
+
     public static function statsByEmail(array $inbounds): array
     {
         /** @var array<string, array{inbound_id:int, protocol:?string, up:int, down:int, enable:bool, uuid:?string}> $statsByEmail */

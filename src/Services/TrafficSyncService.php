@@ -158,6 +158,10 @@ final class TrafficSyncService
             ]);
         }
 
+        if (!QuotaEnforcementService::isEnabled()) {
+            $this->enableDisabledClientsOnPanelInbounds($client, $obj);
+        }
+
         $this->aggregateCustomer($customerId);
 
         $connStatus = $statusOk ? 'connected' : 'sync_error';
@@ -274,10 +278,9 @@ final class TrafficSyncService
             "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
         )->execute(['sid' => $subId]);
 
-        $errors = $this->bulkEnableAllMappedClients($customerId, $subId);
-        $pdo->prepare(
-            'UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid AND subscription_id = :sid'
-        )->execute(['cid' => $customerId, 'sid' => $subId]);
+        $errors = $this->bulkEnableAllMappedClients($customerId);
+        $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid')
+            ->execute(['cid' => $customerId]);
 
         if ($errors !== []) {
             AuditLogService::log('system', null, 'quota_enable_errors', 'customer', $customerId, [
@@ -289,16 +292,16 @@ final class TrafficSyncService
     /**
      * @return list<string>
      */
-    private function bulkEnableAllMappedClients(int $customerId, int $subId): array
+    private function bulkEnableAllMappedClients(int $customerId): array
     {
         $pdo = Database::pdo();
         $clients = $pdo->prepare(
             'SELECT vc.xui_email, vc.panel_id, vp.base_url, vp.api_token_encrypted
              FROM vpn_clients vc
              INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
-             WHERE vc.customer_id = :cid AND vc.subscription_id = :sid'
+             WHERE vc.customer_id = :cid'
         );
-        $clients->execute(['cid' => $customerId, 'sid' => $subId]);
+        $clients->execute(['cid' => $customerId]);
         $rows = $clients->fetchAll();
 
         /** @var array<int, array{base_url: string, token: string, emails: list<string>}> $byPanel */
@@ -339,7 +342,11 @@ final class TrafficSyncService
         $rows = $pdo->query(
             "SELECT c.id AS customer_id, s.id AS sub_id, c.warning2_percent
              FROM customers c
-             INNER JOIN subscriptions s ON s.customer_id = c.id AND s.status IN ('active', 'exhausted')
+             INNER JOIN subscriptions s ON s.id = (
+                SELECT id FROM subscriptions
+                WHERE customer_id = c.id AND status IN ('active', 'exhausted')
+                ORDER BY id DESC LIMIT 1
+             )
              WHERE c.is_active = 1"
         )->fetchAll();
         foreach ($rows as $row) {
@@ -463,8 +470,25 @@ final class TrafficSyncService
         }
     }
 
+    /**
+     * @param list<array<string, mixed>> $inbounds
+     */
+    private function enableDisabledClientsOnPanelInbounds(XuiClient $client, array $inbounds): void
+    {
+        $emails = InboundTraffic::disabledEmails($inbounds);
+        if ($emails === []) {
+            return;
+        }
+        foreach (array_chunk($emails, 80) as $chunk) {
+            $client->bulkEnable($chunk);
+        }
+    }
+
     private function enforceQuotaLimit(int $customerId, int $subId, float $quota, int $usedTotal, int $clientCount): void
     {
+        if (!QuotaEnforcementService::isEnabled()) {
+            return;
+        }
         $pdo = Database::pdo();
         $check = $pdo->prepare(
             "SELECT id FROM traffic_alerts WHERE subscription_id = :sid AND alert_type = 'limit_reached' LIMIT 1"

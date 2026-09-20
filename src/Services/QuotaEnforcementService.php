@@ -11,7 +11,8 @@ final class QuotaEnforcementService
 
     public static function isEnabled(): bool
     {
-        return SettingsService::get(self::SETTING_KEY, '1') === '1';
+        // پیش‌فرض خاموش تا بدون تنظیم صریح، JaySub کسی را در 3x-ui قطع نکند.
+        return SettingsService::get(self::SETTING_KEY, '0') === '1';
     }
 
     public static function setEnabled(bool $enabled): void
