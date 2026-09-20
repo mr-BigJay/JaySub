@@ -1332,8 +1332,8 @@ if ($uri === '/admin/settings' && $method === 'GET') {
         <fieldset>
             <legend>سقف حجم (قطع خودکار)</legend>
             <p>' . $enforceLabel . '</p>
-            <label class="check-row"><input type="checkbox" name="quota_enforcement_enabled" value="1" ' . $enforceChecked . '> قطع خودکار کلاینت‌ها هنگام اتمام سقف</label>
-            <p class="muted form-hint">برای توقف موقت: تیک را بردارید و ذخیره کنید — worker همچنان پنل‌ها را sync می‌کند.</p>
+            <label class="check-row"><input type="checkbox" name="quota_enforcement_enabled" value="1" ' . $enforceChecked . '> علامت‌گذاری اتمام سقف در JaySub</label>
+            <p class="muted form-hint">JaySub کلاینت‌های 3x-ui را enable/disable نمی‌کند. worker فقط ترافیک پنل را sync می‌کند.</p>
             <button class="btn btn-primary" type="submit">ذخیره</button>
         </fieldset>
         </form>

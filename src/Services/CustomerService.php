@@ -419,7 +419,7 @@ final class CustomerService
         $wouldCut = false;
         $reason = null;
         if (!QuotaEnforcementService::isEnabled()) {
-            $reason = 'قطع خودکار در تنظیمات خاموش است — sync ادامه دارد، قطع نمی‌شود.';
+            $reason = 'علامت‌گذاری سقف در JaySub خاموش است (3x-ui جداگانه مدیریت می‌شود).';
         } elseif ($quota <= 0) {
             $reason = 'سقف حجم صفر است — JaySub قطع خودکار نمی‌زند.';
         } elseif ($mapped['client_count'] === 0) {

@@ -240,8 +240,8 @@ final class TrafficSyncService
             } elseif ($quota > 0 && $percent < 100) {
                 $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, false);
             }
-        } else {
-            $this->applyEnforcementPausedForCustomer($customerId, $subId, $percent, $w2);
+        } elseif ($quota > 0 && $percent < 100) {
+            $this->maybeRestoreAfterQuotaRecalc($customerId, $subId, $subscription, $customer, $percent, false);
         }
 
         $serviceStatus = 'active';
@@ -250,60 +250,10 @@ final class TrafficSyncService
         } elseif ($percent >= $w2) {
             $serviceStatus = 'warning';
         }
-        if (!$enforcementOn) {
-            $serviceStatus = $percent >= $w2 ? 'warning' : 'active';
-        }
         $pdo->prepare('UPDATE customers SET service_status = :st WHERE id = :id')->execute([
             'st' => $serviceStatus,
             'id' => $customerId,
         ]);
-    }
-
-    /** قطع سقف خاموش: فقط وضعیت JaySub (بدون تغییر کلاینت در 3x-ui). */
-    private function applyEnforcementPausedForCustomer(int $customerId, int $subId, float $percent, int $w2): void
-    {
-        $pdo = Database::pdo();
-        $pdo->prepare("UPDATE subscriptions SET status = 'active' WHERE id = :id")->execute(['id' => $subId]);
-        $pdo->prepare(
-            "UPDATE customers SET vpn_enabled = 1, service_status = :st WHERE id = :id AND service_status NOT IN ('disabled', 'expired')"
-        )->execute([
-            'st' => $percent >= $w2 ? 'warning' : 'active',
-            'id' => $customerId,
-        ]);
-        $pdo->prepare(
-            "DELETE FROM traffic_alerts WHERE subscription_id = :sid AND alert_type IN ('limit_reached', 'warning_1', 'warning_2')"
-        )->execute(['sid' => $subId]);
-        $pdo->prepare('UPDATE vpn_clients SET disabled_by_quota = 0 WHERE customer_id = :cid')
-            ->execute(['cid' => $customerId]);
-    }
-
-    /** فقط DB JaySub — کلاینت‌های 3x-ui دست‌نخورده می‌مانند. */
-    public function reenableEveryCustomerWhileEnforcementPaused(): void
-    {
-        if (QuotaEnforcementService::isEnabled()) {
-            throw new \RuntimeException('quota_enforcement_enabled is ON — aborting mass enable.');
-        }
-        $pdo = Database::pdo();
-        $rows = $pdo->query(
-            "SELECT c.id AS customer_id, s.id AS sub_id, c.warning2_percent
-             FROM customers c
-             INNER JOIN subscriptions s ON s.id = (
-                SELECT id FROM subscriptions
-                WHERE customer_id = c.id AND status IN ('active', 'exhausted')
-                ORDER BY id DESC LIMIT 1
-             )
-             WHERE c.is_active = 1"
-        )->fetchAll();
-        foreach ($rows as $row) {
-            $cid = (int) $row['customer_id'];
-            $sid = (int) $row['sub_id'];
-            $usage = CustomerService::quotaUsageForCustomer($cid);
-            $sub = $pdo->prepare('SELECT quota_bytes FROM subscriptions WHERE id = :id');
-            $sub->execute(['id' => $sid]);
-            $quota = (int) ($sub->fetchColumn() ?: 0);
-            $pct = $quota > 0 ? ($usage['total'] / $quota) * 100 : 0;
-            $this->applyEnforcementPausedForCustomer($cid, $sid, $pct, (int) $row['warning2_percent']);
-        }
     }
 
     private function maybeSendAlert(int $customerId, int $subId, string $type, bool $condition, callable $send): void
