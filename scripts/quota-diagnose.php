@@ -132,8 +132,18 @@ foreach ($customers as $c) {
 
     $panelCount = $pdo->prepare('SELECT COUNT(*) FROM vpn_panels WHERE customer_id = :id');
     $panelCount->execute(['id' => $cid]);
-    if ($d['client_count'] === 0 && (int) $panelCount->fetchColumn() > 0) {
+    $nPanels = (int) $panelCount->fetchColumn();
+    $activePanels = $pdo->prepare('SELECT COUNT(*) FROM vpn_panels WHERE customer_id = :id AND is_active = 1');
+    $activePanels->execute(['id' => $cid]);
+    $nActivePanels = (int) $activePanels->fetchColumn();
+    if ($nActivePanels === 0 && $nPanels > 0) {
+        echo "  FIX: پنل غیرفعال است — تنظیم سرویس → تیک پنل، یا php scripts/repair-panel-traffic.php --customer {$c['username']}\n";
+    }
+    if ($d['client_count'] === 0 && $nPanels > 0) {
         echo "  FIX: php worker/traffic_worker.php  (import clients from 3x-ui)\n";
+    }
+    if ($d['panel_total'] > 0 && $usage['total'] === 0) {
+        echo "  FIX: php scripts/repair-panel-traffic.php --customer {$c['username']}\n";
     }
     if ($isCutState) {
         echo "  FIX: php scripts/reset-jaysub-service-state.php  (پاک‌کردن پرچم‌های قطع قدیمی JaySub)\n";

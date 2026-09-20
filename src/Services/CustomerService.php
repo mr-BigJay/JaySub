@@ -213,6 +213,33 @@ final class CustomerService
         $stmt->execute(array_merge([$customerId], $activePanelIds));
     }
 
+    /** بعد از اتصال/تعویض API پنل، باید در محاسبه مصرف لحاظ شود. */
+    public static function ensurePanelActiveForCustomer(int $customerId, int $panelId): void
+    {
+        Database::pdo()->prepare(
+            'UPDATE vpn_panels SET is_active = 1 WHERE id = :pid AND customer_id = :cid'
+        )->execute(['pid' => $panelId, 'cid' => $customerId]);
+    }
+
+    /** کلاینت‌های import شده را به اشتراک فعال فعلی وصل می‌کند (مثلاً بعد از حذف/ساخت دوباره API). */
+    public static function rebindClientsToActiveSubscription(int $customerId, ?int $panelId = null): void
+    {
+        $sub = self::activeSubscription($customerId);
+        if ($sub === null) {
+            return;
+        }
+        $sid = (int) $sub['id'];
+        if ($panelId !== null) {
+            Database::pdo()->prepare(
+                'UPDATE vpn_clients SET subscription_id = :sid WHERE customer_id = :cid AND panel_id = :pid'
+            )->execute(['sid' => $sid, 'cid' => $customerId, 'pid' => $panelId]);
+            return;
+        }
+        Database::pdo()->prepare(
+            'UPDATE vpn_clients SET subscription_id = :sid WHERE customer_id = :cid'
+        )->execute(['sid' => $sid, 'cid' => $customerId]);
+    }
+
     public static function addQuota(int $customerId, float $additionalGb, Encryption $encryption, TelegramService $telegram, ?int $adminId = null): void
     {
         self::adjustQuota($customerId, $additionalGb, $encryption, $telegram, $adminId);
@@ -313,7 +340,7 @@ final class CustomerService
     /**
      * @return array{upload:int, download:int, total:int, client_count:int}
      */
-    public static function mappedClientTrafficTotals(int $customerId, ?int $subscriptionId = null): array
+    public static function mappedClientTrafficTotals(int $customerId): array
     {
         $sql = 'SELECT COALESCE(SUM(vc.last_xui_upload), 0) AS up,
                        COALESCE(SUM(vc.last_xui_download), 0) AS down,
@@ -322,10 +349,6 @@ final class CustomerService
                 INNER JOIN vpn_panels vp ON vp.id = vc.panel_id AND vp.is_active = 1
                 WHERE vc.customer_id = :cid';
         $params = ['cid' => $customerId];
-        if ($subscriptionId !== null) {
-            $sql .= ' AND vc.subscription_id = :sid';
-            $params['sid'] = $subscriptionId;
-        }
         $stmt = Database::pdo()->prepare($sql);
         $stmt->execute($params);
         $row = $stmt->fetch();
@@ -375,9 +398,8 @@ final class CustomerService
     public static function quotaUsageForCustomer(int $customerId): array
     {
         $sub = self::activeSubscription($customerId);
-        $subId = $sub !== null ? (int) $sub['id'] : null;
-        $mapped = self::mappedClientTrafficTotals($customerId, $subId);
-        if ($mapped['client_count'] > 0) {
+        $mapped = self::mappedClientTrafficTotals($customerId);
+        if ($mapped['total'] > 0) {
             return [
                 'upload' => $mapped['upload'],
                 'download' => $mapped['download'],
@@ -386,11 +408,29 @@ final class CustomerService
             ];
         }
 
+        $panel = self::panelInboundTotalsForCustomer($customerId);
+        if ($panel['total'] > 0) {
+            return [
+                'upload' => $panel['upload'],
+                'download' => $panel['download'],
+                'total' => $panel['total'],
+                'source' => 'xui_inbound_totals',
+            ];
+        }
+
         if ($sub === null) {
             return ['upload' => 0, 'download' => 0, 'total' => 0, 'source' => 'none'];
         }
 
-        // بدون کلاینت ثبت‌شده سقف را با «کل پنل» مقایسه نمی‌کنیم (منبع خطای قطع اشتباه).
+        if ($mapped['client_count'] > 0) {
+            return [
+                'upload' => 0,
+                'download' => 0,
+                'total' => 0,
+                'source' => 'mapped_clients_zero_traffic',
+            ];
+        }
+
         return [
             'upload' => 0,
             'download' => 0,
@@ -431,7 +471,7 @@ final class CustomerService
     public static function persistTrafficUsageFromPanels(int $customerId): void
     {
         $usage = self::quotaUsageForCustomer($customerId);
-        if ($usage['source'] !== 'xui_mapped_clients') {
+        if (!in_array($usage['source'], ['xui_mapped_clients', 'xui_inbound_totals'], true)) {
             return;
         }
         $sub = self::activeSubscription($customerId);

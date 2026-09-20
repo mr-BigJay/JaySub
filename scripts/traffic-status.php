@@ -77,8 +77,14 @@ foreach ($customers as $c) {
             echo '    error: ' . mb_substr((string) $p['last_error'], 0, 120) . "\n";
         }
     }
+    if ((int) $c['panels_active'] === 0 && (int) $c['panels'] > 0) {
+        echo "  => FIX: پنل(ها) is_active=0 — در تنظیم سرویس تیک «پنل‌های فعال» را بزنید یا دوباره پنل را وصل کنید.\n";
+    }
     if ((int) $c['clients'] === 0 && (int) $c['panels'] > 0) {
         echo "  => Run: php worker/traffic_worker.php (auto-imports all XUI clients)\n";
+    }
+    if ($panel['total'] > 0 && $display['total'] === 0) {
+        echo "  => پنل ترافیک دارد اما نمایش صفر — بعد از pull جدید sync کنید؛ اگر باز صفر است last_error پنل را ببینید.\n";
     }
     echo "\n";
 }

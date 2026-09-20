@@ -158,6 +158,9 @@ final class TrafficSyncService
             ]);
         }
 
+        CustomerService::rebindClientsToActiveSubscription($customerId, $panelId);
+        CustomerService::ensurePanelActiveForCustomer($customerId, $panelId);
+
         $this->aggregateCustomer($customerId);
 
         $connStatus = $statusOk ? 'connected' : 'sync_error';
@@ -189,7 +192,6 @@ final class TrafficSyncService
         }
 
         $subId = (int) $subscription['id'];
-        $mapped = CustomerService::mappedClientTrafficTotals($customerId, $subId);
         $usage = CustomerService::quotaUsageForCustomer($customerId);
         $upload = $usage['upload'];
         $download = $usage['download'];

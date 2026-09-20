@@ -525,6 +525,7 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'POST') 
     } else {
         Session::set('flash_admin_ok', 'تغییرات پنل ذخیره شد.');
     }
+    sync_panel_traffic($config, $pid);
     Response::redirect('/admin/panels');
 }
 

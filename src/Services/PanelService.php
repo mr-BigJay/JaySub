@@ -26,7 +26,7 @@ final class PanelService
             'tok' => $encryption->encrypt($apiToken),
         ]);
         $id = (int) Database::pdo()->lastInsertId();
-        Database::pdo()->prepare('UPDATE vpn_panels SET is_active = 1 WHERE id = :id')->execute(['id' => $id]);
+        CustomerService::ensurePanelActiveForCustomer($customerId, $id);
         AuditLogService::log('admin', $adminId, 'panel_created', 'vpn_panel', $id);
         return $id;
     }
