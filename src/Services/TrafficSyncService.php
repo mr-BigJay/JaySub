@@ -101,8 +101,6 @@ final class TrafficSyncService
         $subscription = CustomerService::ensureTrafficSubscription($customerId);
         $subId = (int) $subscription['id'];
 
-        $pdo->prepare('UPDATE vpn_panels SET is_active = 1 WHERE id = :id')->execute(['id' => $panelId]);
-
         $selectVc = $pdo->prepare(
             'SELECT * FROM vpn_clients WHERE panel_id = :panel_id AND xui_email = :email LIMIT 1'
         );
@@ -159,7 +157,6 @@ final class TrafficSyncService
         }
 
         CustomerService::rebindClientsToActiveSubscription($customerId, $panelId);
-        CustomerService::ensurePanelActiveForCustomer($customerId, $panelId);
 
         $this->aggregateCustomer($customerId);
 

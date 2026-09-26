@@ -1215,6 +1215,15 @@ HTML;
                 default => 'off',
             };
             $connLabel = $conn === 'connected' ? 'متصل' : ($conn === 'sync_error' ? 'خطای sync' : 'قطع');
+            $isActive = (int) ($p['is_active'] ?? 1) === 1;
+            $activeClass = $isActive ? '' : ' is-disabled';
+            $activeBadge = $isActive
+                ? '<span class="xui-panel-tag xui-panel-tag-on">فعال</span>'
+                : '<span class="xui-panel-tag xui-panel-tag-off">غیرفعال</span>';
+            $toggleBtn = $isActive
+                ? '<button type="submit" class="btn btn-sm btn-secondary">غیرفعال</button>'
+                : '<button type="submit" class="btn btn-sm btn-primary">فعال</button>';
+            $nameEsc = htmlspecialchars((string) ($p['name'] ?? 'پنل'), ENT_QUOTES, 'UTF-8');
             $custLabel = trim((string) ($p['customer_username'] ?? ''));
             if ($custLabel === '') {
                 $custLabel = (string) ($p['customer_name'] ?? '—');
@@ -1229,17 +1238,21 @@ HTML;
             if (!empty($p['last_error'])) {
                 $err = '<p class="muted sub-mgmt-panel-err">' . htmlspecialchars((string) $p['last_error'], ENT_QUOTES, 'UTF-8') . '</p>';
             }
-            $panelChips .= '<article class="xui-panel-item">
+            $panelChips .= '<article class="xui-panel-item' . $activeClass . '">
                 <div class="xui-panel-link-row">
                     <span class="xui-panel-dot ' . $dot . '" title="' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '" aria-label="' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '"></span>
+                    <strong class="xui-panel-name">' . $nameEsc . '</strong>
                     <button type="button" class="xui-panel-url" data-copy-text="' . $baseAttr . '" title="کلیک برای کپی آدرس">' . $baseEsc . '</button>
                 </div>
                 <div class="xui-panel-footer">
                     <div class="xui-panel-tags">
                         <span class="xui-panel-tag">' . $cust . '</span>
+                        ' . $activeBadge . '
                         <span class="xui-panel-tag xui-panel-tag-traffic" title="مصرف sync‌شده">' . htmlspecialchars($traffic, ENT_QUOTES, 'UTF-8') . '</span>
                     </div>
                     <div class="sub-mgmt-panel-actions">
+                        <form method="post" action="/admin/panels/' . $pid . '/toggle-active" class="inline-form">' . $csrfField
+                . $toggleBtn . '</form>
                         <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/clients">کلاینت‌ها</a>
                         <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/edit">ویرایش</a>
                         <form method="post" action="/admin/panels/' . $pid . '/test" class="inline-form">' . $csrfField

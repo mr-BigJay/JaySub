@@ -529,6 +529,23 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'POST') 
     Response::redirect('/admin/panels');
 }
 
+if (preg_match('#^/admin/panels/(\d+)/toggle-active$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $pid = (int) $m[1];
+    try {
+        $enabled = PanelService::toggleManualActive($pid, AuthService::adminId());
+        app_traffic_sync($config)->syncPanelAndAggregate($pid);
+        Session::set(
+            'flash_admin_ok',
+            $enabled ? 'پنل فعال شد — در مصرف سرویس لحاظ می‌شود.' : 'پنل غیرفعال شد — از مصرف و sync خارج شد.'
+        );
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
+    Response::redirect('/admin/panels');
+}
+
 if (preg_match('#^/admin/panels/(\d+)/test$#', $uri, $m) && $method === 'POST') {
     requireAdmin();
     requireCsrf();

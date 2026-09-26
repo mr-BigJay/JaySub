@@ -26,9 +26,35 @@ final class PanelService
             'tok' => $encryption->encrypt($apiToken),
         ]);
         $id = (int) Database::pdo()->lastInsertId();
-        CustomerService::ensurePanelActiveForCustomer($customerId, $id);
         AuditLogService::log('admin', $adminId, 'panel_created', 'vpn_panel', $id);
         return $id;
+    }
+
+    /** فعال/غیرفعال دستی برای محاسبه مصرف و sync (پیش‌فرض DB: فعال). */
+    public static function setManualActive(int $panelId, bool $active, ?int $adminId = null): void
+    {
+        $panel = self::findById($panelId);
+        if ($panel === null) {
+            throw new \RuntimeException('پنل یافت نشد');
+        }
+        Database::pdo()->prepare(
+            'UPDATE vpn_panels SET is_active = :a, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+        )->execute(['a' => $active ? 1 : 0, 'id' => $panelId]);
+        AuditLogService::log('admin', $adminId, $active ? 'panel_enabled' : 'panel_disabled', 'vpn_panel', $panelId, [
+            'customer_id' => (int) $panel['customer_id'],
+        ]);
+    }
+
+    public static function toggleManualActive(int $panelId, ?int $adminId = null): bool
+    {
+        $panel = self::findById($panelId);
+        if ($panel === null) {
+            throw new \RuntimeException('پنل یافت نشد');
+        }
+        $next = (int) $panel['is_active'] !== 1;
+        self::setManualActive($panelId, $next, $adminId);
+
+        return $next;
     }
 
     /** @return array<string, mixed>|null */
