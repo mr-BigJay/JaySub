@@ -26,9 +26,146 @@ final class PanelService
             'tok' => $encryption->encrypt($apiToken),
         ]);
         $id = (int) Database::pdo()->lastInsertId();
-        Database::pdo()->prepare('UPDATE vpn_panels SET is_active = 1 WHERE id = :id')->execute(['id' => $id]);
         AuditLogService::log('admin', $adminId, 'panel_created', 'vpn_panel', $id);
         return $id;
+    }
+
+    /** فعال/غیرفعال دستی برای محاسبه مصرف و sync (پیش‌فرض DB: فعال). */
+    public static function setManualActive(int $panelId, bool $active, ?int $adminId = null): void
+    {
+        $panel = self::findById($panelId);
+        if ($panel === null) {
+            throw new \RuntimeException('پنل یافت نشد');
+        }
+        Database::pdo()->prepare(
+            'UPDATE vpn_panels SET is_active = :a, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+        )->execute(['a' => $active ? 1 : 0, 'id' => $panelId]);
+        AuditLogService::log('admin', $adminId, $active ? 'panel_enabled' : 'panel_disabled', 'vpn_panel', $panelId, [
+            'customer_id' => (int) $panel['customer_id'],
+        ]);
+    }
+
+    /**
+     * قطع / وصل اینترنت کلاینت‌های همان پنل در 3x-ui (دستی — بدون قطع خودکار سقف).
+     *
+     * @return int تعداد کلاینت‌هایی که درخواست برای آن‌ها ارسال شد
+     */
+    public static function setPanelInternetConnected(
+        int $panelId,
+        bool $connected,
+        Encryption $encryption,
+        ?int $adminId = null,
+    ): int {
+        $panel = self::findById($panelId);
+        if ($panel === null) {
+            throw new \RuntimeException('پنل یافت نشد');
+        }
+
+        $discovered = self::discoverClients($panelId, $encryption);
+        $emails = [];
+        foreach ($discovered as $row) {
+            $email = trim((string) ($row['email'] ?? ''));
+            if ($email !== '') {
+                $emails[$email] = true;
+            }
+        }
+        $emails = array_keys($emails);
+        if ($emails === []) {
+            throw new \RuntimeException('کلاینتی روی این پنل پیدا نشد — ابتدا «تست» یا worker sync را بزنید.');
+        }
+
+        $xui = new XuiClient(
+            (string) $panel['base_url'],
+            $encryption->decrypt((string) $panel['api_token_encrypted']),
+        );
+        $result = $connected ? $xui->bulkEnable($emails) : $xui->bulkDisable($emails);
+        if (!($result['ok'] ?? false)) {
+            throw new \RuntimeException((string) ($result['error'] ?? 'خطای API پنل 3x-ui'));
+        }
+
+        $pdo = Database::pdo();
+        $pdo->prepare(
+            'UPDATE vpn_panels SET internet_cut = :c, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
+        )->execute(['c' => $connected ? 0 : 1, 'id' => $panelId]);
+        $pdo->prepare(
+            'UPDATE vpn_clients SET enabled_in_xui = :e, updated_at = CURRENT_TIMESTAMP WHERE panel_id = :pid'
+        )->execute(['e' => $connected ? 1 : 0, 'pid' => $panelId]);
+
+        AuditLogService::log(
+            'admin',
+            $adminId,
+            $connected ? 'panel_internet_on' : 'panel_internet_off',
+            'vpn_panel',
+            $panelId,
+            ['customer_id' => (int) $panel['customer_id'], 'client_count' => count($emails)],
+        );
+
+        return count($emails);
+    }
+
+    public static function togglePanelInternet(int $panelId, Encryption $encryption, ?int $adminId = null): bool
+    {
+        $panel = self::findById($panelId);
+        if ($panel === null) {
+            throw new \RuntimeException('پنل یافت نشد');
+        }
+        $currentlyCut = (int) ($panel['internet_cut'] ?? 0) === 1;
+        $connect = $currentlyCut;
+        self::setPanelInternetConnected($panelId, $connect, $encryption, $adminId);
+
+        return $connect;
+    }
+
+    /**
+     * نگه‌داشتن قطع دستی: worker هر sync ممکن است 3x-ui دوباره enable کند — دوباره bulkDisable.
+     *
+     * @param list<string> $emails
+     */
+    public static function reapplyInternetCut(int $panelId, Encryption $encryption, array $emails = []): void
+    {
+        $panel = self::findById($panelId);
+        if ($panel === null || (int) ($panel['internet_cut'] ?? 0) !== 1) {
+            return;
+        }
+
+        $normalized = [];
+        foreach ($emails as $email) {
+            $e = trim((string) $email);
+            if ($e !== '') {
+                $normalized[$e] = true;
+            }
+        }
+        if ($normalized === []) {
+            $stmt = Database::pdo()->prepare('SELECT xui_email FROM vpn_clients WHERE panel_id = :pid');
+            $stmt->execute(['pid' => $panelId]);
+            foreach ($stmt->fetchAll() as $row) {
+                $e = trim((string) ($row['xui_email'] ?? ''));
+                if ($e !== '') {
+                    $normalized[$e] = true;
+                }
+            }
+        }
+        $list = array_keys($normalized);
+        if ($list === []) {
+            return;
+        }
+
+        $xui = new XuiClient(
+            (string) $panel['base_url'],
+            $encryption->decrypt((string) $panel['api_token_encrypted']),
+        );
+        $result = $xui->bulkDisable($list);
+        if (!($result['ok'] ?? false)) {
+            error_log(
+                'JaySub reapplyInternetCut panel #' . $panelId . ': '
+                . (string) ($result['error'] ?? 'bulkDisable failed')
+            );
+            return;
+        }
+
+        Database::pdo()->prepare(
+            'UPDATE vpn_clients SET enabled_in_xui = 0, updated_at = CURRENT_TIMESTAMP WHERE panel_id = :pid'
+        )->execute(['pid' => $panelId]);
     }
 
     /** @return array<string, mixed>|null */
@@ -64,7 +201,10 @@ final class PanelService
     /** @return list<array<string, mixed>> */
     public static function forCustomer(int $customerId): array
     {
-        $stmt = Database::pdo()->prepare('SELECT id, customer_id, name, base_url, is_active, connection_status, last_sync_at, last_error, created_at FROM vpn_panels WHERE customer_id = :cid ORDER BY id');
+        $stmt = Database::pdo()->prepare(
+            'SELECT id, customer_id, name, base_url, is_active, internet_cut, connection_status, last_sync_at, last_error, created_at
+             FROM vpn_panels WHERE customer_id = :cid ORDER BY id'
+        );
         $stmt->execute(['cid' => $customerId]);
         return $stmt->fetchAll();
     }

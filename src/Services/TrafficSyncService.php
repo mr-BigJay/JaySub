@@ -88,6 +88,7 @@ final class TrafficSyncService
         $obj = InboundTraffic::inboundsFromListResult($list);
 
         $statsByEmail = InboundTraffic::statsByEmail($obj);
+        $internetCut = (int) ($panel['internet_cut'] ?? 0) === 1;
         $panelTotals = InboundTraffic::panelTrafficTotals($obj);
         $pdo->prepare(
             'UPDATE vpn_panels SET xui_inbound_up = :u, xui_inbound_down = :d, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
@@ -100,8 +101,6 @@ final class TrafficSyncService
         $customerId = (int) $panel['customer_id'];
         $subscription = CustomerService::ensureTrafficSubscription($customerId);
         $subId = (int) $subscription['id'];
-
-        $pdo->prepare('UPDATE vpn_panels SET is_active = 1 WHERE id = :id')->execute(['id' => $panelId]);
 
         $selectVc = $pdo->prepare(
             'SELECT * FROM vpn_clients WHERE panel_id = :panel_id AND xui_email = :email LIMIT 1'
@@ -142,20 +141,26 @@ final class TrafficSyncService
                     'protocol' => $s['protocol'],
                     'last_up' => $s['up'],
                     'last_down' => $s['down'],
-                    'enabled' => $s['enable'] ? 1 : 0,
+                    'enabled' => $internetCut ? 0 : ($s['enable'] ? 1 : 0),
                 ]);
                 continue;
             }
             $upd->execute([
                 'last_up' => $s['up'],
                 'last_down' => $s['down'],
-                'enabled' => $s['enable'] ? 1 : 0,
+                'enabled' => $internetCut ? 0 : ($s['enable'] ? 1 : 0),
                 'uuid' => $s['uuid'],
                 'protocol' => $s['protocol'],
                 'inbound_id' => $s['inbound_id'],
                 'sid' => $subId,
                 'id' => $vc['id'],
             ]);
+        }
+
+        CustomerService::rebindClientsToActiveSubscription($customerId, $panelId);
+
+        if ($internetCut) {
+            PanelService::reapplyInternetCut($panelId, $this->encryption, array_keys($statsByEmail));
         }
 
         $this->aggregateCustomer($customerId);
@@ -189,7 +194,6 @@ final class TrafficSyncService
         }
 
         $subId = (int) $subscription['id'];
-        $mapped = CustomerService::mappedClientTrafficTotals($customerId, $subId);
         $usage = CustomerService::quotaUsageForCustomer($customerId);
         $upload = $usage['upload'];
         $download = $usage['download'];

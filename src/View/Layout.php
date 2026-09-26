@@ -437,8 +437,12 @@ HTML;
             };
             $connLabel = $conn === 'connected' ? 'متصل' : ($conn === 'sync_error' ? 'خطای sync' : 'قطع');
             if (!$isOn) {
-                $connLabel = 'غیرفعال';
+                $connLabel = 'خارج از سرویس';
                 $dot = 'off';
+            }
+            if ((int) ($p['internet_cut'] ?? 0) === 1) {
+                $connLabel = 'اینترنت قطع';
+                $dot = 'warn';
             }
             $panelChips .= '<div class="sub-mgmt-panel-chip">
                 <span class="sub-mgmt-panel-dot ' . $dot . '"></span>
@@ -1215,6 +1219,15 @@ HTML;
                 default => 'off',
             };
             $connLabel = $conn === 'connected' ? 'متصل' : ($conn === 'sync_error' ? 'خطای sync' : 'قطع');
+            $internetCut = (int) ($p['internet_cut'] ?? 0) === 1;
+            $netClass = $internetCut ? ' internet-cut' : '';
+            $netBadge = $internetCut
+                ? '<span class="xui-panel-tag xui-panel-tag-off">اینترنت قطع</span>'
+                : '<span class="xui-panel-tag xui-panel-tag-on">اینترنت وصل</span>';
+            $netBtn = $internetCut
+                ? '<button type="submit" class="btn btn-sm btn-primary">وصل اینترنت</button>'
+                : '<button type="submit" class="btn btn-sm btn-secondary">قطع اینترنت</button>';
+            $nameEsc = htmlspecialchars((string) ($p['name'] ?? 'پنل'), ENT_QUOTES, 'UTF-8');
             $custLabel = trim((string) ($p['customer_username'] ?? ''));
             if ($custLabel === '') {
                 $custLabel = (string) ($p['customer_name'] ?? '—');
@@ -1229,17 +1242,21 @@ HTML;
             if (!empty($p['last_error'])) {
                 $err = '<p class="muted sub-mgmt-panel-err">' . htmlspecialchars((string) $p['last_error'], ENT_QUOTES, 'UTF-8') . '</p>';
             }
-            $panelChips .= '<article class="xui-panel-item">
+            $panelChips .= '<article class="xui-panel-item' . $netClass . '">
                 <div class="xui-panel-link-row">
                     <span class="xui-panel-dot ' . $dot . '" title="' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '" aria-label="' . htmlspecialchars($connLabel, ENT_QUOTES, 'UTF-8') . '"></span>
+                    <strong class="xui-panel-name">' . $nameEsc . '</strong>
                     <button type="button" class="xui-panel-url" data-copy-text="' . $baseAttr . '" title="کلیک برای کپی آدرس">' . $baseEsc . '</button>
                 </div>
                 <div class="xui-panel-footer">
                     <div class="xui-panel-tags">
                         <span class="xui-panel-tag">' . $cust . '</span>
+                        ' . $netBadge . '
                         <span class="xui-panel-tag xui-panel-tag-traffic" title="مصرف sync‌شده">' . htmlspecialchars($traffic, ENT_QUOTES, 'UTF-8') . '</span>
                     </div>
                     <div class="sub-mgmt-panel-actions">
+                        <form method="post" action="/admin/panels/' . $pid . '/toggle-internet" class="inline-form">' . $csrfField
+                . $netBtn . '</form>
                         <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/clients">کلاینت‌ها</a>
                         <a class="btn btn-sm btn-ghost" href="/admin/panels/' . $pid . '/edit">ویرایش</a>
                         <form method="post" action="/admin/panels/' . $pid . '/test" class="inline-form">' . $csrfField

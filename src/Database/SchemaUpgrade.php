@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 9;
+    public const VERSION = 10;
 
     public static function apply(PDO $pdo): void
     {
@@ -85,6 +85,11 @@ SQL
             if ($current < 9) {
                 self::enableMonitorOnlyTrafficMode($pdo);
                 self::writeVersion($pdo, 9);
+                $current = 9;
+            }
+            if ($current < 10) {
+                self::addColumnIfMissing($pdo, 'vpn_panels', 'internet_cut', 'TINYINT(1) NOT NULL DEFAULT 0');
+                self::writeVersion($pdo, 10);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());

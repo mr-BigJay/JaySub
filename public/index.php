@@ -525,6 +525,26 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'POST') 
     } else {
         Session::set('flash_admin_ok', 'تغییرات پنل ذخیره شد.');
     }
+    sync_panel_traffic($config, $pid);
+    Response::redirect('/admin/panels');
+}
+
+if (preg_match('#^/admin/panels/(\d+)/toggle-internet$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $pid = (int) $m[1];
+    $enc = app_encryption($config);
+    try {
+        $connected = PanelService::togglePanelInternet($pid, $enc, AuthService::adminId());
+        Session::set(
+            'flash_admin_ok',
+            $connected
+                ? 'اینترنت کلاینت‌های این پنل در 3x-ui وصل شد.'
+                : 'اینترنت کلاینت‌های این پنل در 3x-ui قطع شد.'
+        );
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', $e->getMessage());
+    }
     Response::redirect('/admin/panels');
 }
 
@@ -794,7 +814,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
     }
     $endsVal = $sub && $sub['ends_at'] ? Format::gregorianDateForInput((string) $sub['ends_at']) : '';
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
-        <p class="muted">مصرف سهمیه (کلاینت‌های ثبت‌شده در JaySub): <strong>' . Format::usageVolume((float) $used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
+        <p class="muted">مصرف سهمیه (جمع همهٔ پنل‌های فعال): <strong>' . Format::usageVolume((float) $used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
         . ($breakRows ? Layout::card($breakRows, 'کل ترافیک اینباند هر پنل (مثل صفحه Inbounds 3x-ui)') : '')
         . '<form class="stack" method="post" action="/admin/customers/' . $id . '/service">' . Csrf::field() . '
         <label>حجم کل (GB)</label><input name="quota_gb" type="number" step="0.1" required value="' . ($quota > 0 ? Format::bytesToGbNumber($quota) : '20') . '">
@@ -1332,7 +1352,7 @@ if ($uri === '/admin/settings' && $method === 'GET') {
         </ul>
         <fieldset>
             <legend>مصرف و سقف حجم</legend>
-            <p><span class="badge badge-success">فقط محاسبه</span> — JaySub ترافیک را از 3x-ui sync می‌کند و درصد مصرف را نشان می‌دهد. سرویس به‌خاطر سقف قطع نمی‌شود و کلاینت‌های پنل دست‌نخورده می‌مانند.</p>
+            <p><span class="badge badge-success">فقط محاسبه</span> — JaySub ترافیک را sync می‌کند؛ قطع خودکار سقف ندارد. <strong>قطع اینترنت</strong> فقط دستی از صفحه «پنل‌های 3X-UI» است.</p>
             <p class="muted form-hint">برای پاک‌کردن وضعیت «قطع‌شده» قدیمی در دیتابیس: <code>php scripts/reset-jaysub-service-state.php</code></p>
         </fieldset>
         <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
