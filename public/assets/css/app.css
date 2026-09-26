@@ -699,9 +699,9 @@ body.admin-menu-open { overflow: hidden; }
 
 .sub-mgmt-panels { display: flex; flex-direction: column; gap: 0.65rem; }
 .admin-main:has(.xui-panels-page) .sub-mgmt-toolbar { display: none; }
-.xui-panel-item.is-disabled {
-  opacity: 0.72;
-  border-color: rgba(148, 163, 184, 0.35);
+.xui-panel-item.internet-cut {
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.12);
 }
 .xui-panel-name {
   font-size: 0.95rem;

@@ -529,16 +529,18 @@ if (preg_match('#^/admin/panels/(\d+)/edit$#', $uri, $m) && $method === 'POST') 
     Response::redirect('/admin/panels');
 }
 
-if (preg_match('#^/admin/panels/(\d+)/toggle-active$#', $uri, $m) && $method === 'POST') {
+if (preg_match('#^/admin/panels/(\d+)/toggle-internet$#', $uri, $m) && $method === 'POST') {
     requireAdmin();
     requireCsrf();
     $pid = (int) $m[1];
+    $enc = app_encryption($config);
     try {
-        $enabled = PanelService::toggleManualActive($pid, AuthService::adminId());
-        app_traffic_sync($config)->syncPanelAndAggregate($pid);
+        $connected = PanelService::togglePanelInternet($pid, $enc, AuthService::adminId());
         Session::set(
             'flash_admin_ok',
-            $enabled ? 'پنل فعال شد — در مصرف سرویس لحاظ می‌شود.' : 'پنل غیرفعال شد — از مصرف و sync خارج شد.'
+            $connected
+                ? 'اینترنت کلاینت‌های این پنل در 3x-ui وصل شد.'
+                : 'اینترنت کلاینت‌های این پنل در 3x-ui قطع شد.'
         );
     } catch (\Throwable $e) {
         Session::set('flash_admin', $e->getMessage());
@@ -1350,7 +1352,7 @@ if ($uri === '/admin/settings' && $method === 'GET') {
         </ul>
         <fieldset>
             <legend>مصرف و سقف حجم</legend>
-            <p><span class="badge badge-success">فقط محاسبه</span> — JaySub ترافیک را از 3x-ui sync می‌کند و درصد مصرف را نشان می‌دهد. سرویس به‌خاطر سقف قطع نمی‌شود و کلاینت‌های پنل دست‌نخورده می‌مانند.</p>
+            <p><span class="badge badge-success">فقط محاسبه</span> — JaySub ترافیک را sync می‌کند؛ قطع خودکار سقف ندارد. <strong>قطع اینترنت</strong> فقط دستی از صفحه «پنل‌های 3X-UI» است.</p>
             <p class="muted form-hint">برای پاک‌کردن وضعیت «قطع‌شده» قدیمی در دیتابیس: <code>php scripts/reset-jaysub-service-state.php</code></p>
         </fieldset>
         <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
