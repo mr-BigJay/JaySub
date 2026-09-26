@@ -116,6 +116,58 @@ final class PanelService
         return $connect;
     }
 
+    /**
+     * نگه‌داشتن قطع دستی: worker هر sync ممکن است 3x-ui دوباره enable کند — دوباره bulkDisable.
+     *
+     * @param list<string> $emails
+     */
+    public static function reapplyInternetCut(int $panelId, Encryption $encryption, array $emails = []): void
+    {
+        $panel = self::findById($panelId);
+        if ($panel === null || (int) ($panel['internet_cut'] ?? 0) !== 1) {
+            return;
+        }
+
+        $normalized = [];
+        foreach ($emails as $email) {
+            $e = trim((string) $email);
+            if ($e !== '') {
+                $normalized[$e] = true;
+            }
+        }
+        if ($normalized === []) {
+            $stmt = Database::pdo()->prepare('SELECT xui_email FROM vpn_clients WHERE panel_id = :pid');
+            $stmt->execute(['pid' => $panelId]);
+            foreach ($stmt->fetchAll() as $row) {
+                $e = trim((string) ($row['xui_email'] ?? ''));
+                if ($e !== '') {
+                    $normalized[$e] = true;
+                }
+            }
+        }
+        $list = array_keys($normalized);
+        if ($list === []) {
+            return;
+        }
+
+        $xui = new XuiClient(
+            (string) $panel['base_url'],
+            $encryption->decrypt((string) $panel['api_token_encrypted']),
+        );
+        $result = $xui->bulkDisable($list);
+        if (!($result['ok'] ?? false)) {
+            error_log(
+                'JaySub reapplyInternetCut panel #' . $panelId . ': '
+                . (string) ($result['error'] ?? 'bulkDisable failed')
+            );
+            return;
+        }
+
+        Database::pdo()->prepare(
+            'UPDATE vpn_clients SET enabled_in_xui = 0, updated_at = CURRENT_TIMESTAMP WHERE panel_id = :pid'
+        )->execute(['pid' => $panelId]);
+    }
+
     /** @return array<string, mixed>|null */
     public static function findById(int $id): ?array
     {

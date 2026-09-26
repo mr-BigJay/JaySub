@@ -88,6 +88,7 @@ final class TrafficSyncService
         $obj = InboundTraffic::inboundsFromListResult($list);
 
         $statsByEmail = InboundTraffic::statsByEmail($obj);
+        $internetCut = (int) ($panel['internet_cut'] ?? 0) === 1;
         $panelTotals = InboundTraffic::panelTrafficTotals($obj);
         $pdo->prepare(
             'UPDATE vpn_panels SET xui_inbound_up = :u, xui_inbound_down = :d, updated_at = CURRENT_TIMESTAMP WHERE id = :id'
@@ -140,14 +141,14 @@ final class TrafficSyncService
                     'protocol' => $s['protocol'],
                     'last_up' => $s['up'],
                     'last_down' => $s['down'],
-                    'enabled' => $s['enable'] ? 1 : 0,
+                    'enabled' => $internetCut ? 0 : ($s['enable'] ? 1 : 0),
                 ]);
                 continue;
             }
             $upd->execute([
                 'last_up' => $s['up'],
                 'last_down' => $s['down'],
-                'enabled' => $s['enable'] ? 1 : 0,
+                'enabled' => $internetCut ? 0 : ($s['enable'] ? 1 : 0),
                 'uuid' => $s['uuid'],
                 'protocol' => $s['protocol'],
                 'inbound_id' => $s['inbound_id'],
@@ -157,6 +158,10 @@ final class TrafficSyncService
         }
 
         CustomerService::rebindClientsToActiveSubscription($customerId, $panelId);
+
+        if ($internetCut) {
+            PanelService::reapplyInternetCut($panelId, $this->encryption, array_keys($statsByEmail));
+        }
 
         $this->aggregateCustomer($customerId);
 
