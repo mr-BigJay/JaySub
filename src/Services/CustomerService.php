@@ -327,14 +327,88 @@ final class CustomerService
     }
 
     /**
-     * مصرف برای سقف / قطع سرویس: جمع کلاینت‌های ثبت‌شده در JaySub (نه کل ترافیک پنل 3x-ui).
-     * کل اینباند پنل فقط در breakdown ادمین (panelUsageBreakdown) نمایش داده می‌شود.
+     * مصرف سهمیه: برای هر پنل فعال جمع کلاینت‌های sync‌شده؛ اگر ناقص/صفر بود از inbound همان پنل.
      *
      * @return array{upload:int, download:int, total:int, source:string}
      */
     public static function trafficUsageForCustomer(int $customerId): array
     {
         return self::quotaUsageForCustomer($customerId);
+    }
+
+    /**
+     * @return array{upload:int, download:int, total:int, source:string, panel_count:int}
+     */
+    public static function perPanelQuotaUsage(int $customerId): array
+    {
+        $pdo = Database::pdo();
+        $panels = $pdo->prepare(
+            'SELECT id, xui_inbound_up, xui_inbound_down, last_sync_at
+             FROM vpn_panels WHERE customer_id = :cid AND is_active = 1 ORDER BY id'
+        );
+        $panels->execute(['cid' => $customerId]);
+        $rows = $panels->fetchAll();
+        if ($rows === []) {
+            return [
+                'upload' => 0,
+                'download' => 0,
+                'total' => 0,
+                'source' => 'none',
+                'panel_count' => 0,
+            ];
+        }
+
+        $clientStmt = $pdo->prepare(
+            'SELECT COALESCE(SUM(last_xui_upload), 0) AS up,
+                    COALESCE(SUM(last_xui_download), 0) AS down
+             FROM vpn_clients WHERE panel_id = :pid AND customer_id = :cid'
+        );
+
+        $up = 0;
+        $down = 0;
+        $usedClients = false;
+        $usedInbound = false;
+        foreach ($rows as $panel) {
+            $pid = (int) $panel['id'];
+            $clientStmt->execute(['pid' => $pid, 'cid' => $customerId]);
+            $c = $clientStmt->fetch();
+            $cUp = (int) ($c['up'] ?? 0);
+            $cDown = (int) ($c['down'] ?? 0);
+            $cTotal = $cUp + $cDown;
+            $pUp = (int) $panel['xui_inbound_up'];
+            $pDown = (int) $panel['xui_inbound_down'];
+            $pTotal = $pUp + $pDown;
+            $synced = !empty($panel['last_sync_at']);
+
+            if ($cTotal > 0 && $cTotal >= $pTotal) {
+                $up += $cUp;
+                $down += $cDown;
+                $usedClients = true;
+            } elseif ($synced && $pTotal > 0) {
+                $up += $pUp;
+                $down += $pDown;
+                $usedInbound = true;
+            } elseif ($cTotal > 0) {
+                $up += $cUp;
+                $down += $cDown;
+                $usedClients = true;
+            }
+        }
+
+        $source = match (true) {
+            $usedClients && $usedInbound => 'xui_multi_panel_mixed',
+            $usedClients => 'xui_mapped_clients',
+            $usedInbound => 'xui_inbound_totals',
+            default => 'no_traffic',
+        };
+
+        return [
+            'upload' => $up,
+            'download' => $down,
+            'total' => $up + $down,
+            'source' => $source,
+            'panel_count' => count($rows),
+        ];
     }
 
     /**
@@ -397,31 +471,21 @@ final class CustomerService
      */
     public static function quotaUsageForCustomer(int $customerId): array
     {
-        $sub = self::activeSubscription($customerId);
-        $mapped = self::mappedClientTrafficTotals($customerId);
-        if ($mapped['total'] > 0) {
+        $usage = self::perPanelQuotaUsage($customerId);
+        if ($usage['total'] > 0 || $usage['source'] !== 'no_traffic') {
             return [
-                'upload' => $mapped['upload'],
-                'download' => $mapped['download'],
-                'total' => $mapped['total'],
-                'source' => 'xui_mapped_clients',
+                'upload' => $usage['upload'],
+                'download' => $usage['download'],
+                'total' => $usage['total'],
+                'source' => $usage['source'],
             ];
         }
 
-        $panel = self::panelInboundTotalsForCustomer($customerId);
-        if ($panel['total'] > 0) {
-            return [
-                'upload' => $panel['upload'],
-                'download' => $panel['download'],
-                'total' => $panel['total'],
-                'source' => 'xui_inbound_totals',
-            ];
-        }
-
-        if ($sub === null) {
+        if (self::activeSubscription($customerId) === null) {
             return ['upload' => 0, 'download' => 0, 'total' => 0, 'source' => 'none'];
         }
 
+        $mapped = self::mappedClientTrafficTotals($customerId);
         if ($mapped['client_count'] > 0) {
             return [
                 'upload' => 0,
@@ -471,7 +535,7 @@ final class CustomerService
     public static function persistTrafficUsageFromPanels(int $customerId): void
     {
         $usage = self::quotaUsageForCustomer($customerId);
-        if (!in_array($usage['source'], ['xui_mapped_clients', 'xui_inbound_totals'], true)) {
+        if (!in_array($usage['source'], ['xui_mapped_clients', 'xui_inbound_totals', 'xui_multi_panel_mixed'], true)) {
             return;
         }
         $sub = self::activeSubscription($customerId);

@@ -795,7 +795,7 @@ if (preg_match('#^/admin/customers/(\d+)/service$#', $uri, $m) && $method === 'G
     }
     $endsVal = $sub && $sub['ends_at'] ? Format::gregorianDateForInput((string) $sub['ends_at']) : '';
     $body = '<h3>' . htmlspecialchars($customer['username'], ENT_QUOTES, 'UTF-8') . '</h3>
-        <p class="muted">مصرف سهمیه (کلاینت‌های ثبت‌شده در JaySub): <strong>' . Format::usageVolume((float) $used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
+        <p class="muted">مصرف سهمیه (جمع همهٔ پنل‌های فعال): <strong>' . Format::usageVolume((float) $used) . '</strong> / ' . Format::bytesToGb($quota) . '</p>'
         . ($breakRows ? Layout::card($breakRows, 'کل ترافیک اینباند هر پنل (مثل صفحه Inbounds 3x-ui)') : '')
         . '<form class="stack" method="post" action="/admin/customers/' . $id . '/service">' . Csrf::field() . '
         <label>حجم کل (GB)</label><input name="quota_gb" type="number" step="0.1" required value="' . ($quota > 0 ? Format::bytesToGbNumber($quota) : '20') . '">
