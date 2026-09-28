@@ -47,20 +47,71 @@ function app_encryption(array $config): Encryption
     return $instance;
 }
 
-/** PHP CLI for background workers (PHP_BINARY is empty under php-fpm). */
-function app_php_cli(): string
+/** PHP CLI for background workers (PHP_BINARY is empty under php-fpm; /usr/bin/php may be php-fpm). */
+function app_php_cli_sapi_is_cli(string $path): bool
 {
-    $php = PHP_BINARY;
-    if ($php !== '' && is_executable($php)) {
-        return $php;
+    if (!is_executable($path) || str_contains(basename($path), 'fpm')) {
+        return false;
     }
-    foreach (['/usr/bin/php8.3', '/usr/bin/php8.2', '/usr/bin/php', '/usr/local/bin/php'] as $candidate) {
-        if (is_executable($candidate)) {
-            return $candidate;
+    $probe = escapeshellarg($path) . ' -n -r ' . escapeshellarg('echo PHP_SAPI;') . ' 2>/dev/null';
+    $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+    if (function_exists('shell_exec') && !in_array('shell_exec', $disabled, true)) {
+        $sapi = @shell_exec($probe);
+        return is_string($sapi) && trim($sapi) === 'cli';
+    }
+    $out = [];
+    $code = 1;
+    @exec($probe, $out, $code);
+
+    return $code === 0 && isset($out[0]) && trim((string) $out[0]) === 'cli';
+}
+
+function app_php_cli_binary(): string
+{
+    static $resolved = null;
+    if ($resolved !== null) {
+        return $resolved;
+    }
+
+    global $config;
+    $configured = '';
+    if (isset($config) && is_array($config)) {
+        $configured = trim((string) ($config['paths']['php_cli'] ?? ''));
+    }
+    if ($configured !== '' && app_php_cli_sapi_is_cli($configured)) {
+        $resolved = $configured;
+        return $resolved;
+    }
+
+    $candidates = [
+        '/usr/bin/php8.3-cli',
+        '/usr/bin/php8.2-cli',
+        '/usr/bin/php-cli',
+        '/usr/bin/php8.3',
+        '/usr/bin/php8.2',
+        '/usr/bin/php8.1',
+        '/usr/local/bin/php8.3',
+        '/usr/local/bin/php',
+    ];
+    if (PHP_BINARY !== '' && is_executable(PHP_BINARY) && !str_contains(basename(PHP_BINARY), 'fpm')) {
+        array_unshift($candidates, PHP_BINARY);
+    }
+    foreach ($candidates as $path) {
+        if (app_php_cli_sapi_is_cli($path)) {
+            $resolved = $path;
+            return $resolved;
         }
     }
 
-    return 'php';
+    error_log('JaySub: PHP CLI not found — install php8.3-cli and/or set paths.php_cli in config.php');
+    $resolved = '/usr/bin/php8.3-cli';
+
+    return $resolved;
+}
+
+function app_php_cli(): string
+{
+    return app_php_cli_binary();
 }
 
 /** @param array<string, mixed> $config */
@@ -82,6 +133,8 @@ function app_spawn_migration_runner(array $config, string $jobId): void
         pclose(popen('start /B ' . $cmd, 'r'));
         return;
     }
+    $stamp = date('c') . ' ' . $cmd . "\n";
+    @file_put_contents($logFile, $stamp, FILE_APPEND | LOCK_EX);
     exec($cmd . ' >> ' . escapeshellarg($logFile) . ' 2>&1 &');
 }
 
