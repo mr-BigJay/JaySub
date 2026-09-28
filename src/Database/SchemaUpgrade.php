@@ -8,7 +8,7 @@ use PDO;
 
 final class SchemaUpgrade
 {
-    public const VERSION = 9;
+    public const VERSION = 10;
 
     public static function apply(PDO $pdo): void
     {
@@ -85,6 +85,16 @@ SQL
             if ($current < 9) {
                 self::enableMonitorOnlyTrafficMode($pdo);
                 self::writeVersion($pdo, 9);
+                $current = 9;
+            }
+            if ($current < 10) {
+                self::addColumnIfMissing($pdo, 'ssl_servers', 'vpn_panel_id', 'BIGINT UNSIGNED NULL');
+                try {
+                    $pdo->exec('CREATE UNIQUE INDEX idx_ssl_servers_vpn_panel ON ssl_servers (vpn_panel_id)');
+                } catch (\Throwable) {
+                    // index may already exist
+                }
+                self::writeVersion($pdo, 10);
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());
