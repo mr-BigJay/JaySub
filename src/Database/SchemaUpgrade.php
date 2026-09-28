@@ -87,14 +87,16 @@ SQL
                 self::writeVersion($pdo, 9);
                 $current = 9;
             }
-            if ($current < 10) {
+            if ($current < 10 || !self::columnExists($pdo, 'ssl_servers', 'vpn_panel_id')) {
                 self::addColumnIfMissing($pdo, 'ssl_servers', 'vpn_panel_id', 'BIGINT UNSIGNED NULL');
                 try {
                     $pdo->exec('CREATE UNIQUE INDEX idx_ssl_servers_vpn_panel ON ssl_servers (vpn_panel_id)');
                 } catch (\Throwable) {
                     // index may already exist
                 }
-                self::writeVersion($pdo, 10);
+                if ($current < 10) {
+                    self::writeVersion($pdo, 10);
+                }
             }
         } catch (\Throwable $e) {
             error_log('JaySub SchemaUpgrade: ' . $e->getMessage());
@@ -186,14 +188,20 @@ SQL
         )->execute(['v' => 'xui_inbound_totals']);
     }
 
-    private static function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void
+    private static function columnExists(PDO $pdo, string $table, string $column): bool
     {
         $stmt = $pdo->prepare(
             'SELECT COUNT(*) FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c'
         );
         $stmt->execute(['t' => $table, 'c' => $column]);
-        if ((int) $stmt->fetchColumn() > 0) {
+
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    private static function addColumnIfMissing(PDO $pdo, string $table, string $column, string $definition): void
+    {
+        if (self::columnExists($pdo, $table, $column)) {
             return;
         }
         $pdo->exec(sprintf('ALTER TABLE `%s` ADD COLUMN `%s` %s', $table, $column, $definition));

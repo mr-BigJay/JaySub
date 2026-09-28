@@ -9,6 +9,8 @@ use App\Core\Encryption;
 
 final class SslServerService
 {
+    private static ?bool $hasVpnPanelColumn = null;
+
     public static function create(
         int $vpnPanelId,
         string $host,
@@ -42,6 +44,10 @@ final class SslServerService
     /** @return list<array<string, mixed>> */
     public static function listAll(): array
     {
+        if (!self::hasVpnPanelColumn()) {
+            return self::listAllWithoutPanelJoin();
+        }
+
         return Database::pdo()->query(
             'SELECT s.*, vp.name AS panel_name, vp.base_url AS panel_base_url
              FROM ssl_servers s
@@ -53,6 +59,20 @@ final class SslServerService
     /** @return array<string, mixed>|null */
     public static function findById(int $id): ?array
     {
+        if (!self::hasVpnPanelColumn()) {
+            $stmt = Database::pdo()->prepare('SELECT * FROM ssl_servers WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $id]);
+            $row = $stmt->fetch();
+            if ($row === false) {
+                return null;
+            }
+            $row['panel_name'] = null;
+            $row['panel_base_url'] = null;
+            $row['vpn_panel_id'] = null;
+
+            return $row;
+        }
+
         $stmt = Database::pdo()->prepare(
             'SELECT s.*, vp.name AS panel_name, vp.base_url AS panel_base_url
              FROM ssl_servers s
@@ -168,5 +188,37 @@ final class SslServerService
             return;
         }
         throw new \InvalidArgumentException('برای این پنل قبلاً سرور SSL ثبت شده است.');
+    }
+
+    private static function hasVpnPanelColumn(): bool
+    {
+        if (self::$hasVpnPanelColumn !== null) {
+            return self::$hasVpnPanelColumn;
+        }
+        try {
+            $stmt = Database::pdo()->query(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ssl_servers' AND COLUMN_NAME = 'vpn_panel_id'"
+            );
+            self::$hasVpnPanelColumn = (int) $stmt->fetchColumn() > 0;
+        } catch (\Throwable) {
+            self::$hasVpnPanelColumn = false;
+        }
+
+        return self::$hasVpnPanelColumn;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function listAllWithoutPanelJoin(): array
+    {
+        $rows = Database::pdo()->query('SELECT * FROM ssl_servers ORDER BY id DESC')->fetchAll();
+        foreach ($rows as &$row) {
+            $row['panel_name'] = null;
+            $row['panel_base_url'] = null;
+            $row['vpn_panel_id'] = null;
+        }
+        unset($row);
+
+        return $rows;
     }
 }
