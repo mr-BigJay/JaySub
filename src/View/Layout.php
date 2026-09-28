@@ -1616,38 +1616,59 @@ HTML;
         return '<div class="migration-page"' . $jobAttr . '>'
             . $stepNav
             . '<div class="migration-top-bar" id="migration-top-bar" hidden><div class="migration-top-bar-fill" id="migration-top-bar-fill"></div></div>'
-            . '<form class="migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField
+            . '<form class="migration-form stack" method="post" action="/admin/migration" id="migration-form">' . $csrfField
             . '<section class="migration-wizard-panel" data-migration-wizard-panel="1">
+                <div class="migration-wizard-card">
                 <h2 class="migration-wizard-title">۱. انتخاب سرور مبدأ</h2>
-                <p class="muted form-hint">از لیست سرورهای ثبت‌شده در <strong>بکاپ SSL</strong> انتخاب کنید. بک‌آپ پنل و گواهی <code>/root/cert</code> از همان سرور گرفته می‌شود.</p>
-                <label>سرور SSL (مبدأ)</label>
+                <p class="muted form-hint migration-wizard-hint">از لیست سرورهای ثبت‌شده در <strong>بکاپ SSL</strong> انتخاب کنید. بک‌آپ پنل و گواهی <code>/root/cert</code> از همان سرور گرفته می‌شود.</p>
+                <div class="migration-field">
+                <label for="migration-source-ssl">سرور SSL (مبدأ)</label>
                 <select name="source_ssl_server_id" id="migration-source-ssl" required>' . $sslOpts . '</select>
+                </div>
                 <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
                 <div class="migration-wizard-actions">
-                    <button type="button" class="btn btn-primary" data-migration-next>بعدی</button>
+                    <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
+                </div>
                 </div>
             </section>'
             . '<section class="migration-wizard-panel" data-migration-wizard-panel="2" hidden>
+                <div class="migration-wizard-card">
                 <h2 class="migration-wizard-title">۲. سرور مقصد (VPS جدید)</h2>
-                <p class="muted form-hint">اطلاعات SSH سرور جدید را وارد کنید. روی این ماشین 3x-ui نصب و بک‌آپ JaySub بازگردانی می‌شود.</p>
-                <label>آدرس IP یا دامنه</label>
-                <input name="target_host" id="migration-target-host" required dir="ltr" placeholder="203.0.113.10">
-                <label>پورت SSH</label>
-                <input name="target_port" type="number" value="22" min="1" max="65535" dir="ltr">
-                <label>کاربر SSH</label>
-                <input name="target_user" value="root" dir="ltr">
-                <label>نوع احراز هویت</label>
-                <select name="target_auth_type"><option value="password">رمز عبور</option><option value="key">کلید خصوصی</option></select>
-                <label>رمز یا کلید SSH</label>
-                <textarea name="target_secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa"></textarea>
-                <label>مسیر گواهی روی VPS جدید</label>
-                <input name="target_cert_path" value="/root/cert" dir="ltr">
+                <p class="muted form-hint migration-wizard-hint">اطلاعات SSH سرور جدید را وارد کنید. روی این ماشین 3x-ui نصب و بک‌آپ JaySub بازگردانی می‌شود.</p>
+                <div class="migration-field">
+                <label for="migration-target-host">آدرس IP یا دامنه</label>
+                <input name="target_host" id="migration-target-host" required dir="ltr" placeholder="203.0.113.10" autocomplete="off">
+                </div>
+                <div class="migration-form-row">
+                <div class="migration-field">
+                <label for="migration-target-port">پورت SSH</label>
+                <input name="target_port" id="migration-target-port" type="number" value="22" min="1" max="65535" dir="ltr">
+                </div>
+                <div class="migration-field">
+                <label for="migration-target-user">کاربر SSH</label>
+                <input name="target_user" id="migration-target-user" value="root" dir="ltr" autocomplete="off">
+                </div>
+                </div>
+                <div class="migration-field">
+                <label for="migration-target-auth">نوع احراز هویت</label>
+                <select name="target_auth_type" id="migration-target-auth"><option value="password">رمز عبور</option><option value="key">کلید خصوصی</option></select>
+                </div>
+                <div class="migration-field">
+                <label for="migration-target-secret">رمز یا کلید SSH</label>
+                <textarea name="target_secret" id="migration-target-secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa" autocomplete="off"></textarea>
+                </div>
+                <div class="migration-field">
+                <label for="migration-target-cert">مسیر گواهی روی VPS جدید</label>
+                <input name="target_cert_path" id="migration-target-cert" value="/root/cert" dir="ltr">
+                </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
-                    <button type="button" class="btn btn-primary" data-migration-next>بعدی</button>
+                    <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
+                </div>
                 </div>
             </section>'
             . '<section class="migration-wizard-panel" data-migration-wizard-panel="3" hidden>
+                <div class="migration-wizard-card">
                 <h2 class="migration-wizard-title">۳. انجام انتقال</h2>
                 <div class="migration-review" id="migration-review">
                     <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
@@ -1665,6 +1686,7 @@ HTML;
                     <span class="migration-complete-icon" aria-hidden="true">✓</span>
                     <h3>پایان انتقال</h3>
                     <p id="migration-complete-msg">انتقال با موفقیت انجام شد.</p>
+                </div>
                 </div>
             </section>'
             . '</form></div>';
