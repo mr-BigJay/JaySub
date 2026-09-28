@@ -127,8 +127,12 @@ function app_spawn_migration_runner(array $config, string $jobId): void
         mkdir($logDir, 0755, true);
     }
     $logFile = $logDir . '/migration-spawn.log';
-    $php = app_php_cli();
-    $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobId);
+    $wrapper = dirname(__DIR__) . '/scripts/run-php-cli.sh';
+    if (is_executable($wrapper)) {
+        $cmd = escapeshellarg($wrapper) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobId);
+    } else {
+        $cmd = escapeshellarg(app_php_cli()) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobId);
+    }
     if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
         pclose(popen('start /B ' . $cmd, 'r'));
         return;
