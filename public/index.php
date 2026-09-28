@@ -48,9 +48,45 @@ function app_encryption(array $config): Encryption
 }
 
 /** PHP CLI for background workers (PHP_BINARY is empty under php-fpm; /usr/bin/php may be php-fpm). */
+function app_php_cli_sapi_is_cli(string $path): bool
+{
+    if (!is_executable($path) || str_contains(basename($path), 'fpm')) {
+        return false;
+    }
+    $probe = escapeshellarg($path) . ' -n -r ' . escapeshellarg('echo PHP_SAPI;') . ' 2>/dev/null';
+    $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+    if (function_exists('shell_exec') && !in_array('shell_exec', $disabled, true)) {
+        $sapi = @shell_exec($probe);
+        return is_string($sapi) && trim($sapi) === 'cli';
+    }
+    $out = [];
+    $code = 1;
+    @exec($probe, $out, $code);
+
+    return $code === 0 && isset($out[0]) && trim((string) $out[0]) === 'cli';
+}
+
 function app_php_cli_binary(): string
 {
+    static $resolved = null;
+    if ($resolved !== null) {
+        return $resolved;
+    }
+
+    global $config;
+    $configured = '';
+    if (isset($config) && is_array($config)) {
+        $configured = trim((string) ($config['paths']['php_cli'] ?? ''));
+    }
+    if ($configured !== '' && app_php_cli_sapi_is_cli($configured)) {
+        $resolved = $configured;
+        return $resolved;
+    }
+
     $candidates = [
+        '/usr/bin/php8.3-cli',
+        '/usr/bin/php8.2-cli',
+        '/usr/bin/php-cli',
         '/usr/bin/php8.3',
         '/usr/bin/php8.2',
         '/usr/bin/php8.1',
@@ -61,26 +97,16 @@ function app_php_cli_binary(): string
         array_unshift($candidates, PHP_BINARY);
     }
     foreach ($candidates as $path) {
-        if (!is_executable($path)) {
-            continue;
-        }
-        $base = basename($path);
-        if (str_contains($base, 'fpm')) {
-            continue;
-        }
-        if (function_exists('shell_exec')) {
-            $sapi = @shell_exec(escapeshellarg($path) . ' -n -r ' . escapeshellarg('echo PHP_SAPI;') . ' 2>/dev/null');
-            if (is_string($sapi) && trim($sapi) === 'cli') {
-                return $path;
-            }
-            continue;
-        }
-        if (preg_match('/php\d+(?:\.\d+)?$/', $base) === 1) {
-            return $path;
+        if (app_php_cli_sapi_is_cli($path)) {
+            $resolved = $path;
+            return $resolved;
         }
     }
 
-    return '/usr/bin/php8.3';
+    error_log('JaySub: PHP CLI not found — install php8.3-cli and/or set paths.php_cli in config.php');
+    $resolved = '/usr/bin/php8.3-cli';
+
+    return $resolved;
 }
 
 function app_php_cli(): string

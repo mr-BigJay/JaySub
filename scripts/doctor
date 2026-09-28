@@ -13,6 +13,19 @@ echo ""
 
 echo "--- PHP ---"
 php -v | head -1
+CLI_BIN=""
+for c in /usr/bin/php8.3-cli /usr/bin/php8.3 /usr/bin/php; do
+  if [[ -x "$c" ]] && "$c" -r 'echo PHP_SAPI;' 2>/dev/null | grep -qx cli; then
+    CLI_BIN="$c"
+    break
+  fi
+done
+if [[ -n "$CLI_BIN" ]]; then
+  echo "  OK PHP CLI: $CLI_BIN"
+else
+  echo "  MISSING PHP CLI (install: apt install php8.3-cli)"
+  echo "  Migration/background jobs will fail if only php-fpm is installed."
+fi
 for ext in pdo_mysql curl openssl mbstring json; do
   if php -m 2>/dev/null | grep -qi "^${ext}$"; then
     echo "  OK ext: $ext"

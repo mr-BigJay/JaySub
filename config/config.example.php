@@ -32,5 +32,7 @@ return [
     'paths' => [
         'storage' => __DIR__ . '/../storage',
         'logs' => __DIR__ . '/../logs',
+        /** PHP CLI for migration/cron (not php-fpm). Example: /usr/bin/php8.3 */
+        'php_cli' => '/usr/bin/php8.3',
     ],
 ];
