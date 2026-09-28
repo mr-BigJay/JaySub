@@ -97,6 +97,21 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('modal-open');
   });
 
+  document.querySelectorAll('select[data-ssl-host-prefill]').forEach((sel) => {
+    const form = sel.closest('form');
+    const hostInput = form ? form.querySelector('input[name="host"]') : null;
+    if (!hostInput) return;
+    const isAddForm = sel.id === 'ssl-panel-select';
+    sel.addEventListener('change', () => {
+      const opt = sel.options[sel.selectedIndex];
+      const host = opt ? opt.getAttribute('data-host') || '' : '';
+      if (!host) return;
+      if (isAddForm || !hostInput.value.trim()) {
+        hostInput.value = host;
+      }
+    });
+  });
+
   const adminMenuSheet = document.getElementById('admin-nav-sheet');
   const adminMenuTriggers = document.querySelectorAll('[data-open-admin-menu]');
 

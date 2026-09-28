@@ -760,12 +760,14 @@ HTML;
     }
 
     /**
+     * @param list<array<string, mixed>> $panels
      * @param list<array<string, mixed>> $servers
      * @param list<array<string, mixed>> $files
      */
     public static function adminSslBackupPage(
         string $flashHtml,
         string $activeTab,
+        array $panels,
         array $servers,
         array $files,
         string $csrfField,
@@ -851,27 +853,95 @@ HTML;
             . $body
             . self::backupHubFooter($lastTs)
             . '</section>'
-            . self::sslAddServerModal($csrfField, $modalAuto)
+            . self::sslAddServerModal($csrfField, $panels, $servers, $modalAuto)
             . '</div>';
     }
 
-    private static function sslAddServerModal(string $csrfField, string $autoOpenAttr = ''): string
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $servers
+     */
+    private static function sslAddServerModal(string $csrfField, array $panels, array $servers, string $autoOpenAttr = ''): string
     {
         return '<div class="app-modal" id="ssl-add-server-modal" hidden' . $autoOpenAttr . '>
                 <div class="app-modal-backdrop" data-close-modal tabindex="-1" aria-hidden="true"></div>
                 <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ssl-add-server-title">
                     <button type="button" class="app-modal-close" data-close-modal aria-label="بستن">×</button>
                     <h2 class="card-title sub-mgmt-card-title" id="ssl-add-server-title"><span class="sub-mgmt-ico">＋</span> افزودن سرور جدید</h2>
-                    ' . self::sslAddServerForm($csrfField) . '
+                    ' . self::sslAddServerForm($csrfField, $panels, $servers) . '
                 </div>
             </div>';
     }
 
-    private static function sslAddServerForm(string $csrfField): string
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param array<int, true> $linkedPanelIds panel ids that already have an SSL server
+     */
+    private static function sslPanelSelectOptions(array $panels, ?int $selectedId, array $linkedPanelIds): string
     {
+        $html = '';
+        foreach ($panels as $p) {
+            $pid = (int) ($p['id'] ?? 0);
+            if ($pid <= 0) {
+                continue;
+            }
+            if (isset($linkedPanelIds[$pid]) && $selectedId !== $pid) {
+                continue;
+            }
+            $name = trim((string) ($p['name'] ?? ''));
+            if ($name === '') {
+                $name = 'پنل #' . $pid;
+            }
+            $cust = trim((string) ($p['customer_username'] ?? ''));
+            if ($cust === '') {
+                $cust = trim((string) ($p['customer_name'] ?? ''));
+            }
+            $label = $name;
+            if ($cust !== '') {
+                $label .= ' · ' . $cust;
+            }
+            $host = self::hostFromPanelBaseUrl((string) ($p['base_url'] ?? ''));
+            $sel = $selectedId !== null && $selectedId === $pid ? ' selected' : '';
+            $html .= '<option value="' . $pid . '"' . $sel . ' data-host="' . htmlspecialchars($host, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        return $html;
+    }
+
+    private static function hostFromPanelBaseUrl(string $baseUrl): string
+    {
+        $baseUrl = trim($baseUrl);
+        if ($baseUrl === '') {
+            return '';
+        }
+        $parsed = parse_url($baseUrl);
+        if (is_array($parsed) && isset($parsed['host'])) {
+            return (string) $parsed['host'];
+        }
+        return '';
+    }
+
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $servers
+     */
+    private static function sslAddServerForm(string $csrfField, array $panels, array $servers): string
+    {
+        $linked = [];
+        foreach ($servers as $s) {
+            $pid = (int) ($s['vpn_panel_id'] ?? 0);
+            if ($pid > 0) {
+                $linked[$pid] = true;
+            }
+        }
+        $panelOpts = self::sslPanelSelectOptions($panels, null, $linked);
+
         return '<form class="stack" method="post" action="/admin/ssl-backup">' . $csrfField . '
-            <label>نام سرور</label>
-            <input name="name" required placeholder="مثلاً Bell-SSL">
+            <label>پنل X-UI</label>
+            <select name="vpn_panel_id" id="ssl-panel-select" required data-ssl-host-prefill>
+                <option value="">— انتخاب پنل —</option>' . $panelOpts . '
+            </select>
+            <p class="muted form-hint">نام بکاپ همان نام پنل در JaySub است؛ هر پنل فقط یک سرور SSL می‌تواند داشته باشد.</p>
             <label>آدرس میزبان (IP یا دامنه)</label>
             <input name="host" required dir="ltr" placeholder="203.0.113.10">
             <label>پورت SSH</label>
@@ -929,7 +999,14 @@ HTML;
         $sid = (int) $s['id'];
         $active = (int) ($s['is_active'] ?? 0) === 1;
         $accent = 'accent-' . ($index % 4);
-        $name = htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8');
+        $displayName = trim((string) ($s['panel_name'] ?? '')) !== ''
+            ? (string) $s['panel_name']
+            : (string) $s['name'];
+        $name = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
+        $panelId = (int) ($s['vpn_panel_id'] ?? 0);
+        $panelBadge = $panelId > 0
+            ? ' <span class="muted" style="font-size:0.72rem">#' . $panelId . '</span>'
+            : '';
         $endpoint = htmlspecialchars(
             (string) $s['ssh_username'] . '@' . (string) $s['host'] . ':' . (int) $s['ssh_port'],
             ENT_QUOTES,
@@ -1015,9 +1092,18 @@ HTML;
         };
     }
 
-    /** @param array<string, mixed>|null $server */
-    public static function adminSslServerEditPage(?array $server, string $flashHtml, string $csrfField): string
-    {
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $allServers
+     * @param array<string, mixed>|null $server
+     */
+    public static function adminSslServerEditPage(
+        ?array $server,
+        string $flashHtml,
+        string $csrfField,
+        array $panels,
+        array $allServers,
+    ): string {
         if ($server === null) {
             return self::card('<p class="muted">سرور یافت نشد.</p><p><a href="/admin/ssl-backup">بازگشت</a></p>');
         }
@@ -1025,9 +1111,20 @@ HTML;
         $auth = (string) ($server['auth_type'] ?? 'password');
         $passSel = $auth === 'key' ? '' : ' selected';
         $keySel = $auth === 'key' ? ' selected' : '';
+        $currentPanelId = (int) ($server['vpn_panel_id'] ?? 0);
+        $linked = [];
+        foreach ($allServers as $s) {
+            $pid = (int) ($s['vpn_panel_id'] ?? 0);
+            if ($pid > 0 && (int) ($s['id'] ?? 0) !== $sid) {
+                $linked[$pid] = true;
+            }
+        }
+        $panelOpts = self::sslPanelSelectOptions($panels, $currentPanelId > 0 ? $currentPanelId : null, $linked);
         $form = '<form class="stack" method="post" action="/admin/ssl-backup/' . $sid . '/edit">' . $csrfField . '
-            <label>نام سرور</label>
-            <input name="name" required value="' . htmlspecialchars((string) $server['name'], ENT_QUOTES, 'UTF-8') . '">
+            <label>پنل X-UI</label>
+            <select name="vpn_panel_id" id="ssl-panel-select-edit" required data-ssl-host-prefill>
+                <option value="">— انتخاب پنل —</option>' . $panelOpts . '
+            </select>
             <label>آدرس میزبان</label>
             <input name="host" required dir="ltr" value="' . htmlspecialchars((string) $server['host'], ENT_QUOTES, 'UTF-8') . '">
             <label>پورت SSH</label>
