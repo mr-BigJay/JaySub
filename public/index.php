@@ -47,7 +47,44 @@ function app_encryption(array $config): Encryption
     return $instance;
 }
 
+/** PHP CLI for background workers (PHP_BINARY is empty under php-fpm). */
+function app_php_cli(): string
+{
+    $php = PHP_BINARY;
+    if ($php !== '' && is_executable($php)) {
+        return $php;
+    }
+    foreach (['/usr/bin/php8.3', '/usr/bin/php8.2', '/usr/bin/php', '/usr/local/bin/php'] as $candidate) {
+        if (is_executable($candidate)) {
+            return $candidate;
+        }
+    }
+
+    return 'php';
+}
+
 /** @param array<string, mixed> $config */
+function app_spawn_migration_runner(array $config, string $jobId): void
+{
+    $script = dirname(__DIR__) . '/scripts/migration-run.php';
+    if (!is_file($script)) {
+        error_log('JaySub migration: missing ' . $script);
+        return;
+    }
+    $logDir = dirname(__DIR__) . '/logs';
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0755, true);
+    }
+    $logFile = $logDir . '/migration-spawn.log';
+    $php = app_php_cli();
+    $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobId);
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        pclose(popen('start /B ' . $cmd, 'r'));
+        return;
+    }
+    exec($cmd . ' >> ' . escapeshellarg($logFile) . ' 2>&1 &');
+}
+
 /** @param array<string, mixed> $config */
 function app_base_url(array $config): string
 {
@@ -1349,6 +1386,12 @@ if ($uri === '/admin/migration' && $method === 'GET') {
     try {
         $sslServers = SslServerService::listAll();
         $jobId = trim((string) ($_GET['job'] ?? ''));
+        if ($jobId !== '') {
+            $existing = MigrationJobStore::load($config, $jobId);
+            if ($existing !== null && ($existing['status'] ?? '') === 'queued') {
+                app_spawn_migration_runner($config, $jobId);
+            }
+        }
         $body = Layout::adminMigrationPage(Csrf::field(), $sslServers, $jobId !== '' ? $jobId : null);
         adminPage('انتقال سرور', 'migration', $body);
     } catch (\Throwable $e) {
@@ -1357,9 +1400,9 @@ if ($uri === '/admin/migration' && $method === 'GET') {
             'انتقال سرور',
             'migration',
             Layout::card(
-                '<div class="alert alert-error">خطا در بارگذاری صفحه انتقال: '
+                '<div class="alert alert-error"><p>خطا در بارگذاری صفحه انتقال: '
                 . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')
-                . '</p><p class="muted form-hint">روی سرور: <code>bash scripts/doctor</code> و لاگ PHP-FPM را ببینید.</p>',
+                . '</p><p class="muted form-hint">روی سرور: <code>bash scripts/doctor</code> و لاگ PHP-FPM را ببینید.</p></div>',
             ),
         );
     }
@@ -1400,15 +1443,7 @@ if ($uri === '/admin/migration' && $method === 'POST') {
         'updated_at' => date('c'),
     ];
     MigrationJobStore::save($config, $job);
-
-    $php = PHP_BINARY;
-    $script = dirname(__DIR__) . '/scripts/migration-run.php';
-    $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobId);
-    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-        pclose(popen('start /B ' . $cmd, 'r'));
-    } else {
-        exec($cmd . ' > /dev/null 2>&1 &');
-    }
+    app_spawn_migration_runner($config, $jobId);
 
     Response::redirect('/admin/migration?job=' . rawurlencode($jobId));
 }

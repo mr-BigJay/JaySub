@@ -704,6 +704,15 @@ body.admin-menu-open { overflow: hidden; }
   margin: 0 auto;
   padding: 0 0.15rem 1.75rem;
 }
+.migration-page[data-migration-job] #migration-start-actions {
+  display: none !important;
+}
+.migration-page[data-migration-job] #migration-run-block {
+  display: block !important;
+}
+.migration-page[data-migration-job] #migration-review {
+  display: none !important;
+}
 .admin-main:has(.migration-page) .admin-content {
   padding-top: 0.35rem;
 }

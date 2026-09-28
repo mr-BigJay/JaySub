@@ -215,12 +215,44 @@ document.addEventListener('DOMContentLoaded', () => {
       if (reviewTarget) reviewTarget.textContent = host;
     };
 
+    const syncWizardFields = () => {
+      panels.forEach((el) => {
+        const isHidden = el.hidden;
+        el.querySelectorAll('input, select, textarea').forEach((field) => {
+          if (isHidden) {
+            if (field.required) {
+              field.dataset.migrationRequired = '1';
+              field.required = false;
+            }
+            field.disabled = true;
+          } else {
+            field.disabled = false;
+            if (field.dataset.migrationRequired === '1') {
+              field.required = true;
+            }
+          }
+        });
+      });
+    };
+
+    const prepareWizardSubmit = () => {
+      panels.forEach((el) => {
+        el.querySelectorAll('input, select, textarea').forEach((field) => {
+          field.disabled = false;
+          if (field.dataset.migrationRequired === '1') {
+            field.required = true;
+          }
+        });
+      });
+    };
+
     const setWizardStep = (n) => {
       wizardStep = n;
       panels.forEach((el) => {
         const sn = parseInt(el.getAttribute('data-migration-wizard-panel') || '0', 10);
         el.hidden = sn !== n;
       });
+      syncWizardFields();
       navNodes.forEach((node) => {
         const sn = parseInt(node.getAttribute('data-migration-nav-step') || '0', 10);
         node.classList.toggle('is-active', sn === n);
@@ -289,6 +321,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (targetHost) targetHost.addEventListener('input', updateReview);
 
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        if (!validateStep(1)) {
+          e.preventDefault();
+          setWizardStep(1);
+          return;
+        }
+        if (!validateStep(2)) {
+          e.preventDefault();
+          setWizardStep(2);
+          return;
+        }
+        prepareWizardSubmit();
+      });
+    }
+
     const stepIcon = (st) => {
       if (st === 'ok') return '<span class="migration-step-mark ok" aria-hidden="true">✓</span>';
       if (st === 'running') return '<span class="migration-step-mark run" aria-hidden="true"></span>';
@@ -356,14 +404,26 @@ document.addEventListener('DOMContentLoaded', () => {
       beginJobUi();
       const poll = () => {
         fetch('/admin/migration/status?job=' + encodeURIComponent(jobId), { credentials: 'same-origin' })
-          .then((r) => r.json())
+          .then((r) => {
+            if (!r.ok) {
+              throw new Error('status ' + r.status);
+            }
+            return r.json();
+          })
           .then((job) => {
+            if (job && job.error) {
+              if (logEl) logEl.textContent = 'خطا: ' + job.error;
+              return;
+            }
             renderJob(job);
             if (job.status === 'running' || job.status === 'queued') {
               setTimeout(poll, 1200);
             }
           })
-          .catch(() => setTimeout(poll, 2500));
+          .catch((err) => {
+            if (logEl) logEl.textContent = 'خطا در دریافت وضعیت job. صفحه را رفرش کنید.\n' + (err.message || '');
+            setTimeout(poll, 2500);
+          });
       };
       poll();
     } else {
