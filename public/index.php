@@ -32,6 +32,8 @@ use App\Services\TrafficSyncService;
 use App\Services\BackupService;
 use App\Services\SslBackupService;
 use App\Services\SslServerService;
+use App\Services\MigrationJobStore;
+use App\Services\PanelMigrationService;
 use App\Services\DashboardService;
 use App\View\Layout;
 
@@ -1322,6 +1324,73 @@ if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
     exit;
 }
 
+if ($uri === '/admin/migration/status' && $method === 'GET') {
+    requireAdmin();
+    $jobId = trim((string) ($_GET['job'] ?? ''));
+    if ($jobId === '') {
+        Response::json(['error' => 'missing job'], 400);
+    }
+    $job = MigrationJobStore::load($config, $jobId);
+    if ($job === null) {
+        Response::json(['error' => 'not found'], 404);
+    }
+    Response::json($job);
+}
+
+if ($uri === '/admin/migration' && $method === 'GET') {
+    requireAdmin();
+    $panels = Database::pdo()->query('SELECT id, name FROM vpn_panels ORDER BY name')->fetchAll();
+    $sslServers = SslServerService::listAll();
+    $jobId = trim((string) ($_GET['job'] ?? ''));
+    $body = Layout::adminMigrationPage(Csrf::field(), $panels, $sslServers, $jobId !== '' ? $jobId : null);
+    adminPage('انتقال سرور', 'migration', Layout::card($body));
+}
+
+if ($uri === '/admin/migration' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    $panelId = (int) ($_POST['panel_id'] ?? 0);
+    $sslId = (int) ($_POST['source_ssl_server_id'] ?? 0);
+    $host = trim((string) ($_POST['target_host'] ?? ''));
+    $secret = (string) ($_POST['target_secret'] ?? '');
+    if ($panelId <= 0 || $sslId <= 0 || $host === '' || trim($secret) === '') {
+        Session::set('flash_admin', 'فیلدهای الزامی را پر کنید.');
+        Response::redirect('/admin/migration');
+    }
+    $jobId = bin2hex(random_bytes(16));
+    $job = [
+        'id' => $jobId,
+        'status' => 'queued',
+        'current_step' => '',
+        'panel_id' => $panelId,
+        'source_ssl_server_id' => $sslId,
+        'target_host' => $host,
+        'target_port' => max(1, min(65535, (int) ($_POST['target_port'] ?? 22))),
+        'target_user' => trim((string) ($_POST['target_user'] ?? 'root')),
+        'target_auth_type' => ($_POST['target_auth_type'] ?? '') === 'key' ? 'key' : 'password',
+        'target_secret_encrypted' => app_encryption($config)->encrypt($secret),
+        'target_cert_path' => trim((string) ($_POST['target_cert_path'] ?? '/root/cert')),
+        'new_base_url' => trim((string) ($_POST['new_base_url'] ?? '')),
+        'new_api_token' => trim((string) ($_POST['new_api_token'] ?? '')),
+        'steps' => PanelMigrationService::defaultSteps(),
+        'log' => [],
+        'created_at' => date('c'),
+        'updated_at' => date('c'),
+    ];
+    MigrationJobStore::save($config, $job);
+
+    $php = PHP_BINARY;
+    $script = dirname(__DIR__) . '/scripts/migration-run.php';
+    $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobId);
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        pclose(popen('start /B ' . $cmd, 'r'));
+    } else {
+        exec($cmd . ' > /dev/null 2>&1 &');
+    }
+
+    Response::redirect('/admin/migration?job=' . rawurlencode($jobId));
+}
+
 if ($uri === '/admin/settings' && $method === 'GET') {
     requireAdmin();
     $body = '<p class="muted">تنظیمات تخصصی:</p>
@@ -1329,6 +1398,7 @@ if ($uri === '/admin/settings' && $method === 'GET') {
             <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>
             <li><a href="/admin/backup">بک‌آپ</a> — پشتیبان دیتابیس 3x-ui (هر ۴ ساعت)</li>
             <li><a href="/admin/ssl-backup">بکاپ ssl</a> — zip هفتگی <code>/root/cert</code> از سرورها (SSH)</li>
+            <li><a href="/admin/migration">انتقال</a> — جابجایی پنل به VPS جدید</li>
         </ul>
         <fieldset>
             <legend>مصرف و سقف حجم</legend>
