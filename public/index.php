@@ -47,20 +47,45 @@ function app_encryption(array $config): Encryption
     return $instance;
 }
 
-/** PHP CLI for background workers (PHP_BINARY is empty under php-fpm). */
-function app_php_cli(): string
+/** PHP CLI for background workers (PHP_BINARY is empty under php-fpm; /usr/bin/php may be php-fpm). */
+function app_php_cli_binary(): string
 {
-    $php = PHP_BINARY;
-    if ($php !== '' && is_executable($php)) {
-        return $php;
+    $candidates = [
+        '/usr/bin/php8.3',
+        '/usr/bin/php8.2',
+        '/usr/bin/php8.1',
+        '/usr/local/bin/php8.3',
+        '/usr/local/bin/php',
+    ];
+    if (PHP_BINARY !== '' && is_executable(PHP_BINARY) && !str_contains(basename(PHP_BINARY), 'fpm')) {
+        array_unshift($candidates, PHP_BINARY);
     }
-    foreach (['/usr/bin/php8.3', '/usr/bin/php8.2', '/usr/bin/php', '/usr/local/bin/php'] as $candidate) {
-        if (is_executable($candidate)) {
-            return $candidate;
+    foreach ($candidates as $path) {
+        if (!is_executable($path)) {
+            continue;
+        }
+        $base = basename($path);
+        if (str_contains($base, 'fpm')) {
+            continue;
+        }
+        if (function_exists('shell_exec')) {
+            $sapi = @shell_exec(escapeshellarg($path) . ' -n -r ' . escapeshellarg('echo PHP_SAPI;') . ' 2>/dev/null');
+            if (is_string($sapi) && trim($sapi) === 'cli') {
+                return $path;
+            }
+            continue;
+        }
+        if (preg_match('/php\d+(?:\.\d+)?$/', $base) === 1) {
+            return $path;
         }
     }
 
-    return 'php';
+    return '/usr/bin/php8.3';
+}
+
+function app_php_cli(): string
+{
+    return app_php_cli_binary();
 }
 
 /** @param array<string, mixed> $config */
@@ -82,6 +107,8 @@ function app_spawn_migration_runner(array $config, string $jobId): void
         pclose(popen('start /B ' . $cmd, 'r'));
         return;
     }
+    $stamp = date('c') . ' ' . $cmd . "\n";
+    @file_put_contents($logFile, $stamp, FILE_APPEND | LOCK_EX);
     exec($cmd . ' >> ' . escapeshellarg($logFile) . ' 2>&1 &');
 }
 
