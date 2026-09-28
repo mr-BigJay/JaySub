@@ -97,6 +97,13 @@ for f in /var/log/php8.3-fpm.log /var/log/php8.2-fpm.log /var/log/nginx/error.lo
 done
 
 echo ""
+echo "--- Memory (1 GB VPS) ---"
+if command -v free >/dev/null; then
+  free -h | sed 's/^/  /'
+  echo "  Tip: bash scripts/memory-diagnose.sh"
+fi
+
+echo ""
 echo "--- Fix suggestions ---"
 echo "  git pull && php scripts/install.php 'AdminPass'"
 echo "  chown -R www-data:www-data storage logs"
