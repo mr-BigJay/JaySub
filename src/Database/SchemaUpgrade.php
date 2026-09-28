@@ -88,7 +88,12 @@ SQL
                 $current = 9;
             }
             if ($current < 10) {
-                self::addColumnIfMissing($pdo, 'vpn_panels', 'internet_cut', 'TINYINT(1) NOT NULL DEFAULT 0');
+                self::addColumnIfMissing($pdo, 'ssl_servers', 'vpn_panel_id', 'BIGINT UNSIGNED NULL');
+                try {
+                    $pdo->exec('CREATE UNIQUE INDEX idx_ssl_servers_vpn_panel ON ssl_servers (vpn_panel_id)');
+                } catch (\Throwable) {
+                    // index may already exist
+                }
                 self::writeVersion($pdo, 10);
             }
         } catch (\Throwable $e) {

@@ -3,5 +3,8 @@
 /config/config.php
 /storage/worker.lock
 /storage/.admin-init
+/storage/backups/
+/storage/sessions/
+/storage/ssl-ssh/
 /logs/*.log
 !.gitkeep

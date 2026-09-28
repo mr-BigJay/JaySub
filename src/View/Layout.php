@@ -766,12 +766,14 @@ HTML;
     }
 
     /**
+     * @param list<array<string, mixed>> $panels
      * @param list<array<string, mixed>> $servers
      * @param list<array<string, mixed>> $files
      */
     public static function adminSslBackupPage(
         string $flashHtml,
         string $activeTab,
+        array $panels,
         array $servers,
         array $files,
         string $csrfField,
@@ -857,27 +859,95 @@ HTML;
             . $body
             . self::backupHubFooter($lastTs)
             . '</section>'
-            . self::sslAddServerModal($csrfField, $modalAuto)
+            . self::sslAddServerModal($csrfField, $panels, $servers, $modalAuto)
             . '</div>';
     }
 
-    private static function sslAddServerModal(string $csrfField, string $autoOpenAttr = ''): string
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $servers
+     */
+    private static function sslAddServerModal(string $csrfField, array $panels, array $servers, string $autoOpenAttr = ''): string
     {
         return '<div class="app-modal" id="ssl-add-server-modal" hidden' . $autoOpenAttr . '>
                 <div class="app-modal-backdrop" data-close-modal tabindex="-1" aria-hidden="true"></div>
                 <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="ssl-add-server-title">
                     <button type="button" class="app-modal-close" data-close-modal aria-label="بستن">×</button>
                     <h2 class="card-title sub-mgmt-card-title" id="ssl-add-server-title"><span class="sub-mgmt-ico">＋</span> افزودن سرور جدید</h2>
-                    ' . self::sslAddServerForm($csrfField) . '
+                    ' . self::sslAddServerForm($csrfField, $panels, $servers) . '
                 </div>
             </div>';
     }
 
-    private static function sslAddServerForm(string $csrfField): string
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param array<int, true> $linkedPanelIds panel ids that already have an SSL server
+     */
+    private static function sslPanelSelectOptions(array $panels, ?int $selectedId, array $linkedPanelIds): string
     {
+        $html = '';
+        foreach ($panels as $p) {
+            $pid = (int) ($p['id'] ?? 0);
+            if ($pid <= 0) {
+                continue;
+            }
+            if (isset($linkedPanelIds[$pid]) && $selectedId !== $pid) {
+                continue;
+            }
+            $name = trim((string) ($p['name'] ?? ''));
+            if ($name === '') {
+                $name = 'پنل #' . $pid;
+            }
+            $cust = trim((string) ($p['customer_username'] ?? ''));
+            if ($cust === '') {
+                $cust = trim((string) ($p['customer_name'] ?? ''));
+            }
+            $label = $name;
+            if ($cust !== '') {
+                $label .= ' · ' . $cust;
+            }
+            $host = self::hostFromPanelBaseUrl((string) ($p['base_url'] ?? ''));
+            $sel = $selectedId !== null && $selectedId === $pid ? ' selected' : '';
+            $html .= '<option value="' . $pid . '"' . $sel . ' data-host="' . htmlspecialchars($host, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        return $html;
+    }
+
+    private static function hostFromPanelBaseUrl(string $baseUrl): string
+    {
+        $baseUrl = trim($baseUrl);
+        if ($baseUrl === '') {
+            return '';
+        }
+        $parsed = parse_url($baseUrl);
+        if (is_array($parsed) && isset($parsed['host'])) {
+            return (string) $parsed['host'];
+        }
+        return '';
+    }
+
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $servers
+     */
+    private static function sslAddServerForm(string $csrfField, array $panels, array $servers): string
+    {
+        $linked = [];
+        foreach ($servers as $s) {
+            $pid = (int) ($s['vpn_panel_id'] ?? 0);
+            if ($pid > 0) {
+                $linked[$pid] = true;
+            }
+        }
+        $panelOpts = self::sslPanelSelectOptions($panels, null, $linked);
+
         return '<form class="stack" method="post" action="/admin/ssl-backup">' . $csrfField . '
-            <label>نام سرور</label>
-            <input name="name" required placeholder="مثلاً Bell-SSL">
+            <label>پنل X-UI</label>
+            <select name="vpn_panel_id" id="ssl-panel-select" required data-ssl-host-prefill>
+                <option value="">— انتخاب پنل —</option>' . $panelOpts . '
+            </select>
+            <p class="muted form-hint">نام بکاپ همان نام پنل در JaySub است؛ هر پنل فقط یک سرور SSL می‌تواند داشته باشد.</p>
             <label>آدرس میزبان (IP یا دامنه)</label>
             <input name="host" required dir="ltr" placeholder="203.0.113.10">
             <label>پورت SSH</label>
@@ -935,7 +1005,14 @@ HTML;
         $sid = (int) $s['id'];
         $active = (int) ($s['is_active'] ?? 0) === 1;
         $accent = 'accent-' . ($index % 4);
-        $name = htmlspecialchars((string) $s['name'], ENT_QUOTES, 'UTF-8');
+        $displayName = trim((string) ($s['panel_name'] ?? '')) !== ''
+            ? (string) $s['panel_name']
+            : (string) $s['name'];
+        $name = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
+        $panelId = (int) ($s['vpn_panel_id'] ?? 0);
+        $panelBadge = $panelId > 0
+            ? ' <span class="muted" style="font-size:0.72rem">#' . $panelId . '</span>'
+            : '';
         $endpoint = htmlspecialchars(
             (string) $s['ssh_username'] . '@' . (string) $s['host'] . ':' . (int) $s['ssh_port'],
             ENT_QUOTES,
@@ -1021,9 +1098,18 @@ HTML;
         };
     }
 
-    /** @param array<string, mixed>|null $server */
-    public static function adminSslServerEditPage(?array $server, string $flashHtml, string $csrfField): string
-    {
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $allServers
+     * @param array<string, mixed>|null $server
+     */
+    public static function adminSslServerEditPage(
+        ?array $server,
+        string $flashHtml,
+        string $csrfField,
+        array $panels,
+        array $allServers,
+    ): string {
         if ($server === null) {
             return self::card('<p class="muted">سرور یافت نشد.</p><p><a href="/admin/ssl-backup">بازگشت</a></p>');
         }
@@ -1031,9 +1117,20 @@ HTML;
         $auth = (string) ($server['auth_type'] ?? 'password');
         $passSel = $auth === 'key' ? '' : ' selected';
         $keySel = $auth === 'key' ? ' selected' : '';
+        $currentPanelId = (int) ($server['vpn_panel_id'] ?? 0);
+        $linked = [];
+        foreach ($allServers as $s) {
+            $pid = (int) ($s['vpn_panel_id'] ?? 0);
+            if ($pid > 0 && (int) ($s['id'] ?? 0) !== $sid) {
+                $linked[$pid] = true;
+            }
+        }
+        $panelOpts = self::sslPanelSelectOptions($panels, $currentPanelId > 0 ? $currentPanelId : null, $linked);
         $form = '<form class="stack" method="post" action="/admin/ssl-backup/' . $sid . '/edit">' . $csrfField . '
-            <label>نام سرور</label>
-            <input name="name" required value="' . htmlspecialchars((string) $server['name'], ENT_QUOTES, 'UTF-8') . '">
+            <label>پنل X-UI</label>
+            <select name="vpn_panel_id" id="ssl-panel-select-edit" required data-ssl-host-prefill>
+                <option value="">— انتخاب پنل —</option>' . $panelOpts . '
+            </select>
             <label>آدرس میزبان</label>
             <input name="host" required dir="ltr" value="' . htmlspecialchars((string) $server['host'], ENT_QUOTES, 'UTF-8') . '">
             <label>پورت SSH</label>
@@ -1497,61 +1594,96 @@ HTML;
     }
 
     /**
-     * @param list<array<string, mixed>> $panels
      * @param list<array<string, mixed>> $sslServers
      */
     public static function adminMigrationPage(
         string $csrfField,
-        array $panels,
         array $sslServers,
         ?string $activeJobId,
     ): string {
-        $panelOpts = '';
-        foreach ($panels as $p) {
-            $panelOpts .= '<option value="' . (int) $p['id'] . '">' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</option>';
-        }
         $sslOpts = '';
         foreach ($sslServers as $s) {
-            $sslOpts .= '<option value="' . (int) $s['id'] . '">' . htmlspecialchars((string) $s['name'] . ' — ' . $s['host'], ENT_QUOTES, 'UTF-8') . '</option>';
+            $sid = (int) $s['id'];
+            $panelLabel = trim((string) ($s['panel_name'] ?? ''));
+            if ($panelLabel === '') {
+                $panelLabel = trim((string) ($s['name'] ?? ''));
+            }
+            $host = (string) ($s['host'] ?? '');
+            $label = $panelLabel !== '' ? $panelLabel . ' — ' . $host : $host;
+            $panelId = (int) ($s['vpn_panel_id'] ?? 0);
+            $sslOpts .= '<option value="' . $sid . '" data-panel-label="' . htmlspecialchars($panelLabel, ENT_QUOTES, 'UTF-8') . '"'
+                . ' data-panel-id="' . $panelId . '" data-source-host="' . htmlspecialchars($host, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        if ($sslOpts === '') {
+            $sslOpts = '<option value="">ابتدا در بکاپ SSL سرور اضافه کنید</option>';
         }
         $jobAttr = $activeJobId !== null && $activeJobId !== ''
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
 
-        return '<div class="migration-page"' . $jobAttr . '>
-            <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
-            <form class="stack migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField . '
-                <fieldset>
-                    <legend>پنل و بک‌آپ</legend>
-                    <label>پنل XUI (منبع بک‌آپ)</label>
-                    <select name="panel_id" required>' . ($panelOpts ?: '<option value="">پنلی ثبت نشده</option>') . '</select>
-                    <label>سرور SSL مبدأ (گواهی /root/cert)</label>
-                    <select name="source_ssl_server_id" required>' . ($sslOpts ?: '<option value="">ابتدا در بکاپ SSL سرور اضافه کنید</option>') . '</select>
-                </fieldset>
-                <fieldset>
-                    <legend>VPS جدید (SSH)</legend>
-                    <label>آدرس IP یا دامنه</label><input name="target_host" required dir="ltr" placeholder="203.0.113.10">
-                    <label>پورت SSH</label><input name="target_port" type="number" value="22" min="1" max="65535" dir="ltr">
-                    <label>کاربر</label><input name="target_user" value="root" dir="ltr">
-                    <label>نوع احراز</label>
-                    <select name="target_auth_type"><option value="password">رمز</option><option value="key">کلید خصوصی</option></select>
-                    <label>رمز یا کلید SSH</label>
-                    <textarea name="target_secret" required rows="4" dir="ltr"></textarea>
-                    <label>مسیر گواهی روی VPS جدید</label><input name="target_cert_path" value="/root/cert" dir="ltr">
-                </fieldset>
-                <fieldset>
-                    <legend>پنل 3x-ui جدید (بعد از نصب)</legend>
-                    <p class="muted form-hint">بعد از نصب، در پنل جدید وارد شوید، یک <strong>API Token</strong> بسازید و آدرس کامل پنل را اینجا بگذارید (مثلاً <code>https://IP:2053/RandomPath</code>).</p>
-                    <label>آدرس پنل جدید</label><input name="new_base_url" required dir="ltr" placeholder="https://203.0.113.10:2053/xxxx">
-                    <label>API Token پنل جدید</label><input name="new_api_token" required autocomplete="off" dir="ltr">
-                </fieldset>
-                <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
-            </form>
-            <section class="ui-card migration-progress" id="migration-progress" hidden>
-                <h2 class="card-title">پیشرفت انتقال</h2>
-                <ul class="migration-steps" id="migration-steps"></ul>
-                <pre class="migration-log" id="migration-log" dir="ltr"></pre>
-            </section>
-        </div>';
+        $stepNav = '<nav class="migration-wizard-nav" aria-label="مراحل انتقال">'
+            . '<div class="migration-wizard-node" data-migration-nav-step="1"><span class="migration-wizard-circle">1</span><span class="migration-wizard-label">سرور مبدأ</span></div>'
+            . '<div class="migration-wizard-line" aria-hidden="true"></div>'
+            . '<div class="migration-wizard-node" data-migration-nav-step="2"><span class="migration-wizard-circle">2</span><span class="migration-wizard-label">سرور مقصد</span></div>'
+            . '<div class="migration-wizard-line" aria-hidden="true"></div>'
+            . '<div class="migration-wizard-node" data-migration-nav-step="3"><span class="migration-wizard-circle">3</span><span class="migration-wizard-label">انجام انتقال</span></div>'
+            . '</nav>';
+
+        return '<div class="migration-page"' . $jobAttr . '>'
+            . $stepNav
+            . '<div class="migration-top-bar" id="migration-top-bar" hidden><div class="migration-top-bar-fill" id="migration-top-bar-fill"></div></div>'
+            . '<form class="migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField
+            . '<section class="migration-wizard-panel" data-migration-wizard-panel="1">
+                <h2 class="migration-wizard-title">۱. انتخاب سرور مبدأ</h2>
+                <p class="muted form-hint">از لیست سرورهای ثبت‌شده در <strong>بکاپ SSL</strong> انتخاب کنید. بک‌آپ پنل و گواهی <code>/root/cert</code> از همان سرور گرفته می‌شود.</p>
+                <label>سرور SSL (مبدأ)</label>
+                <select name="source_ssl_server_id" id="migration-source-ssl" required>' . $sslOpts . '</select>
+                <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
+                <div class="migration-wizard-actions">
+                    <button type="button" class="btn btn-primary" data-migration-next>بعدی</button>
+                </div>
+            </section>'
+            . '<section class="migration-wizard-panel" data-migration-wizard-panel="2" hidden>
+                <h2 class="migration-wizard-title">۲. سرور مقصد (VPS جدید)</h2>
+                <p class="muted form-hint">اطلاعات SSH سرور جدید را وارد کنید. روی این ماشین 3x-ui نصب و بک‌آپ JaySub بازگردانی می‌شود.</p>
+                <label>آدرس IP یا دامنه</label>
+                <input name="target_host" id="migration-target-host" required dir="ltr" placeholder="203.0.113.10">
+                <label>پورت SSH</label>
+                <input name="target_port" type="number" value="22" min="1" max="65535" dir="ltr">
+                <label>کاربر SSH</label>
+                <input name="target_user" value="root" dir="ltr">
+                <label>نوع احراز هویت</label>
+                <select name="target_auth_type"><option value="password">رمز عبور</option><option value="key">کلید خصوصی</option></select>
+                <label>رمز یا کلید SSH</label>
+                <textarea name="target_secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa"></textarea>
+                <label>مسیر گواهی روی VPS جدید</label>
+                <input name="target_cert_path" value="/root/cert" dir="ltr">
+                <div class="migration-wizard-actions">
+                    <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
+                    <button type="button" class="btn btn-primary" data-migration-next>بعدی</button>
+                </div>
+            </section>'
+            . '<section class="migration-wizard-panel" data-migration-wizard-panel="3" hidden>
+                <h2 class="migration-wizard-title">۳. انجام انتقال</h2>
+                <div class="migration-review" id="migration-review">
+                    <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
+                    <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
+                </div>
+                <div class="migration-wizard-actions" id="migration-start-actions">
+                    <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
+                    <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
+                </div>
+                <div class="migration-run-block" id="migration-run-block" hidden>
+                    <ul class="migration-steps" id="migration-steps"></ul>
+                    <pre class="migration-log" id="migration-log" dir="ltr"></pre>
+                </div>
+                <div class="migration-complete" id="migration-complete" hidden role="status">
+                    <span class="migration-complete-icon" aria-hidden="true">✓</span>
+                    <h3>پایان انتقال</h3>
+                    <p id="migration-complete-msg">انتقال با موفقیت انجام شد.</p>
+                </div>
+            </section>'
+            . '</form></div>';
     }
 }

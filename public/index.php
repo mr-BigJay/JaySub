@@ -1203,9 +1203,10 @@ if ($uri === '/admin/ssl-backup' && $method === 'GET') {
         $tab = 'files';
     }
     $openAdd = isset($_GET['add']) && (string) $_GET['add'] === '1';
+    $panels = DashboardService::allPanels();
     $servers = SslServerService::listAll();
     $files = SslBackupService::listFiles($config);
-    $body = Layout::adminSslBackupPage($flashHtml, $tab, $servers, $files, Csrf::field(), $openAdd);
+    $body = Layout::adminSslBackupPage($flashHtml, $tab, $panels, $servers, $files, Csrf::field(), $openAdd);
     $sslHeaderAction = '<button type="button" class="btn btn-primary btn-sm admin-top-action-btn" data-open-modal="ssl-add-server-modal">افزودن سرور جدید</button>';
     adminPage('بکاپ SSL', 'ssl_backup', $body, $sslHeaderAction);
 }
@@ -1220,7 +1221,7 @@ if ($uri === '/admin/ssl-backup' && $method === 'POST') {
             throw new \InvalidArgumentException('رمز یا کلید SSH الزامی است.');
         }
         SslServerService::create(
-            (string) ($_POST['name'] ?? ''),
+            (int) ($_POST['vpn_panel_id'] ?? 0),
             (string) ($_POST['host'] ?? ''),
             (int) ($_POST['ssh_port'] ?? 22),
             (string) ($_POST['ssh_username'] ?? 'root'),
@@ -1275,7 +1276,13 @@ if (preg_match('#^/admin/ssl-backup/(\d+)/edit$#', $uri, $m) && $method === 'GET
     if (is_string($flash) && $flash !== '') {
         $flashHtml = '<div class="alert alert-error">' . htmlspecialchars($flash, ENT_QUOTES, 'UTF-8') . '</div>';
     }
-    adminPage('ویرایش سرور SSL', 'ssl_backup', Layout::adminSslServerEditPage($server, $flashHtml, Csrf::field()));
+    $panels = DashboardService::allPanels();
+    $allServers = SslServerService::listAll();
+    adminPage(
+        'ویرایش سرور SSL',
+        'ssl_backup',
+        Layout::adminSslServerEditPage($server, $flashHtml, Csrf::field(), $panels, $allServers),
+    );
 }
 
 if (preg_match('#^/admin/ssl-backup/(\d+)/edit$#', $uri, $m) && $method === 'POST') {
@@ -1287,7 +1294,7 @@ if (preg_match('#^/admin/ssl-backup/(\d+)/edit$#', $uri, $m) && $method === 'POS
     try {
         SslServerService::update(
             $sid,
-            (string) ($_POST['name'] ?? ''),
+            (int) ($_POST['vpn_panel_id'] ?? 0),
             (string) ($_POST['host'] ?? ''),
             (int) ($_POST['ssh_port'] ?? 22),
             (string) ($_POST['ssh_username'] ?? 'root'),
@@ -1359,22 +1366,26 @@ if ($uri === '/admin/migration/status' && $method === 'GET') {
 
 if ($uri === '/admin/migration' && $method === 'GET') {
     requireAdmin();
-    $panels = Database::pdo()->query('SELECT id, name FROM vpn_panels ORDER BY name')->fetchAll();
     $sslServers = SslServerService::listAll();
     $jobId = trim((string) ($_GET['job'] ?? ''));
-    $body = Layout::adminMigrationPage(Csrf::field(), $panels, $sslServers, $jobId !== '' ? $jobId : null);
-    adminPage('انتقال سرور', 'migration', Layout::card($body));
+    $body = Layout::adminMigrationPage(Csrf::field(), $sslServers, $jobId !== '' ? $jobId : null);
+    adminPage('انتقال سرور', 'migration', $body);
 }
 
 if ($uri === '/admin/migration' && $method === 'POST') {
     requireAdmin();
     requireCsrf();
-    $panelId = (int) ($_POST['panel_id'] ?? 0);
     $sslId = (int) ($_POST['source_ssl_server_id'] ?? 0);
     $host = trim((string) ($_POST['target_host'] ?? ''));
     $secret = (string) ($_POST['target_secret'] ?? '');
-    if ($panelId <= 0 || $sslId <= 0 || $host === '' || trim($secret) === '') {
-        Session::set('flash_admin', 'فیلدهای الزامی را پر کنید.');
+    $sslRow = $sslId > 0 ? SslServerService::findById($sslId) : null;
+    $panelId = $sslRow !== null ? (int) ($sslRow['vpn_panel_id'] ?? 0) : 0;
+    if ($sslId <= 0 || $panelId <= 0 || $host === '' || trim($secret) === '') {
+        $msg = 'فیلدهای الزامی را پر کنید.';
+        if ($sslId > 0 && $panelId <= 0) {
+            $msg = 'سرور SSL انتخاب‌شده به پنل X-UI لینک نیست — از منوی بکاپ SSL ویرایش کنید.';
+        }
+        Session::set('flash_admin', $msg);
         Response::redirect('/admin/migration');
     }
     $jobId = bin2hex(random_bytes(16));
