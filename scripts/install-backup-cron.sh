@@ -3,7 +3,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${JAYSUB_INSTALL_DIR:-/var/www/vpn-panel}"
-PHP_BIN="${PHP_BIN:-/usr/bin/php}"
+PHP_BIN="${PHP_BIN:-${INSTALL_DIR}/scripts/run-php-cli.sh}"
 LOG_FILE="${INSTALL_DIR}/logs/xui-backup.log"
 
 if [[ ! -f "${INSTALL_DIR}/worker/xui_backup_worker.php" ]]; then
