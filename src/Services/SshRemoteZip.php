@@ -249,4 +249,246 @@ final class SshRemoteZip
 
         return $code === 0 && $out !== [];
     }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{ok:bool, stdout?:string, stderr?:string, error?:string, exit_code?:int}
+     */
+    public static function runRemoteShell(
+        array $server,
+        Encryption $encryption,
+        string $remoteCmd,
+        int $timeoutSeconds = 120,
+        ?string $storageBase = null,
+    ): array {
+        $host = trim((string) ($server['host'] ?? ''));
+        $user = trim((string) ($server['ssh_username'] ?? 'root'));
+        $port = (int) ($server['ssh_port'] ?? 22);
+        if ($host === '' || $user === '') {
+            return ['ok' => false, 'error' => 'میزبان یا کاربر SSH خالی است.'];
+        }
+
+        try {
+            $secret = $encryption->decrypt((string) $server['ssh_secret_encrypted']);
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'رمز/کلید SSH ذخیره‌شده قابل خواندن نیست.'];
+        }
+
+        $sshOpts = self::sshOptionFlags($storageBase);
+        $wrapped = 'timeout ' . max(10, $timeoutSeconds) . ' ' . $remoteCmd;
+        $authType = (string) ($server['auth_type'] ?? 'password');
+        if ($authType === 'key') {
+            return self::runSshKeyText($host, $port, $user, $secret, $wrapped, $sshOpts, $storageBase);
+        }
+
+        return self::runSshPasswordText($host, $port, $user, $secret, $wrapped, $sshOpts, $storageBase);
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{ok:bool, error?:string}
+     */
+    public static function uploadLocalFile(
+        array $server,
+        Encryption $encryption,
+        string $localPath,
+        string $remotePath,
+        ?string $storageBase = null,
+    ): array {
+        if (!is_file($localPath)) {
+            return ['ok' => false, 'error' => 'فایل محلی وجود ندارد.'];
+        }
+        $host = trim((string) ($server['host'] ?? ''));
+        $user = trim((string) ($server['ssh_username'] ?? 'root'));
+        $port = (int) ($server['ssh_port'] ?? 22);
+        if ($host === '' || $user === '') {
+            return ['ok' => false, 'error' => 'میزبان یا کاربر SSH خالی است.'];
+        }
+
+        try {
+            $secret = $encryption->decrypt((string) $server['ssh_secret_encrypted']);
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'رمز/کلید SSH ذخیره‌شده قابل خواندن نیست.'];
+        }
+
+        $sshOpts = self::sshOptionFlags($storageBase);
+        $authType = (string) ($server['auth_type'] ?? 'password');
+        $remote = escapeshellarg($remotePath);
+        $local = escapeshellarg($localPath);
+
+        if ($authType === 'key') {
+            $keyFile = tempnam(sys_get_temp_dir(), 'jssk_');
+            if ($keyFile === false) {
+                return ['ok' => false, 'error' => 'فایل موقت کلید ناموفق'];
+            }
+            file_put_contents($keyFile, $secret);
+            chmod($keyFile, 0600);
+            $scp = sprintf(
+                'scp -i %s -P %d %s -o BatchMode=yes %s %s@%s:%s',
+                escapeshellarg($keyFile),
+                $port,
+                $sshOpts,
+                $local,
+                escapeshellarg($user),
+                escapeshellarg($host),
+                $remote
+            );
+            try {
+                $r = self::execText($scp, $storageBase);
+            } finally {
+                @unlink($keyFile);
+            }
+        } else {
+            if (!self::commandExists('sshpass')) {
+                return ['ok' => false, 'error' => 'sshpass برای SCP با پسورد لازم است.'];
+            }
+            $scp = sprintf(
+                'scp -P %d %s %s %s@%s:%s',
+                $port,
+                $sshOpts,
+                $local,
+                escapeshellarg($user),
+                escapeshellarg($host),
+                $remote
+            );
+            $scp = 'sshpass -e ' . $scp;
+            $prev = getenv('SSHPASS');
+            putenv('SSHPASS=' . $secret);
+            try {
+                $r = self::execText($scp, $storageBase);
+            } finally {
+                if ($prev !== false) {
+                    putenv('SSHPASS=' . $prev);
+                } else {
+                    putenv('SSHPASS');
+                }
+            }
+        }
+
+        if (!($r['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $r['error'] ?? 'SCP ناموفق'];
+        }
+
+        return ['ok' => true];
+    }
+
+    /**
+     * @return array{ok:bool, stdout?:string, stderr?:string, error?:string, exit_code?:int}
+     */
+    private static function runSshKeyText(
+        string $host,
+        int $port,
+        string $user,
+        string $privateKey,
+        string $remoteCmd,
+        string $sshOpts,
+        ?string $storageBase,
+    ): array {
+        $keyFile = tempnam(sys_get_temp_dir(), 'jssk_');
+        if ($keyFile === false) {
+            return ['ok' => false, 'error' => 'ایجاد فایل موقت کلید ناموفق بود.'];
+        }
+        file_put_contents($keyFile, $privateKey);
+        chmod($keyFile, 0600);
+        try {
+            $ssh = sprintf(
+                'ssh -i %s -p %d %s -o BatchMode=yes %s@%s %s',
+                escapeshellarg($keyFile),
+                $port,
+                $sshOpts,
+                escapeshellarg($user),
+                escapeshellarg($host),
+                escapeshellarg($remoteCmd)
+            );
+
+            return self::execText($ssh, $storageBase);
+        } finally {
+            @unlink($keyFile);
+        }
+    }
+
+    /**
+     * @return array{ok:bool, stdout?:string, stderr?:string, error?:string, exit_code?:int}
+     */
+    private static function runSshPasswordText(
+        string $host,
+        int $port,
+        string $user,
+        string $password,
+        string $remoteCmd,
+        string $sshOpts,
+        ?string $storageBase,
+    ): array {
+        if (!self::commandExists('sshpass')) {
+            return ['ok' => false, 'error' => 'روی سرور JaySub بسته sshpass نصب نیست (برای SSH با پسورد). یا احراز هویت با کلید خصوصی استفاده کنید.'];
+        }
+        $ssh = sprintf(
+            'ssh -p %d %s %s@%s %s',
+            $port,
+            $sshOpts,
+            escapeshellarg($user),
+            escapeshellarg($host),
+            escapeshellarg($remoteCmd)
+        );
+        $cmd = 'sshpass -e ' . $ssh;
+        $prev = getenv('SSHPASS');
+        putenv('SSHPASS=' . $password);
+        try {
+            return self::execText($cmd, $storageBase);
+        } finally {
+            if ($prev !== false) {
+                putenv('SSHPASS=' . $prev);
+            } else {
+                putenv('SSHPASS');
+            }
+        }
+    }
+
+    /**
+     * @return array{ok:bool, stdout?:string, stderr?:string, error?:string, exit_code?:int}
+     */
+    private static function execText(string $command, ?string $storageBase): array
+    {
+        $stateDir = self::sshStateDirectory($storageBase);
+        $env = getenv();
+        if (!is_array($env)) {
+            $env = [];
+        }
+        $env['HOME'] = $stateDir;
+        $env['SSH_AUTH_SOCK'] = '';
+
+        $descriptors = [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']];
+        $proc = proc_open($command, $descriptors, $pipes, $stateDir, $env);
+        if (!is_resource($proc)) {
+            return ['ok' => false, 'error' => 'اجرای SSH ناموفق بود.'];
+        }
+        fclose($pipes[0]);
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $code = proc_close($proc);
+
+        if ($code !== 0) {
+            $err = trim((string) $stderr);
+            if ($err === '') {
+                $err = trim((string) $stdout);
+            }
+
+            return [
+                'ok' => false,
+                'error' => self::formatSshError($err !== '' ? $err : 'SSH exit ' . $code, $code),
+                'stdout' => is_string($stdout) ? $stdout : '',
+                'stderr' => is_string($stderr) ? $stderr : '',
+                'exit_code' => $code,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'stdout' => is_string($stdout) ? $stdout : '',
+            'stderr' => is_string($stderr) ? $stderr : '',
+            'exit_code' => $code,
+        ];
+    }
 }

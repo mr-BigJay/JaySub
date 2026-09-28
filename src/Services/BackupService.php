@@ -282,6 +282,26 @@ final class BackupService
     }
 
     /** @param array<string, mixed> $config */
+    /** @param array<string, mixed> $config */
+    public static function latestBackupPath(array $config, int $panelId): ?string
+    {
+        $best = null;
+        $bestTs = 0;
+        foreach (self::listFiles($config) as $f) {
+            if ((int) ($f['panel_id'] ?? 0) !== $panelId) {
+                continue;
+            }
+            $ts = (int) ($f['backup_ts'] ?? 0);
+            if ($ts >= $bestTs) {
+                $bestTs = $ts;
+                $best = self::panelDir($config, $panelId) . '/' . (string) $f['filename'];
+            }
+        }
+
+        return $best !== null && is_file($best) ? $best : null;
+    }
+
+    /** @param array<string, mixed> $config */
     public static function resolveDownloadPath(array $config, int $panelId, string $filename): ?string
     {
         if ($panelId <= 0 || !self::isAllowedFilename($filename)) {
