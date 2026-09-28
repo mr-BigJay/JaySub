@@ -1502,7 +1502,7 @@ HTML;
             : '';
 
         return '<div class="migration-page"' . $jobAttr . '>
-            <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور SSL فعلی → آپلود آخرین بک‌آپ JaySub به پنل جدید.</p>
+            <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
             <form class="stack migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField . '
                 <fieldset>
                     <legend>پنل و بک‌آپ</legend>

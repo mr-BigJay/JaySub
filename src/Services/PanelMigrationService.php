@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Encryption;
-use App\Xui\XuiClient;
 
 final class PanelMigrationService
 {
@@ -42,15 +41,13 @@ final class PanelMigrationService
         $panelId = (int) ($job['panel_id'] ?? 0);
         $sourceSslId = (int) ($job['source_ssl_server_id'] ?? 0);
         $target = self::targetServerFromJob($job, $encryption);
-        $newUrl = rtrim(trim((string) ($job['new_base_url'] ?? '')), '/');
-        $newToken = trim((string) ($job['new_api_token'] ?? ''));
         $certPath = trim((string) ($job['target_cert_path'] ?? '/root/cert'));
         if ($certPath === '') {
             $certPath = '/root/cert';
         }
 
-        if ($panelId <= 0 || $sourceSslId <= 0 || $newUrl === '' || $newToken === '') {
-            throw new \RuntimeException('پنل، سرور SSL مبدأ، آدرس و توکن پنل جدید الزامی است.');
+        if ($panelId <= 0 || $sourceSslId <= 0) {
+            throw new \RuntimeException('پنل XUI و سرور SSL مبدأ الزامی است.');
         }
 
         $source = SslServerService::findById($sourceSslId);
@@ -142,27 +139,43 @@ final class PanelMigrationService
         self::log($job, 'گواهی‌ها در ' . $certPath . ' قرار گرفتند.');
         self::finishStep($job, 'ssl_copy', $config);
 
-        // 4) تست API پنل جدید
-        self::beginStep($job, 'api_check', $config);
-        $xui = new XuiClient($newUrl, $newToken);
-        $st = $xui->getServerStatus();
-        if (!($st['ok'] ?? false)) {
-            throw new \RuntimeException(
-                'اتصال به پنل جدید ناموفق — آدرس و API Token را چک کنید (بعد از نصب در پنل Token بسازید): '
-                . (string) ($st['error'] ?? '')
-            );
-        }
-        self::log($job, 'پنل جدید پاسخ داد.');
-        self::finishStep($job, 'api_check', $config);
-
-        // 5) آپلود بک‌آپ
+        // 4) آخرین بک‌آپ JaySub → جایگزینی دیتابیس x-ui روی VPS جدید (همان تنظیمات پنل قدیم)
         self::beginStep($job, 'restore_backup', $config);
-        self::log($job, 'فایل: ' . basename($backupPath));
-        $imp = $xui->importDatabase($backupPath);
-        if (!($imp['ok'] ?? false)) {
-            throw new \RuntimeException('آپلود بک‌آپ به پنل جدید: ' . (string) ($imp['error'] ?? 'ناموفق'));
+        $remoteBackup = '/tmp/jaysub-restore-' . basename($backupPath);
+        $upDb = SshRemoteZip::uploadLocalFile(
+            $target,
+            $encryption,
+            $backupPath,
+            $remoteBackup,
+            self::storageBase($config),
+        );
+        if (!$upDb['ok']) {
+            throw new \RuntimeException('آپلود بک‌آپ به سرور جدید: ' . ($upDb['error'] ?? 'ناموفق'));
         }
-        self::log($job, 'بک‌آپ import شد — پنل ممکن است چند ثانیه restart شود.');
+        self::log($job, 'بک‌آپ JaySub: ' . basename($backupPath));
+
+        $restoreEsc = escapeshellarg($remoteBackup);
+        $restoreCmd = 'bash -lc ' . escapeshellarg(
+            'set -e; RESTORE=' . $restoreEsc . '; '
+            . 'DB=""; for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && DB="$c" && break; done; '
+            . 'if [ -z "$DB" ]; then echo "x-ui.db not found after install" >&2; exit 1; fi; '
+            . 'systemctl stop x-ui 2>/dev/null || systemctl stop 3x-ui 2>/dev/null || true; '
+            . 'sleep 2; '
+            . 'cp -a "$DB" "${DB}.jaysub.bak.$(date +%s)"; '
+            . 'cp -f "$RESTORE" "$DB"; chmod 600 "$DB"; '
+            . 'systemctl start x-ui 2>/dev/null || systemctl start 3x-ui 2>/dev/null || (command -v x-ui >/dev/null && x-ui restart); '
+            . 'sleep 3; systemctl is-active x-ui 2>/dev/null || systemctl is-active 3x-ui 2>/dev/null || echo x-ui restarted; '
+            . 'rm -f "$RESTORE"'
+        );
+        $rest = SshRemoteZip::runRemoteShell($target, $encryption, $restoreCmd, 180, self::storageBase($config));
+        if (!$rest['ok']) {
+            throw new \RuntimeException('بازگردانی بک‌آپ روی x-ui: ' . ($rest['error'] ?? 'ناموفق'));
+        }
+        $rout = trim((string) ($rest['stdout'] ?? ''));
+        if ($rout !== '') {
+            self::log($job, $rout);
+        }
+        self::log($job, 'تنظیمات پنل از بک‌آپ اعمال شد — همان مسیر/کاربر پنل قبلی (DNS را به IP جدید بزنید).');
         self::finishStep($job, 'restore_backup', $config);
     }
 
@@ -262,8 +275,7 @@ final class PanelMigrationService
             ['id' => 'ssh_target', 'label' => '۱. اتصال SSH به VPS جدید', 'status' => 'pending'],
             ['id' => 'install_xui', 'label' => '۲. نصب 3x-ui نسخه v3.4.2', 'status' => 'pending'],
             ['id' => 'ssl_copy', 'label' => '۳. انتقال گواهی SSL (/root/cert)', 'status' => 'pending'],
-            ['id' => 'api_check', 'label' => '۴. تست API پنل جدید', 'status' => 'pending'],
-            ['id' => 'restore_backup', 'label' => '۵. آپلود آخرین بک‌آپ JaySub', 'status' => 'pending'],
+            ['id' => 'restore_backup', 'label' => '۴. بازگردانی آخرین بک‌آپ JaySub روی x-ui', 'status' => 'pending'],
         ];
     }
 }

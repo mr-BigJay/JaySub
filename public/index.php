@@ -1370,8 +1370,6 @@ if ($uri === '/admin/migration' && $method === 'POST') {
         'target_auth_type' => ($_POST['target_auth_type'] ?? '') === 'key' ? 'key' : 'password',
         'target_secret_encrypted' => app_encryption($config)->encrypt($secret),
         'target_cert_path' => trim((string) ($_POST['target_cert_path'] ?? '/root/cert')),
-        'new_base_url' => trim((string) ($_POST['new_base_url'] ?? '')),
-        'new_api_token' => trim((string) ($_POST['new_api_token'] ?? '')),
         'steps' => PanelMigrationService::defaultSteps(),
         'log' => [],
         'created_at' => date('c'),
