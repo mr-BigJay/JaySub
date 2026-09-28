@@ -182,36 +182,183 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape' && adminMenuSheet && adminMenuSheet.classList.contains('is-open')) closeAdminMenu();
   });
 
-  const migrationPage = document.querySelector('.migration-page[data-migration-job]');
+  const migrationPage = document.querySelector('.migration-page');
   if (migrationPage) {
-    const jobId = migrationPage.getAttribute('data-migration-job');
-    const progress = document.getElementById('migration-progress');
+    const form = document.getElementById('migration-form');
+    const panels = migrationPage.querySelectorAll('[data-migration-wizard-panel]');
+    const navNodes = migrationPage.querySelectorAll('[data-migration-nav-step]');
+    const sourceSelect = document.getElementById('migration-source-ssl');
+    const reviewSource = document.getElementById('migration-review-source');
+    const reviewTarget = document.getElementById('migration-review-target');
+    const sourceSummary = document.getElementById('migration-source-summary');
+    const targetHost = document.getElementById('migration-target-host');
+    const topBar = document.getElementById('migration-top-bar');
+    const topBarFill = document.getElementById('migration-top-bar-fill');
+    const runBlock = document.getElementById('migration-run-block');
+    const startActions = document.getElementById('migration-start-actions');
+    const completeBox = document.getElementById('migration-complete');
+    const completeMsg = document.getElementById('migration-complete-msg');
     const stepsEl = document.getElementById('migration-steps');
     const logEl = document.getElementById('migration-log');
-    const form = document.getElementById('migration-form');
     const startBtn = document.getElementById('migration-start-btn');
-    if (progress && stepsEl && logEl && jobId) {
-      progress.hidden = false;
-      if (form) form.style.opacity = '0.55';
-      if (startBtn) startBtn.disabled = true;
-      const statusLabel = { pending: 'در انتظار', running: 'در حال انجام…', ok: 'انجام شد', error: 'خطا' };
-      const render = (job) => {
-        if (!job || !Array.isArray(job.steps)) return;
-        stepsEl.innerHTML = job.steps.map((s) => {
-          const st = s.status || 'pending';
-          const cls = 'migration-step migration-step-' + st;
-          const msg = s.message ? '<span class="muted">' + s.message + '</span>' : '';
-          return '<li class="' + cls + '"><strong>' + (s.label || s.id) + '</strong> — ' + (statusLabel[st] || st) + ' ' + msg + '</li>';
-        }).join('');
+    let wizardStep = 1;
+
+    const selectedSourceLabel = () => {
+      if (!sourceSelect || sourceSelect.selectedIndex < 0) return '—';
+      const opt = sourceSelect.options[sourceSelect.selectedIndex];
+      return opt ? opt.textContent.trim() : '—';
+    };
+
+    const updateReview = () => {
+      if (reviewSource) reviewSource.textContent = selectedSourceLabel();
+      const host = targetHost && targetHost.value.trim() ? targetHost.value.trim() : '—';
+      if (reviewTarget) reviewTarget.textContent = host;
+    };
+
+    const setWizardStep = (n) => {
+      wizardStep = n;
+      panels.forEach((el) => {
+        const sn = parseInt(el.getAttribute('data-migration-wizard-panel') || '0', 10);
+        el.hidden = sn !== n;
+      });
+      navNodes.forEach((node) => {
+        const sn = parseInt(node.getAttribute('data-migration-nav-step') || '0', 10);
+        node.classList.toggle('is-active', sn === n);
+        node.classList.toggle('is-done', sn < n);
+        const circle = node.querySelector('.migration-wizard-circle');
+        if (circle && sn < n) circle.textContent = '✓';
+        else if (circle) circle.textContent = String(sn);
+      });
+      if (n === 3) updateReview();
+    };
+
+    const validateStep = (n) => {
+      if (n === 1 && sourceSelect) {
+        const val = sourceSelect.value;
+        if (!val) {
+          sourceSelect.focus();
+          return false;
+        }
+        const opt = sourceSelect.options[sourceSelect.selectedIndex];
+        const panelId = opt ? parseInt(opt.getAttribute('data-panel-id') || '0', 10) : 0;
+        if (panelId <= 0) {
+          window.alert('این سرور SSL به پنل X-UI لینک نیست. از منوی بکاپ SSL آن را به پنل وصل کنید.');
+          return false;
+        }
+        if (sourceSummary && opt) {
+          const pl = opt.getAttribute('data-panel-label') || '';
+          sourceSummary.textContent = pl ? 'پنل: ' + pl : '';
+          sourceSummary.hidden = !pl;
+        }
+      }
+      if (n === 2 && form) {
+        const hostInp = form.querySelector('input[name="target_host"]');
+        const secret = form.querySelector('textarea[name="target_secret"]');
+        if (hostInp && !hostInp.value.trim()) {
+          hostInp.focus();
+          return false;
+        }
+        if (secret && !secret.value.trim()) {
+          secret.focus();
+          return false;
+        }
+      }
+      return true;
+    };
+
+    migrationPage.querySelectorAll('[data-migration-next]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!validateStep(wizardStep)) return;
+        if (wizardStep < 3) setWizardStep(wizardStep + 1);
+      });
+    });
+    migrationPage.querySelectorAll('[data-migration-prev]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (wizardStep > 1) setWizardStep(wizardStep - 1);
+      });
+    });
+    if (sourceSelect) {
+      sourceSelect.addEventListener('change', () => {
+        if (sourceSummary) {
+          const opt = sourceSelect.options[sourceSelect.selectedIndex];
+          const pl = opt ? opt.getAttribute('data-panel-label') || '' : '';
+          sourceSummary.textContent = pl ? 'پنل: ' + pl : '';
+          sourceSummary.hidden = !pl;
+        }
+      });
+    }
+    if (targetHost) targetHost.addEventListener('input', updateReview);
+
+    const stepIcon = (st) => {
+      if (st === 'ok') return '<span class="migration-step-mark ok" aria-hidden="true">✓</span>';
+      if (st === 'running') return '<span class="migration-step-mark run" aria-hidden="true"></span>';
+      if (st === 'error') return '<span class="migration-step-mark err" aria-hidden="true">!</span>';
+      return '<span class="migration-step-mark pending" aria-hidden="true"></span>';
+    };
+
+    const renderJob = (job) => {
+      if (!job || !Array.isArray(job.steps) || !stepsEl) return;
+      const total = job.steps.length;
+      let done = 0;
+      let hasRunning = false;
+      stepsEl.innerHTML = job.steps.map((s) => {
+        const st = s.status || 'pending';
+        if (st === 'ok') done += 1;
+        if (st === 'running') hasRunning = true;
+        const cls = 'migration-step migration-step-' + st;
+        const msg = s.message ? '<span class="migration-step-msg">' + s.message + '</span>' : '';
+        return '<li class="' + cls + '">' + stepIcon(st) + '<span class="migration-step-text"><strong>'
+          + (s.label || s.id) + '</strong>' + msg + '</span></li>';
+      }).join('');
+      if (logEl) {
         const lines = Array.isArray(job.log) ? job.log.map((e) => (e.line || '')) : [];
         logEl.textContent = lines.join('\n');
         logEl.scrollTop = logEl.scrollHeight;
-      };
+      }
+      if (topBarFill) {
+        let pct = total > 0 ? (done / total) * 100 : 0;
+        if (hasRunning && pct < 95) pct += 8;
+        if (job.status === 'done') pct = 100;
+        topBarFill.style.width = Math.min(100, pct) + '%';
+      }
+      if (job.status === 'done' && completeBox) {
+        completeBox.hidden = false;
+        if (completeMsg) {
+          const last = Array.isArray(job.log) && job.log.length ? job.log[job.log.length - 1].line : '';
+          completeMsg.textContent = last || 'انتقال با موفقیت انجام شد.';
+        }
+        navNodes.forEach((node) => {
+          node.classList.add('is-done');
+          node.classList.remove('is-active');
+          const circle = node.querySelector('.migration-wizard-circle');
+          if (circle) circle.textContent = '✓';
+        });
+      }
+      if (job.status === 'error' && completeBox) {
+        completeBox.hidden = false;
+        completeBox.classList.add('is-error');
+        if (completeMsg) completeMsg.textContent = 'انتقال با خطا متوقف شد. جزئیات را در لاگ ببینید.';
+      }
+    };
+
+    const beginJobUi = () => {
+      setWizardStep(3);
+      if (topBar) topBar.hidden = false;
+      if (runBlock) runBlock.hidden = false;
+      if (startActions) startActions.hidden = true;
+      const review = document.getElementById('migration-review');
+      if (review) review.hidden = true;
+      if (startBtn) startBtn.disabled = true;
+    };
+
+    const jobId = migrationPage.getAttribute('data-migration-job');
+    if (jobId && stepsEl && logEl) {
+      beginJobUi();
       const poll = () => {
         fetch('/admin/migration/status?job=' + encodeURIComponent(jobId), { credentials: 'same-origin' })
           .then((r) => r.json())
           .then((job) => {
-            render(job);
+            renderJob(job);
             if (job.status === 'running' || job.status === 'queued') {
               setTimeout(poll, 1200);
             }
@@ -219,6 +366,8 @@ document.addEventListener('DOMContentLoaded', () => {
           .catch(() => setTimeout(poll, 2500));
       };
       poll();
+    } else {
+      setWizardStep(1);
     }
   }
 });

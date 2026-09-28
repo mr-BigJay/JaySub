@@ -1577,61 +1577,96 @@ HTML;
     }
 
     /**
-     * @param list<array<string, mixed>> $panels
      * @param list<array<string, mixed>> $sslServers
      */
     public static function adminMigrationPage(
         string $csrfField,
-        array $panels,
         array $sslServers,
         ?string $activeJobId,
     ): string {
-        $panelOpts = '';
-        foreach ($panels as $p) {
-            $panelOpts .= '<option value="' . (int) $p['id'] . '">' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</option>';
-        }
         $sslOpts = '';
         foreach ($sslServers as $s) {
-            $sslOpts .= '<option value="' . (int) $s['id'] . '">' . htmlspecialchars((string) $s['name'] . ' — ' . $s['host'], ENT_QUOTES, 'UTF-8') . '</option>';
+            $sid = (int) $s['id'];
+            $panelLabel = trim((string) ($s['panel_name'] ?? ''));
+            if ($panelLabel === '') {
+                $panelLabel = trim((string) ($s['name'] ?? ''));
+            }
+            $host = (string) ($s['host'] ?? '');
+            $label = $panelLabel !== '' ? $panelLabel . ' — ' . $host : $host;
+            $panelId = (int) ($s['vpn_panel_id'] ?? 0);
+            $sslOpts .= '<option value="' . $sid . '" data-panel-label="' . htmlspecialchars($panelLabel, ENT_QUOTES, 'UTF-8') . '"'
+                . ' data-panel-id="' . $panelId . '" data-source-host="' . htmlspecialchars($host, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        if ($sslOpts === '') {
+            $sslOpts = '<option value="">ابتدا در بکاپ SSL سرور اضافه کنید</option>';
         }
         $jobAttr = $activeJobId !== null && $activeJobId !== ''
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
 
-        return '<div class="migration-page"' . $jobAttr . '>
-            <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
-            <form class="stack migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField . '
-                <fieldset>
-                    <legend>پنل و بک‌آپ</legend>
-                    <label>پنل XUI (منبع بک‌آپ)</label>
-                    <select name="panel_id" required>' . ($panelOpts ?: '<option value="">پنلی ثبت نشده</option>') . '</select>
-                    <label>سرور SSL مبدأ (گواهی /root/cert)</label>
-                    <select name="source_ssl_server_id" required>' . ($sslOpts ?: '<option value="">ابتدا در بکاپ SSL سرور اضافه کنید</option>') . '</select>
-                </fieldset>
-                <fieldset>
-                    <legend>VPS جدید (SSH)</legend>
-                    <label>آدرس IP یا دامنه</label><input name="target_host" required dir="ltr" placeholder="203.0.113.10">
-                    <label>پورت SSH</label><input name="target_port" type="number" value="22" min="1" max="65535" dir="ltr">
-                    <label>کاربر</label><input name="target_user" value="root" dir="ltr">
-                    <label>نوع احراز</label>
-                    <select name="target_auth_type"><option value="password">رمز</option><option value="key">کلید خصوصی</option></select>
-                    <label>رمز یا کلید SSH</label>
-                    <textarea name="target_secret" required rows="4" dir="ltr"></textarea>
-                    <label>مسیر گواهی روی VPS جدید</label><input name="target_cert_path" value="/root/cert" dir="ltr">
-                </fieldset>
-                <fieldset>
-                    <legend>پنل 3x-ui جدید (بعد از نصب)</legend>
-                    <p class="muted form-hint">بعد از نصب، در پنل جدید وارد شوید، یک <strong>API Token</strong> بسازید و آدرس کامل پنل را اینجا بگذارید (مثلاً <code>https://IP:2053/RandomPath</code>).</p>
-                    <label>آدرس پنل جدید</label><input name="new_base_url" required dir="ltr" placeholder="https://203.0.113.10:2053/xxxx">
-                    <label>API Token پنل جدید</label><input name="new_api_token" required autocomplete="off" dir="ltr">
-                </fieldset>
-                <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
-            </form>
-            <section class="ui-card migration-progress" id="migration-progress" hidden>
-                <h2 class="card-title">پیشرفت انتقال</h2>
-                <ul class="migration-steps" id="migration-steps"></ul>
-                <pre class="migration-log" id="migration-log" dir="ltr"></pre>
-            </section>
-        </div>';
+        $stepNav = '<nav class="migration-wizard-nav" aria-label="مراحل انتقال">'
+            . '<div class="migration-wizard-node" data-migration-nav-step="1"><span class="migration-wizard-circle">1</span><span class="migration-wizard-label">سرور مبدأ</span></div>'
+            . '<div class="migration-wizard-line" aria-hidden="true"></div>'
+            . '<div class="migration-wizard-node" data-migration-nav-step="2"><span class="migration-wizard-circle">2</span><span class="migration-wizard-label">سرور مقصد</span></div>'
+            . '<div class="migration-wizard-line" aria-hidden="true"></div>'
+            . '<div class="migration-wizard-node" data-migration-nav-step="3"><span class="migration-wizard-circle">3</span><span class="migration-wizard-label">انجام انتقال</span></div>'
+            . '</nav>';
+
+        return '<div class="migration-page"' . $jobAttr . '>'
+            . $stepNav
+            . '<div class="migration-top-bar" id="migration-top-bar" hidden><div class="migration-top-bar-fill" id="migration-top-bar-fill"></div></div>'
+            . '<form class="migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField
+            . '<section class="migration-wizard-panel" data-migration-wizard-panel="1">
+                <h2 class="migration-wizard-title">۱. انتخاب سرور مبدأ</h2>
+                <p class="muted form-hint">از لیست سرورهای ثبت‌شده در <strong>بکاپ SSL</strong> انتخاب کنید. بک‌آپ پنل و گواهی <code>/root/cert</code> از همان سرور گرفته می‌شود.</p>
+                <label>سرور SSL (مبدأ)</label>
+                <select name="source_ssl_server_id" id="migration-source-ssl" required>' . $sslOpts . '</select>
+                <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
+                <div class="migration-wizard-actions">
+                    <button type="button" class="btn btn-primary" data-migration-next>بعدی</button>
+                </div>
+            </section>'
+            . '<section class="migration-wizard-panel" data-migration-wizard-panel="2" hidden>
+                <h2 class="migration-wizard-title">۲. سرور مقصد (VPS جدید)</h2>
+                <p class="muted form-hint">اطلاعات SSH سرور جدید را وارد کنید. روی این ماشین 3x-ui نصب و بک‌آپ JaySub بازگردانی می‌شود.</p>
+                <label>آدرس IP یا دامنه</label>
+                <input name="target_host" id="migration-target-host" required dir="ltr" placeholder="203.0.113.10">
+                <label>پورت SSH</label>
+                <input name="target_port" type="number" value="22" min="1" max="65535" dir="ltr">
+                <label>کاربر SSH</label>
+                <input name="target_user" value="root" dir="ltr">
+                <label>نوع احراز هویت</label>
+                <select name="target_auth_type"><option value="password">رمز عبور</option><option value="key">کلید خصوصی</option></select>
+                <label>رمز یا کلید SSH</label>
+                <textarea name="target_secret" required rows="4" dir="ltr" placeholder="رمز root یا محتوای id_rsa"></textarea>
+                <label>مسیر گواهی روی VPS جدید</label>
+                <input name="target_cert_path" value="/root/cert" dir="ltr">
+                <div class="migration-wizard-actions">
+                    <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
+                    <button type="button" class="btn btn-primary" data-migration-next>بعدی</button>
+                </div>
+            </section>'
+            . '<section class="migration-wizard-panel" data-migration-wizard-panel="3" hidden>
+                <h2 class="migration-wizard-title">۳. انجام انتقال</h2>
+                <div class="migration-review" id="migration-review">
+                    <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
+                    <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
+                </div>
+                <div class="migration-wizard-actions" id="migration-start-actions">
+                    <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
+                    <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
+                </div>
+                <div class="migration-run-block" id="migration-run-block" hidden>
+                    <ul class="migration-steps" id="migration-steps"></ul>
+                    <pre class="migration-log" id="migration-log" dir="ltr"></pre>
+                </div>
+                <div class="migration-complete" id="migration-complete" hidden role="status">
+                    <span class="migration-complete-icon" aria-hidden="true">✓</span>
+                    <h3>پایان انتقال</h3>
+                    <p id="migration-complete-msg">انتقال با موفقیت انجام شد.</p>
+                </div>
+            </section>'
+            . '</form></div>';
     }
 }
