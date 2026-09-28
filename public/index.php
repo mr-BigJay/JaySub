@@ -1346,10 +1346,23 @@ if ($uri === '/admin/migration/status' && $method === 'GET') {
 
 if ($uri === '/admin/migration' && $method === 'GET') {
     requireAdmin();
-    $sslServers = SslServerService::listAll();
-    $jobId = trim((string) ($_GET['job'] ?? ''));
-    $body = Layout::adminMigrationPage(Csrf::field(), $sslServers, $jobId !== '' ? $jobId : null);
-    adminPage('انتقال سرور', 'migration', $body);
+    try {
+        $sslServers = SslServerService::listAll();
+        $jobId = trim((string) ($_GET['job'] ?? ''));
+        $body = Layout::adminMigrationPage(Csrf::field(), $sslServers, $jobId !== '' ? $jobId : null);
+        adminPage('انتقال سرور', 'migration', $body);
+    } catch (\Throwable $e) {
+        error_log('JaySub /admin/migration: ' . $e->getMessage());
+        adminPage(
+            'انتقال سرور',
+            'migration',
+            Layout::card(
+                '<div class="alert alert-error">خطا در بارگذاری صفحه انتقال: '
+                . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')
+                . '</p><p class="muted form-hint">روی سرور: <code>bash scripts/doctor</code> و لاگ PHP-FPM را ببینید.</p>',
+            ),
+        );
+    }
 }
 
 if ($uri === '/admin/migration' && $method === 'POST') {
