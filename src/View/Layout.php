@@ -22,6 +22,7 @@ final class Layout
         'telegram' => 'ربات تلگرام',
         'backup' => 'بک‌آپ',
         'ssl_backup' => 'بکاپ ssl',
+        'migration' => 'انتقال',
         'settings' => 'تنظیمات',
     ];
 
@@ -54,6 +55,7 @@ final class Layout
             'telegram' => '/admin/telegram',
             'backup' => '/admin/backup',
             'ssl_backup' => '/admin/ssl-backup',
+            'migration' => '/admin/migration',
             'settings' => '/admin/settings',
         ];
         foreach (self::ADMIN_NAV as $key => $label) {
@@ -1568,8 +1570,68 @@ HTML;
             'telegram' => '✈',
             'backup' => '💾',
             'ssl_backup' => '🔒',
+            'migration' => '⇄',
             'settings' => '⚙',
             default => '•',
         };
+    }
+
+    /**
+     * @param list<array<string, mixed>> $panels
+     * @param list<array<string, mixed>> $sslServers
+     */
+    public static function adminMigrationPage(
+        string $csrfField,
+        array $panels,
+        array $sslServers,
+        ?string $activeJobId,
+    ): string {
+        $panelOpts = '';
+        foreach ($panels as $p) {
+            $panelOpts .= '<option value="' . (int) $p['id'] . '">' . htmlspecialchars((string) $p['name'], ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        $sslOpts = '';
+        foreach ($sslServers as $s) {
+            $sslOpts .= '<option value="' . (int) $s['id'] . '">' . htmlspecialchars((string) $s['name'] . ' — ' . $s['host'], ENT_QUOTES, 'UTF-8') . '</option>';
+        }
+        $jobAttr = $activeJobId !== null && $activeJobId !== ''
+            ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
+            : '';
+
+        return '<div class="migration-page"' . $jobAttr . '>
+            <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
+            <form class="stack migration-form" method="post" action="/admin/migration" id="migration-form">' . $csrfField . '
+                <fieldset>
+                    <legend>پنل و بک‌آپ</legend>
+                    <label>پنل XUI (منبع بک‌آپ)</label>
+                    <select name="panel_id" required>' . ($panelOpts ?: '<option value="">پنلی ثبت نشده</option>') . '</select>
+                    <label>سرور SSL مبدأ (گواهی /root/cert)</label>
+                    <select name="source_ssl_server_id" required>' . ($sslOpts ?: '<option value="">ابتدا در بکاپ SSL سرور اضافه کنید</option>') . '</select>
+                </fieldset>
+                <fieldset>
+                    <legend>VPS جدید (SSH)</legend>
+                    <label>آدرس IP یا دامنه</label><input name="target_host" required dir="ltr" placeholder="203.0.113.10">
+                    <label>پورت SSH</label><input name="target_port" type="number" value="22" min="1" max="65535" dir="ltr">
+                    <label>کاربر</label><input name="target_user" value="root" dir="ltr">
+                    <label>نوع احراز</label>
+                    <select name="target_auth_type"><option value="password">رمز</option><option value="key">کلید خصوصی</option></select>
+                    <label>رمز یا کلید SSH</label>
+                    <textarea name="target_secret" required rows="4" dir="ltr"></textarea>
+                    <label>مسیر گواهی روی VPS جدید</label><input name="target_cert_path" value="/root/cert" dir="ltr">
+                </fieldset>
+                <fieldset>
+                    <legend>پنل 3x-ui جدید (بعد از نصب)</legend>
+                    <p class="muted form-hint">بعد از نصب، در پنل جدید وارد شوید، یک <strong>API Token</strong> بسازید و آدرس کامل پنل را اینجا بگذارید (مثلاً <code>https://IP:2053/RandomPath</code>).</p>
+                    <label>آدرس پنل جدید</label><input name="new_base_url" required dir="ltr" placeholder="https://203.0.113.10:2053/xxxx">
+                    <label>API Token پنل جدید</label><input name="new_api_token" required autocomplete="off" dir="ltr">
+                </fieldset>
+                <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
+            </form>
+            <section class="ui-card migration-progress" id="migration-progress" hidden>
+                <h2 class="card-title">پیشرفت انتقال</h2>
+                <ul class="migration-steps" id="migration-steps"></ul>
+                <pre class="migration-log" id="migration-log" dir="ltr"></pre>
+            </section>
+        </div>';
     }
 }

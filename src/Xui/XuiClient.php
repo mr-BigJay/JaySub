@@ -68,6 +68,62 @@ final class XuiClient
     }
 
     /**
+     * POST /panel/api/server/importDB — multipart field name "db".
+     *
+     * @return array{ok: bool, error?: string, http_code?: int}
+     */
+    public function importDatabase(string $localPath, int $timeoutSeconds = 300): array
+    {
+        if (!is_file($localPath)) {
+            return ['ok' => false, 'error' => 'فایل بک‌آپ وجود ندارد.'];
+        }
+
+        $url = rtrim($this->baseUrl, '/') . '/panel/api/server/importDB';
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init failed'];
+        }
+
+        $mime = str_ends_with(strtolower($localPath), '.dump') ? 'application/octet-stream' : 'application/octet-stream';
+        $post = [
+            'db' => new \CURLFile($localPath, $mime, basename($localPath)),
+        ];
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => 20,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $post,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $this->apiToken,
+                'X-Requested-With: XMLHttpRequest',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false) {
+            return ['ok' => false, 'error' => $curlError ?: 'Request failed', 'http_code' => $httpCode];
+        }
+
+        $decoded = json_decode($response, true);
+        if ($httpCode >= 400 || (is_array($decoded) && ($decoded['success'] ?? true) === false)) {
+            $msg = is_array($decoded) && is_string($decoded['msg'] ?? null) ? $decoded['msg'] : 'importDB failed';
+
+            return ['ok' => false, 'error' => $msg, 'http_code' => $httpCode];
+        }
+
+        return ['ok' => true, 'http_code' => $httpCode];
+    }
+
+    /**
      * @return array{ok:bool, body?:string, filename?:string, error?:string, http_code?:int}
      */
     private function requestBinary(string $method, string $path, int $timeoutSeconds): array

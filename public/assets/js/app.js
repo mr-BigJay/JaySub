@@ -181,4 +181,44 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && adminMenuSheet && adminMenuSheet.classList.contains('is-open')) closeAdminMenu();
   });
+
+  const migrationPage = document.querySelector('.migration-page[data-migration-job]');
+  if (migrationPage) {
+    const jobId = migrationPage.getAttribute('data-migration-job');
+    const progress = document.getElementById('migration-progress');
+    const stepsEl = document.getElementById('migration-steps');
+    const logEl = document.getElementById('migration-log');
+    const form = document.getElementById('migration-form');
+    const startBtn = document.getElementById('migration-start-btn');
+    if (progress && stepsEl && logEl && jobId) {
+      progress.hidden = false;
+      if (form) form.style.opacity = '0.55';
+      if (startBtn) startBtn.disabled = true;
+      const statusLabel = { pending: 'در انتظار', running: 'در حال انجام…', ok: 'انجام شد', error: 'خطا' };
+      const render = (job) => {
+        if (!job || !Array.isArray(job.steps)) return;
+        stepsEl.innerHTML = job.steps.map((s) => {
+          const st = s.status || 'pending';
+          const cls = 'migration-step migration-step-' + st;
+          const msg = s.message ? '<span class="muted">' + s.message + '</span>' : '';
+          return '<li class="' + cls + '"><strong>' + (s.label || s.id) + '</strong> — ' + (statusLabel[st] || st) + ' ' + msg + '</li>';
+        }).join('');
+        const lines = Array.isArray(job.log) ? job.log.map((e) => (e.line || '')) : [];
+        logEl.textContent = lines.join('\n');
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+      const poll = () => {
+        fetch('/admin/migration/status?job=' + encodeURIComponent(jobId), { credentials: 'same-origin' })
+          .then((r) => r.json())
+          .then((job) => {
+            render(job);
+            if (job.status === 'running' || job.status === 'queued') {
+              setTimeout(poll, 1200);
+            }
+          })
+          .catch(() => setTimeout(poll, 2500));
+      };
+      poll();
+    }
+  }
 });
