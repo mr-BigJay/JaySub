@@ -1283,6 +1283,10 @@ HTML;
             'users-total' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="9" r="2.5"/><circle cx="16" cy="9" r="2.5"/><path d="M4 19c0-2.5 2-4 4-4M16 15c2 0 4 1.5 4 4"/></svg>',
             'panels' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7L12 2z"/></svg>',
             'services' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 7h11M8 12h11M8 17h11M5 7h.01M5 12h.01M5 17h.01"/></svg>',
+            'telegram' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 4L3 11l7 3 2 7 4-9 9-8z"/><path d="M10 14l10-8"/></svg>',
+            'backup' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
+            'ssl' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3l7 4v5c0 4-3 7-7 9-4-2-7-5-7-9V7l7-4z"/><path d="M9.5 12.5l1.8 1.8 3.7-3.8"/></svg>',
+            'migration' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 7h10v10M17 7L7 17"/></svg>',
             default => '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg>',
         };
     }
@@ -1399,6 +1403,89 @@ HTML;
                 </div>
             </div>
         </div>';
+    }
+
+    public static function adminSettingsPage(): string
+    {
+        $cards = [
+            [
+                'href' => '/admin/telegram',
+                'title' => 'ربات تلگرام',
+                'desc' => 'اعلان مصرف و هشدارها برای مشتری',
+                'icon' => 'telegram',
+                'tone' => 'violet',
+            ],
+            [
+                'href' => '/admin/backup',
+                'title' => 'بک‌آپ 3x-ui',
+                'desc' => 'پشتیبان دیتابیس پنل — هر ۴ ساعت',
+                'icon' => 'backup',
+                'tone' => 'cyan',
+            ],
+            [
+                'href' => '/admin/ssl-backup',
+                'title' => 'بکاپ SSL',
+                'desc' => 'zip هفتگی پوشه /root/cert از سرورها (SSH)',
+                'icon' => 'ssl',
+                'tone' => 'amber',
+            ],
+            [
+                'href' => '/admin/migration',
+                'title' => 'انتقال سرور',
+                'desc' => 'جابجایی پنل 3x-ui به VPS جدید',
+                'icon' => 'migration',
+                'tone' => 'blue',
+            ],
+        ];
+
+        $grid = '';
+        foreach ($cards as $card) {
+            $grid .= self::adminSettingsHubCard(
+                (string) $card['href'],
+                (string) $card['title'],
+                (string) $card['desc'],
+                (string) $card['icon'],
+                (string) $card['tone'],
+            );
+        }
+
+        return '<div class="settings-page">
+            <header class="settings-hub-head">
+                <h2 class="settings-hub-title">تنظیمات تخصصی</h2>
+                <p class="muted settings-hub-sub">ابزارهای پشتیبان‌گیری، اعلان و انتقال — هر مورد را باز کنید.</p>
+            </header>
+            <nav class="settings-hub-grid" aria-label="تنظیمات تخصصی">' . $grid . '</nav>
+            <section class="ui-card settings-info-card">
+                <div class="settings-info-head">
+                    <h2 class="card-title">مصرف و سقف حجم</h2>
+                    <span class="badge badge-success">فقط محاسبه</span>
+                </div>
+                <p class="settings-info-text">JaySub ترافیک را از 3x-ui sync می‌کند و درصد مصرف را نشان می‌دهد. سرویس به‌خاطر سقف قطع نمی‌شود و کلاینت‌های پنل دست‌نخورده می‌مانند.</p>
+                <p class="muted form-hint settings-info-hint">برای پاک‌کردن وضعیت «قطع‌شده» قدیمی در دیتابیس:</p>
+                <code class="settings-cli">php scripts/reset-jaysub-service-state.php</code>
+            </section>
+            <p class="muted form-hint settings-foot">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>
+        </div>';
+    }
+
+    private static function adminSettingsHubCard(
+        string $href,
+        string $title,
+        string $desc,
+        string $icon,
+        string $tone,
+    ): string {
+        $tone = preg_replace('/[^a-z-]/', '', $tone) ?: 'violet';
+
+        return '<a class="settings-hub-card settings-hub-card-' . $tone . '" href="'
+            . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '">'
+            . '<span class="shc-icon" aria-hidden="true">' . self::adminDashIcon($icon) . '</span>'
+            . '<span class="shc-body">'
+            . '<span class="shc-title">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</span>'
+            . '<span class="shc-desc muted">' . htmlspecialchars($desc, ENT_QUOTES, 'UTF-8') . '</span>'
+            . '</span>'
+            . '<span class="shc-arrow" aria-hidden="true">‹</span>'
+            . '</a>';
     }
 
     private static function adminFlashToastModal(string $message, string $variant): string

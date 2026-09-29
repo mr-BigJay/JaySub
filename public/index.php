@@ -1507,20 +1507,7 @@ if ($uri === '/admin/migration' && $method === 'POST') {
 
 if ($uri === '/admin/settings' && $method === 'GET') {
     requireAdmin();
-    $body = '<p class="muted">تنظیمات تخصصی:</p>
-        <ul>
-            <li><a href="/admin/telegram">ربات تلگرام</a> — اعلان مصرف به مشتری</li>
-            <li><a href="/admin/backup">بک‌آپ</a> — پشتیبان دیتابیس 3x-ui (هر ۴ ساعت)</li>
-            <li><a href="/admin/ssl-backup">بکاپ ssl</a> — zip هفتگی <code>/root/cert</code> از سرورها (SSH)</li>
-            <li><a href="/admin/migration">انتقال</a> — جابجایی پنل به VPS جدید</li>
-        </ul>
-        <fieldset>
-            <legend>مصرف و سقف حجم</legend>
-            <p><span class="badge badge-success">فقط محاسبه</span> — JaySub ترافیک را از 3x-ui sync می‌کند و درصد مصرف را نشان می‌دهد. سرویس به‌خاطر سقف قطع نمی‌شود و کلاینت‌های پنل دست‌نخورده می‌مانند.</p>
-            <p class="muted form-hint">برای پاک‌کردن وضعیت «قطع‌شده» قدیمی در دیتابیس: <code>php scripts/reset-jaysub-service-state.php</code></p>
-        </fieldset>
-        <p class="muted form-hint">پیکربندی دیتابیس و رمزنگاری در <code>config/config.php</code> روی سرور است.</p>';
-    adminPage('تنظیمات', 'settings', Layout::card($body));
+    adminPage('تنظیمات', 'settings', Layout::adminSettingsPage());
 }
 
 // API JSON
