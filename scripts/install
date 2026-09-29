@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# JaySub bootstrap — always fetches latest deploy.sh via git (avoids stale raw.githubusercontent cache).
+#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/JaySub/cursor/vpn-customer-panel-6abb/scripts/install | bash
+set -euo pipefail
+
+REPO_URL="${JAYSUB_REPO_URL:-https://github.com/mr-BigJay/JaySub.git}"
+GIT_BRANCH="${JAYSUB_BRANCH:-cursor/vpn-customer-panel-6abb}"
+INSTALLER_VERSION="5"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Lotfan ba root ejra konid:"
+  echo "  curl -fsSL .../scripts/install | sudo bash"
+  exit 1
+fi
+
+echo "=============================================="
+echo " JaySub — yek khat nasb (soal + DB + nginx + SSL)"
+echo " Installer v${INSTALLER_VERSION}"
+echo "=============================================="
+echo "Dar hal-e daryaft az GitHub (branch: ${GIT_BRANCH})..."
+
+WORK=""
+for dir in /tmp /root /var/tmp; do
+  if [[ -d "$dir" && -w "$dir" ]]; then
+    WORK="${dir}/jaysub-src.$$.$RANDOM"
+    break
+  fi
+done
+if [[ -z "$WORK" ]]; then
+  echo "Khata: masir-e movaghat peyda nashod."
+  exit 1
+fi
+
+if ! command -v git &>/dev/null; then
+  echo "Nasb-e git..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq git ca-certificates
+fi
+
+rm -rf "$WORK"
+if ! git clone --depth 1 --branch "$GIT_BRANCH" "$REPO_URL" "$WORK" 2>/dev/null; then
+  echo "Khata dar git clone. Internet va branch ro check konid."
+  echo "Repo: $REPO_URL branch: $GIT_BRANCH"
+  exit 1
+fi
+
+DEPLOY="${WORK}/scripts/deploy.sh"
+if [[ ! -f "$DEPLOY" ]]; then
+  echo "Khata: deploy.sh dar repo peyda nashod."
+  exit 1
+fi
+
+if ! grep -q 'interactive_wizard' "$DEPLOY"; then
+  echo "Khata: noskhe-ye deploy.sh ghadimi ast. ba poshtibani tamas begirid."
+  exit 1
+fi
+
+chmod +x "$DEPLOY"
+trap 'rm -rf "$WORK"' EXIT
+
+bash "$DEPLOY" "$@"
