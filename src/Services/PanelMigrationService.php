@@ -77,10 +77,7 @@ final class PanelMigrationService
 
         // 2) نصب 3x-ui v3.4.2
         self::beginStep($job, 'install_xui', $config);
-        $installCmd = 'bash -lc ' . escapeshellarg(
-            'export DEBIAN_FRONTEND=noninteractive; '
-            . 'bash <(curl -fsSL https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) v3.4.2 2>&1 | tail -n 100'
-        );
+        $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
         $install = SshRemoteZip::runRemoteShell($target, $encryption, $installCmd, 1200, self::storageBase($config));
         if (!$install['ok']) {
             throw new \RuntimeException('نصب 3x-ui: ' . ($install['error'] ?? 'ناموفق'));
@@ -92,6 +89,11 @@ final class PanelMigrationService
                     self::log($job, $line);
                 }
             }
+        }
+        if (self::remoteOutputIndicatesXuiInstallFailure($out)) {
+            throw new \RuntimeException(
+                'نصب 3x-ui روی سرور مقصد کامل نشد (احتمالاً قفل apt یا قطع دانلود). لاگ را ببینید و دوباره انتقال را اجر کنید.'
+            );
         }
         self::finishStep($job, 'install_xui', $config);
 
@@ -266,6 +268,55 @@ final class PanelMigrationService
     {
         $job['updated_at'] = date('c');
         MigrationJobStore::save($config, $job);
+    }
+
+    /** Shell script run on the destination VPS to install 3x-ui (visible for tests). */
+    public static function remoteXuiInstallScript(string $version = 'v3.4.2'): string
+    {
+        $ver = preg_replace('/[^a-zA-Z0-9._-]/', '', $version) ?: 'v3.4.2';
+
+        return 'set -euo pipefail; '
+            . 'export DEBIAN_FRONTEND=noninteractive XUI_NONINTERACTIVE=1; '
+            . 'wait_apt() { local max=600 w=0; '
+            . 'while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 '
+            . '|| fuser /var/lib/apt/lists/lock >/dev/null 2>&1 '
+            . '|| pgrep -x apt-get >/dev/null 2>&1 || pgrep -x apt >/dev/null 2>&1; do '
+            . 'if [ "$w" -ge "$max" ]; then echo "apt lock held after ${max}s" >&2; return 1; fi; '
+            . 'echo "Waiting for apt lock (${w}s)..." >&2; sleep 5; w=$((w+5)); done; }; '
+            . 'LOG=/tmp/jaysub-xui-install.log; '
+            . 'xui_db_ready() { for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && return 0; done; return 1; }; '
+            . 'run_install() { wait_apt; rm -f "$LOG"; '
+            . 'bash <(curl -fsSL https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) '
+            . escapeshellarg($ver) . ' >>"$LOG" 2>&1; }; '
+            . 'attempt=1; while [ "$attempt" -le 2 ]; do '
+            . 'if run_install && xui_db_ready; then tail -n 150 "$LOG" 2>/dev/null || true; exit 0; fi; '
+            . 'if [ "$attempt" -eq 2 ]; then break; fi; '
+            . 'echo "Retrying x-ui install (attempt 2/2)..." >&2; sleep 10; attempt=2; '
+            . 'done; '
+            . 'tail -n 150 "$LOG" 2>/dev/null || true; echo "x-ui.db not found after install" >&2; exit 1';
+    }
+
+    public static function remoteOutputIndicatesXuiInstallFailure(string $output): bool
+    {
+        if ($output === '') {
+            return false;
+        }
+
+        $needles = [
+            'Failed to extract the x-ui release archive',
+            'x-ui.db not found after install',
+            'Download x-ui',
+            ' failed, please check if the version exists',
+            'Downloading x-ui failed',
+            'apt lock held after',
+        ];
+        foreach ($needles as $needle) {
+            if (str_contains($output, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return list<array{id:string,label:string,status:string,message?:string}> */
