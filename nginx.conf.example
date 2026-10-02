@@ -1,0 +1,30 @@
+server {
+    listen 80;
+    server_name vpn-panel.example.com;
+    root /var/www/vpn-panel/public;
+    index index.php;
+
+    client_max_body_size 4m;
+
+    location /assets/ {
+        try_files $uri /index.php$is_args$args;
+        expires 7d;
+    }
+
+    location / {
+        try_files $uri /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}
+
+# Cron (every minute):
+# * * * * * php /var/www/vpn-panel/worker/traffic_worker.php >> /var/www/vpn-panel/logs/worker.log 2>&1
