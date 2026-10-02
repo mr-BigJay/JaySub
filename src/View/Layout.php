@@ -203,13 +203,22 @@ HTML;
             return '<p class="muted chart-empty">هنوز دادهٔ مصرف ثبت نشده. پس از sync کارگر، نمودار پر می‌شود.</p>';
         }
         $max = max(array_column($points, 'bytes'));
-        if ($max <= 0) {
-            $max = 1;
-        }
         $bars = '';
         foreach ($points as $p) {
-            $h = max(4, (int) round(($p['bytes'] / $max) * 100));
-            $bars .= '<div class="chart-bar-wrap"><div class="chart-bar" style="height:' . $h . '%"></div><span class="chart-lbl">' . htmlspecialchars($p['label'], ENT_QUOTES, 'UTF-8') . '</span></div>';
+            $bytes = (int) $p['bytes'];
+            if ($max <= 0 || $bytes <= 0) {
+                $hPx = 0;
+            } else {
+                // Pixel heights are computed vs a fixed plot; CSS flex track scales visually.
+                $hPx = max(4, (int) round(($bytes / $max) * 100));
+            }
+            $barCls = 'chart-bar' . ($hPx <= 0 ? ' chart-bar-zero' : '');
+            $bars .= '<div class="chart-bar-wrap">'
+                . '<div class="chart-bar-track">'
+                . '<div class="' . $barCls . '" style="height:' . $hPx . '%"></div>'
+                . '</div>'
+                . '<span class="chart-lbl">' . htmlspecialchars($p['label'], ENT_QUOTES, 'UTF-8') . '</span>'
+                . '</div>';
         }
         return '<div class="traffic-chart">' . $bars . '</div>';
     }
