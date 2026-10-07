@@ -159,11 +159,12 @@ final class PanelMigrationService
         $restoreEsc = escapeshellarg($remoteBackup);
         $restoreCmd = 'bash -lc ' . escapeshellarg(
             'set -e; RESTORE=' . $restoreEsc . '; '
+            . 'mkdir -p /etc/x-ui; '
             . 'DB=""; for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && DB="$c" && break; done; '
-            . 'if [ -z "$DB" ]; then echo "x-ui.db not found after install" >&2; exit 1; fi; '
+            . 'if [ -z "$DB" ]; then DB="/etc/x-ui/x-ui.db"; fi; '
             . 'systemctl stop x-ui 2>/dev/null || systemctl stop 3x-ui 2>/dev/null || true; '
             . 'sleep 2; '
-            . 'cp -a "$DB" "${DB}.jaysub.bak.$(date +%s)"; '
+            . 'if [ -f "$DB" ]; then cp -a "$DB" "${DB}.jaysub.bak.$(date +%s)"; fi; '
             . 'cp -f "$RESTORE" "$DB"; chmod 600 "$DB"; '
             . 'systemctl start x-ui 2>/dev/null || systemctl start 3x-ui 2>/dev/null || (command -v x-ui >/dev/null && x-ui restart); '
             . 'sleep 3; systemctl is-active x-ui 2>/dev/null || systemctl is-active 3x-ui 2>/dev/null || echo x-ui restarted; '
@@ -274,9 +275,10 @@ final class PanelMigrationService
     public static function remoteXuiInstallScript(string $version = 'v3.4.2'): string
     {
         $ver = preg_replace('/[^a-zA-Z0-9._-]/', '', $version) ?: 'v3.4.2';
+        $installSh = 'https://raw.githubusercontent.com/mhsanaei/3x-ui/' . $ver . '/install.sh';
 
         return 'set -euo pipefail; '
-            . 'export DEBIAN_FRONTEND=noninteractive XUI_NONINTERACTIVE=1; '
+            . 'export DEBIAN_FRONTEND=noninteractive XUI_NONINTERACTIVE=1 XUI_DB_TYPE=sqlite XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false; '
             . 'wait_apt() { local max=600 w=0; '
             . 'while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 '
             . '|| fuser /var/lib/apt/lists/lock >/dev/null 2>&1 '
@@ -284,16 +286,27 @@ final class PanelMigrationService
             . 'if [ "$w" -ge "$max" ]; then echo "apt lock held after ${max}s" >&2; return 1; fi; '
             . 'echo "Waiting for apt lock (${w}s)..." >&2; sleep 5; w=$((w+5)); done; }; '
             . 'LOG=/tmp/jaysub-xui-install.log; '
+            . 'xui_binary_ready() { [ -x /usr/local/x-ui/x-ui ] || [ -x /usr/bin/x-ui ]; }; '
             . 'xui_db_ready() { for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && return 0; done; return 1; }; '
+            . 'xui_post_install() { systemctl daemon-reload 2>/dev/null || true; '
+            . 'systemctl enable x-ui 2>/dev/null || true; '
+            . 'systemctl start x-ui 2>/dev/null || /usr/bin/x-ui start 2>/dev/null || true; sleep 5; '
+            . 'if [ -x /usr/local/x-ui/x-ui ]; then /usr/local/x-ui/x-ui migrate 2>/dev/null || true; fi; '
+            . 'if [ -x /usr/bin/x-ui ]; then /usr/bin/x-ui migrate 2>/dev/null || true; fi; sleep 2; }; '
             . 'run_install() { wait_apt; rm -f "$LOG"; '
-            . 'bash <(curl -fsSL https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) '
+            . 'bash <(curl -fsSL ' . escapeshellarg($installSh) . ') '
             . escapeshellarg($ver) . ' >>"$LOG" 2>&1; }; '
             . 'attempt=1; while [ "$attempt" -le 2 ]; do '
-            . 'if run_install && xui_db_ready; then tail -n 150 "$LOG" 2>/dev/null || true; exit 0; fi; '
+            . 'if run_install && xui_binary_ready; then xui_post_install; '
+            . 'if xui_binary_ready; then tail -n 180 "$LOG" 2>/dev/null || true; '
+            . 'xui_db_ready || echo "Note: x-ui.db will be created from JaySub backup on restore step." >&2; exit 0; fi; fi; '
             . 'if [ "$attempt" -eq 2 ]; then break; fi; '
-            . 'echo "Retrying x-ui install (attempt 2/2)..." >&2; sleep 10; attempt=2; '
+            . 'echo "Retrying x-ui install (attempt 2/2)..." >&2; sleep 15; attempt=2; '
             . 'done; '
-            . 'tail -n 150 "$LOG" 2>/dev/null || true; echo "x-ui.db not found after install" >&2; exit 1';
+            . 'tail -n 180 "$LOG" 2>/dev/null || true; '
+            . 'if grep -q "Failed to extract the x-ui release archive" "$LOG" 2>/dev/null; then '
+            . 'echo "x-ui install failed (archive extract). See log above." >&2; exit 1; fi; '
+            . 'echo "x-ui binary not found after install" >&2; exit 1';
     }
 
     public static function remoteOutputIndicatesXuiInstallFailure(string $output): bool
@@ -304,7 +317,8 @@ final class PanelMigrationService
 
         $needles = [
             'Failed to extract the x-ui release archive',
-            'x-ui.db not found after install',
+            'x-ui binary not found after install',
+            'x-ui install failed (archive extract)',
             'Download x-ui',
             ' failed, please check if the version exists',
             'Downloading x-ui failed',
