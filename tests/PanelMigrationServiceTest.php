@@ -12,8 +12,11 @@ final class PanelMigrationServiceTest extends TestCase
         $script = PanelMigrationService::remoteXuiInstallScript('v3.4.2');
         self::assertStringContainsString('wait_apt', $script);
         self::assertStringContainsString('jaysub-xui-install.log', $script);
-        self::assertStringContainsString('x-ui.db', $script);
+        self::assertStringContainsString('XUI_DB_TYPE=sqlite', $script);
+        self::assertStringContainsString('/v3.4.2/install.sh', $script);
+        self::assertStringContainsString('xui_binary_ready', $script);
         self::assertStringNotContainsString('| tail -n', $script);
+        self::assertStringNotContainsString('/master/install.sh', $script);
     }
 
     public function testDetectsKnownInstallFailureSnippets(): void
