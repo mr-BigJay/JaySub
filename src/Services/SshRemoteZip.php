@@ -108,7 +108,7 @@ final class SshRemoteZip
                 escapeshellarg($remoteCmd)
             );
 
-            return self::execCapture($ssh, $storageBase);
+            return self::execCapture($ssh, $storageBase, $host);
         } finally {
             @unlink($keyFile);
         }
@@ -141,7 +141,7 @@ final class SshRemoteZip
         $prev = getenv('SSHPASS');
         putenv('SSHPASS=' . $password);
         try {
-            return self::execCapture($cmd, $storageBase);
+            return self::execCapture($cmd, $storageBase, $host);
         } finally {
             if ($prev !== false) {
                 putenv('SSHPASS=' . $prev);
@@ -154,7 +154,7 @@ final class SshRemoteZip
     /**
      * @return array{ok:bool, body?:string, error?:string, extension?:string}
      */
-    private static function execCapture(string $command, ?string $storageBase): array
+    private static function execCapture(string $command, ?string $storageBase, ?string $retryHost = null): array
     {
         $stateDir = self::sshStateDirectory($storageBase);
         $env = getenv();
@@ -176,9 +176,16 @@ final class SshRemoteZip
         fclose($pipes[2]);
         $code = proc_close($proc);
 
+        $stderrStr = is_string($stderr) ? $stderr : '';
         $archive = self::detectArchive(is_string($stdout) ? $stdout : '');
         if ($archive === null) {
-            $err = self::formatSshError(trim((string) $stderr), $code);
+            if ($retryHost !== null && self::isHostKeyChangedError($stderrStr . $stdout)) {
+                self::removeKnownHost($retryHost, $storageBase);
+
+                return self::execCapture($command, $storageBase, null);
+            }
+            $err = self::formatSshError(trim($stderrStr), $code);
+
             return ['ok' => false, 'error' => $err];
         }
 
@@ -230,6 +237,12 @@ final class SshRemoteZip
             return $code === 127
                 ? 'روی سرور remote دستور zip/tar پیدا نشد — روی آن سرور: apt install -y zip'
                 : 'SSH/بکاپ ناموفق (کد ' . $code . ').';
+        }
+        if (str_contains($stderr, 'REMOTE HOST IDENTIFICATION HAS CHANGED')
+            || str_contains($stderr, 'Host key verification failed')) {
+            return 'کلید SSH این VPS عوض شده (معمولاً بعد از rebuild). روی سرور JaySub اجرا کنید: '
+                . 'ssh-keygen -f storage/ssl-ssh/known_hosts -R «IP-سرور-جدید» — سپس انتقال را دوباره بزنید. '
+                . '(نسخهٔ جدید JaySub این کار را خودکار هم انجام می‌دهد.)';
         }
         if (str_contains($stderr, 'Permission denied') && str_contains($stderr, '.ssh')) {
             return 'خطای SSH روی JaySub (known_hosts). پوشه storage/ssl-ssh باید برای www-data قابل نوشتن باشد. جزئیات: ' . mb_substr($stderr, 0, 400);
@@ -334,7 +347,7 @@ final class SshRemoteZip
                 $remote
             );
             try {
-                $r = self::execText($scp, $storageBase);
+                $r = self::execText($scp, $storageBase, $host);
             } finally {
                 @unlink($keyFile);
             }
@@ -355,7 +368,7 @@ final class SshRemoteZip
             $prev = getenv('SSHPASS');
             putenv('SSHPASS=' . $secret);
             try {
-                $r = self::execText($scp, $storageBase);
+                $r = self::execText($scp, $storageBase, $host);
             } finally {
                 if ($prev !== false) {
                     putenv('SSHPASS=' . $prev);
@@ -401,7 +414,7 @@ final class SshRemoteZip
                 escapeshellarg($remoteCmd)
             );
 
-            return self::execText($ssh, $storageBase);
+            return self::execText($ssh, $storageBase, $host);
         } finally {
             @unlink($keyFile);
         }
@@ -434,7 +447,7 @@ final class SshRemoteZip
         $prev = getenv('SSHPASS');
         putenv('SSHPASS=' . $password);
         try {
-            return self::execText($cmd, $storageBase);
+            return self::execText($cmd, $storageBase, $host);
         } finally {
             if ($prev !== false) {
                 putenv('SSHPASS=' . $prev);
@@ -444,10 +457,49 @@ final class SshRemoteZip
         }
     }
 
+    private static function isHostKeyChangedError(string $text): bool
+    {
+        return str_contains($text, 'REMOTE HOST IDENTIFICATION HAS CHANGED')
+            || str_contains($text, 'Host key verification failed');
+    }
+
+    private static function removeKnownHost(string $host, ?string $storageBase): void
+    {
+        $host = trim($host);
+        if ($host === '') {
+            return;
+        }
+        $known = self::sshStateDirectory($storageBase) . '/known_hosts';
+        if (!is_file($known)) {
+            return;
+        }
+        @exec(
+            'ssh-keygen -f ' . escapeshellarg($known) . ' -R ' . escapeshellarg($host) . ' 2>/dev/null',
+        );
+    }
+
     /**
      * @return array{ok:bool, stdout?:string, stderr?:string, error?:string, exit_code?:int}
      */
-    private static function execText(string $command, ?string $storageBase): array
+    private static function execText(string $command, ?string $storageBase, ?string $retryHost = null): array
+    {
+        $result = self::execTextOnce($command, $storageBase);
+        if ($result['ok'] || $retryHost === null) {
+            return $result;
+        }
+        $blob = ($result['stderr'] ?? '') . ($result['stdout'] ?? '') . ($result['error'] ?? '');
+        if (!self::isHostKeyChangedError($blob)) {
+            return $result;
+        }
+        self::removeKnownHost($retryHost, $storageBase);
+
+        return self::execTextOnce($command, $storageBase);
+    }
+
+    /**
+     * @return array{ok:bool, stdout?:string, stderr?:string, error?:string, exit_code?:int}
+     */
+    private static function execTextOnce(string $command, ?string $storageBase): array
     {
         $stateDir = self::sshStateDirectory($storageBase);
         $env = getenv();
