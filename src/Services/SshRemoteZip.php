@@ -59,9 +59,13 @@ final class SshRemoteZip
 
     private static function remoteArchiveCommand(string $parent, string $folder): string
     {
-        $script = 'cd ' . escapeshellarg($parent)
-            . ' && F=' . escapeshellarg($folder)
-            . ' && if command -v zip >/dev/null 2>&1; then exec zip -r - -- "$F";'
+        $script = 'P=' . escapeshellarg($parent) . '; F=' . escapeshellarg($folder) . '; '
+            . 'if [ ! -d "$P/$F" ]; then '
+            . 'echo "پوشه گواهی روی سرور مبدأ وجود ندارد: $P/$F" >&2; '
+            . 'echo "محتوای $P:" >&2; ls -la "$P" 2>&1 | head -25 >&2; '
+            . 'exit 2; '
+            . 'fi; '
+            . 'cd "$P" && if command -v zip >/dev/null 2>&1; then exec zip -r - -- "$F";'
             . ' elif command -v tar >/dev/null 2>&1; then exec tar -czf - -- "$F";'
             . ' else echo "روی سرور remote نه zip و نه tar نصب است (apt install zip)" >&2; exit 127; fi';
 
@@ -249,6 +253,11 @@ final class SshRemoteZip
         }
         if (str_contains($stderr, 'zip: command not found')) {
             return 'روی سرور remote بسته zip نصب نیست. نصب کنید: apt install -y zip — یا با به‌روزرسانی JaySub از tar به‌صورت خودکار استفاده می‌شود.';
+        }
+        if (str_contains($stderr, 'Cannot stat') || str_contains($stderr, 'پوشه گواهی روی سرور مبدأ وجود ندارد')) {
+            return 'مسیر گواهی SSL روی سرور مبدأ پیدا نشد (cert_path). در JaySub → بکاپ SSL مسیر را با خروجی '
+                . 'ls روی همان VPS هماهنگ کنید، یا یک‌بار بکاپ SSL بگیرید تا از نسخهٔ ذخیره‌شده استفاده شود. '
+                . mb_substr($stderr, 0, 800);
         }
 
         return mb_substr($stderr, 0, 2000);

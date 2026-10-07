@@ -151,6 +151,22 @@ final class SslBackupService
     }
 
     /** @param array<string, mixed> $config */
+    public static function latestBackupFilePath(array $config, int $serverId): ?string
+    {
+        if ($serverId <= 0) {
+            return null;
+        }
+        $dir = self::serverDir($config, $serverId);
+        $files = array_merge(glob($dir . '/*.zip') ?: [], glob($dir . '/*.tar.gz') ?: []);
+        if ($files === []) {
+            return null;
+        }
+        usort($files, static fn (string $a, string $b): int => (int) filemtime($b) <=> (int) filemtime($a));
+
+        return $files[0];
+    }
+
+    /** @param array<string, mixed> $config */
     public static function resolveDownloadPath(array $config, int $serverId, string $filename): ?string
     {
         if ($serverId <= 0 || !preg_match('/^[A-Za-z0-9._-]+\\.(zip|tar\\.gz)$/', $filename)) {

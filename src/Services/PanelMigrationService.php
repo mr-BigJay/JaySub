@@ -99,22 +99,44 @@ final class PanelMigrationService
 
         // 3) کپی گواهی از VPS فعلی
         self::beginStep($job, 'ssl_copy', $config);
+        $sourceCertPath = trim((string) ($source['cert_path'] ?? '/root/cert'));
+        if ($sourceCertPath === '') {
+            $sourceCertPath = '/root/cert';
+        }
         $archive = SshRemoteZip::zipCertDirectory($source, $encryption, self::storageBase($config));
-        if (!$archive['ok'] || empty($archive['body'])) {
-            throw new \RuntimeException('خواندن /root/cert از سرور مبدأ: ' . ($archive['error'] ?? 'ناموفق'));
+        $localArchive = '';
+        $ext = '.zip';
+        if ($archive['ok'] && !empty($archive['body'])) {
+            $ext = (string) ($archive['extension'] ?? '.zip');
+            $tmp = tempnam(sys_get_temp_dir(), 'jscert_');
+            if ($tmp === false) {
+                throw new \RuntimeException('فایل موقت ایجاد نشد.');
+            }
+            $localArchive = $tmp . $ext;
+            rename($tmp, $localArchive);
+            file_put_contents($localArchive, $archive['body']);
+        } else {
+            $storedSsl = SslBackupService::latestBackupFilePath($config, $sourceSslId);
+            if ($storedSsl === null) {
+                throw new \RuntimeException(
+                    'خواندن گواهی از سرور مبدأ (' . $sourceCertPath . '): '
+                    . ($archive['error'] ?? 'ناموفق')
+                    . ' — روی VPS مبدأ مسیر را بررسی کنید یا از منوی بکاپ SSL یک‌بار بکاپ بگیرید.'
+                );
+            }
+            $localArchive = $storedSsl;
+            $ext = str_ends_with(strtolower($storedSsl), '.tar.gz') ? '.tar.gz' : '.zip';
+            self::log(
+                $job,
+                'پوشه گواهی روی سرور مبدأ در دسترس نبود؛ استفاده از آخرین بکاپ SSL JaySub: ' . basename($storedSsl),
+            );
         }
-        $ext = (string) ($archive['extension'] ?? '.zip');
-        $tmp = tempnam(sys_get_temp_dir(), 'jscert_');
-        if ($tmp === false) {
-            throw new \RuntimeException('فایل موقت ایجاد نشد.');
-        }
-        $localArchive = $tmp . $ext;
-        rename($tmp, $localArchive);
-        file_put_contents($localArchive, $archive['body']);
 
         $remoteArchive = '/tmp/jaysub-certs' . $ext;
         $up = SshRemoteZip::uploadLocalFile($target, $encryption, $localArchive, $remoteArchive, self::storageBase($config));
-        @unlink($localArchive);
+        if ($archive['ok'] ?? false) {
+            @unlink($localArchive);
+        }
         if (!$up['ok']) {
             throw new \RuntimeException('آپلود گواهی به سرور جدید: ' . ($up['error'] ?? 'ناموفق'));
         }
