@@ -187,10 +187,18 @@ final class PanelMigrationService
             . 'systemctl stop x-ui 2>/dev/null || systemctl stop 3x-ui 2>/dev/null || true; '
             . 'sleep 2; '
             . 'if [ -f "$DB" ]; then cp -a "$DB" "${DB}.jaysub.bak.$(date +%s)"; fi; '
-            . 'cp -f "$RESTORE" "$DB"; chmod 600 "$DB"; '
-            . 'systemctl start x-ui 2>/dev/null || systemctl start 3x-ui 2>/dev/null || (command -v x-ui >/dev/null && x-ui restart); '
-            . 'sleep 3; systemctl is-active x-ui 2>/dev/null || systemctl is-active 3x-ui 2>/dev/null || echo x-ui restarted; '
-            . 'rm -f "$RESTORE"'
+            . 'cp -f "$RESTORE" "$DB"; chmod 600 "$DB"; chown root:root "$DB" 2>/dev/null || true; '
+            . 'systemctl daemon-reload 2>/dev/null || true; '
+            . 'systemctl enable x-ui 2>/dev/null || true; '
+            . 'systemctl restart x-ui 2>/dev/null || true; '
+            . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
+            . 'command -v x-ui >/dev/null && x-ui restart 2>/dev/null || x-ui start 2>/dev/null || true; '
+            . 'sleep 8; fi; '
+            . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
+            . 'echo "x-ui service not running after restore" >&2; '
+            . 'systemctl status x-ui --no-pager 2>&1 | tail -25 >&2; '
+            . 'journalctl -u x-ui -n 30 --no-pager 2>&1 >&2; exit 1; fi; '
+            . 'echo "x-ui active after restore"; rm -f "$RESTORE"'
         );
         $rest = SshRemoteZip::runRemoteShell($target, $encryption, $restoreCmd, 180, self::storageBase($config));
         if (!$rest['ok']) {
@@ -299,6 +307,8 @@ final class PanelMigrationService
         $ver = preg_replace('/[^a-zA-Z0-9._-]/', '', $version) ?: 'v3.4.2';
         $installSh = 'https://raw.githubusercontent.com/mhsanaei/3x-ui/' . $ver . '/install.sh';
 
+        $installer = '/tmp/jaysub-xui-installer.sh';
+
         return 'set -euo pipefail; '
             . 'export DEBIAN_FRONTEND=noninteractive XUI_NONINTERACTIVE=1 XUI_DB_TYPE=sqlite XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false; '
             . 'wait_apt() { local max=600 w=0; '
@@ -309,18 +319,22 @@ final class PanelMigrationService
             . 'echo "Waiting for apt lock (${w}s)..." >&2; sleep 5; w=$((w+5)); done; }; '
             . 'LOG=/tmp/jaysub-xui-install.log; '
             . 'xui_binary_ready() { [ -x /usr/local/x-ui/x-ui ] || [ -x /usr/bin/x-ui ]; }; '
+            . 'xui_unit_ready() { [ -f /etc/systemd/system/x-ui.service ] || systemctl cat x-ui >/dev/null 2>&1; }; '
             . 'xui_db_ready() { for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && return 0; done; return 1; }; '
             . 'xui_post_install() { systemctl daemon-reload 2>/dev/null || true; '
             . 'systemctl enable x-ui 2>/dev/null || true; '
-            . 'systemctl start x-ui 2>/dev/null || /usr/bin/x-ui start 2>/dev/null || true; sleep 5; '
+            . 'systemctl restart x-ui 2>/dev/null || true; '
+            . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
+            . 'command -v x-ui >/dev/null && x-ui start 2>/dev/null || true; sleep 6; fi; '
             . 'if [ -x /usr/local/x-ui/x-ui ]; then /usr/local/x-ui/x-ui migrate 2>/dev/null || true; fi; '
             . 'if [ -x /usr/bin/x-ui ]; then /usr/bin/x-ui migrate 2>/dev/null || true; fi; sleep 2; }; '
             . 'run_install() { wait_apt; rm -f "$LOG"; '
-            . 'bash <(curl -fsSL ' . escapeshellarg($installSh) . ') '
+            . 'curl -fsSL ' . escapeshellarg($installSh) . ' -o ' . escapeshellarg($installer) . ' || return 1; '
+            . 'bash ' . escapeshellarg($installer) . ' '
             . escapeshellarg($ver) . ' >>"$LOG" 2>&1; }; '
             . 'attempt=1; while [ "$attempt" -le 2 ]; do '
-            . 'if run_install && xui_binary_ready; then xui_post_install; '
-            . 'if xui_binary_ready; then tail -n 180 "$LOG" 2>/dev/null || true; '
+            . 'if run_install && xui_binary_ready && xui_unit_ready; then xui_post_install; '
+            . 'if xui_binary_ready && xui_unit_ready; then tail -n 180 "$LOG" 2>/dev/null || true; '
             . 'xui_db_ready || echo "Note: x-ui.db will be created from JaySub backup on restore step." >&2; exit 0; fi; fi; '
             . 'if [ "$attempt" -eq 2 ]; then break; fi; '
             . 'echo "Retrying x-ui install (attempt 2/2)..." >&2; sleep 15; attempt=2; '
@@ -328,7 +342,8 @@ final class PanelMigrationService
             . 'tail -n 180 "$LOG" 2>/dev/null || true; '
             . 'if grep -q "Failed to extract the x-ui release archive" "$LOG" 2>/dev/null; then '
             . 'echo "x-ui install failed (archive extract). See log above." >&2; exit 1; fi; '
-            . 'echo "x-ui binary not found after install" >&2; exit 1';
+            . 'if ! xui_binary_ready; then echo "x-ui binary not found after install" >&2; exit 1; fi; '
+            . 'echo "x-ui systemd unit missing — install incomplete (see log)" >&2; exit 1';
     }
 
     public static function remoteOutputIndicatesXuiInstallFailure(string $output): bool
@@ -340,6 +355,8 @@ final class PanelMigrationService
         $needles = [
             'Failed to extract the x-ui release archive',
             'x-ui binary not found after install',
+            'x-ui systemd unit missing',
+            'x-ui service not running after restore',
             'x-ui install failed (archive extract)',
             'Download x-ui',
             ' failed, please check if the version exists',
