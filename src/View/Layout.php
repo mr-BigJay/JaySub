@@ -1547,6 +1547,21 @@ HTML;
                 </fieldset>
                 <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
             </form>
+            <section class="ui-card" id="xui-offline-upload" hidden>
+                <h2 class="card-title">بارگذاری یک‌باره بسته رسمی 3x-ui v3.4.2</h2>
+                <p class="muted form-hint">فایل رسمی را از دستگاهی که به GitHub دسترسی دارد دانلود کنید و یک‌بار در JaySub بارگذاری کنید. بسته پس از بررسی SHA-256 ذخیره می‌شود و می‌توان از آن برای چند سرور استفاده کرد. بسته روی VPS ایران از GitHub دانلود نمی‌شود.</p>
+                <form class="stack" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data">' . $csrfField . '
+                    <label>معماری بسته</label>
+                    <select name="architecture" required>
+                        <option value="amd64">amd64 (x86_64)</option>
+                        <option value="arm64">arm64 (aarch64)</option>
+                    </select>
+                    <label>فایل رسمی x-ui-linux-ARCH.tar.gz</label>
+                    <input type="file" name="xui_archive" accept=".gz,.tgz,application/gzip" required>
+                    <p class="muted form-hint">برای آپلود از مرورگر، تنظیمات PHP باید حداقل <code>upload_max_filesize=128M</code> و <code>post_max_size=130M</code> باشند. روش جایگزین: کپی فایل به پوشه <code>storage/xui-offline/v3.4.2/</code> روی سرور JaySub.</p>
+                    <button class="btn btn-secondary" type="submit">آپلود و بررسی اصالت فایل</button>
+                </form>
+            </section>
             <section class="ui-card migration-progress" id="migration-progress" hidden>
                 <h2 class="card-title">پیشرفت انتقال</h2>
                 <ul class="migration-steps" id="migration-steps"></ul>
