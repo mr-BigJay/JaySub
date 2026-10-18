@@ -54,7 +54,115 @@ final class OfflineXuiInstaller
     }
 
     /**
-     * Validate before transferring (large files must be provided by the admin).
+     * Provision a package on the JaySub management server. The destination VPS
+     * NEVER contacts GitHub. An already-cached verified file is reused.
+     * @param array<string, mixed> $config
+     * @return array{path:string,sha256:string}
+     */
+    public static function ensureArchive(array $config, string $architecture): array
+    {
+        $destination = self::archivePath($config, $architecture);
+        $dir = dirname($destination);
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            throw new \RuntimeException('ساخت پوشه cache روی سرور مدیریت JaySub ناموفق بود.');
+        }
+        if (is_link($destination)) {
+            throw new \RuntimeException('مسیر بسته نصب آفلاین نباید symbolic link باشد.');
+        }
+
+        $lockPath = $dir . '/.download-' . $architecture . '.lock';
+        $lock = fopen($lockPath, 'c');
+        if ($lock === false) {
+            throw new \RuntimeException('ایجاد قفل برای دریافت بسته 3x-ui ناموفق بود.');
+        }
+        try {
+            if (!flock($lock, LOCK_EX)) {
+                throw new \RuntimeException('قفل cache بسته نصب در دسترس نیست.');
+            }
+
+            // Never download again when the correct release has been staged.
+            if (file_exists($destination) || is_link($destination)) {
+                return self::validatedArchive($config, $architecture);
+            }
+            if (!function_exists('curl_init')) {
+                throw new \RuntimeException('برای دریافت اولیه بسته روی JaySub افزونه PHP cURL لازم است.');
+            }
+
+            $tmp = tempnam($dir, '.downloading-');
+            if ($tmp === false) {
+                throw new \RuntimeException('ساخت فایل موقت دانلود روی JaySub ناموفق بود.');
+            }
+            try {
+                $stream = fopen($tmp, 'wb');
+                if ($stream === false) {
+                    throw new \RuntimeException('فایل موقت دانلود روی JaySub قابل نوشتن نیست.');
+                }
+
+                $url = 'https://github.com/MHSanaei/3x-ui/releases/download/'
+                    . self::VERSION . '/x-ui-linux-' . $architecture . '.tar.gz';
+                $ch = curl_init($url);
+                if ($ch === false) {
+                    fclose($stream);
+                    throw new \RuntimeException('شروع دانلود بسته 3x-ui روی JaySub ناموفق بود.');
+                }
+
+                try {
+                    curl_setopt_array($ch, [
+                        CURLOPT_FILE => $stream,
+                        CURLOPT_FOLLOWLOCATION => true,
+                        CURLOPT_MAXREDIRS => 5,
+                        CURLOPT_CONNECTTIMEOUT => 30,
+                        CURLOPT_TIMEOUT => 600,
+                        CURLOPT_SSL_VERIFYPEER => true,
+                        CURLOPT_SSL_VERIFYHOST => 2,
+                        CURLOPT_FAILONERROR => true,
+                        CURLOPT_USERAGENT => 'JaySub-offline-xui/3.4.2',
+                        CURLOPT_LOW_SPEED_LIMIT => 1024,
+                        CURLOPT_LOW_SPEED_TIME => 90,
+                    ]);
+                    $ok = curl_exec($ch);
+                    $httpCode = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+                    $error = curl_error($ch);
+                } finally {
+                    curl_close($ch);
+                    fclose($stream);
+                }
+
+                if ($ok !== true || $httpCode !== 200) {
+                    throw new \RuntimeException(
+                        'دریافت اولیه نسخه 3.4.2 روی سرور JaySub ناموفق بود (HTTP '
+                        . $httpCode . '): ' . $error
+                    );
+                }
+
+                $size = filesize($tmp);
+                if ($size === false || $size < 10_000_000 || $size > 105_000_000) {
+                    throw new \RuntimeException('حجم بسته دانلودشده روی JaySub نامعتبر است.');
+                }
+                $digest = hash_file('sha256', $tmp);
+                if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+                    throw new \RuntimeException('SHA-256 دانلود روی JaySub با نسخه رسمی 3x-ui v3.4.2 مطابقت ندارد.');
+                }
+
+                chmod($tmp, 0600);
+                if (!rename($tmp, $destination)) {
+                    throw new \RuntimeException('انتقال بسته دانلودشده به cache روی JaySub ناموفق بود.');
+                }
+
+                return self::validatedArchive($config, $architecture);
+            } finally {
+                if (is_file($tmp)) {
+                    @unlink($tmp);
+                }
+            }
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /**
+     * Validate local cache before transferring to another VPS.
      * @param array<string, mixed> $config
      * @return array{path:string,sha256:string}
      */
