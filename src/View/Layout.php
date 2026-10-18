@@ -1502,8 +1502,8 @@ HTML;
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
 
-        $amd64Status = !empty($offlineArchives['amd64']) ? 'موجود (بررسی SHA در شروع نصب)' : 'هنوز آماده نشده';
-        $arm64Status = !empty($offlineArchives['arm64']) ? 'موجود (بررسی SHA در شروع نصب)' : 'هنوز آماده نشده';
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'موجود روی سرور JaySub' : 'در صورت نیاز، خودکار روی JaySub دریافت می‌شود';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'موجود روی سرور JaySub' : 'در صورت نیاز، خودکار روی JaySub دریافت می‌شود';
 
         return '<div class="migration-page"' . $jobAttr . '>
             <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
@@ -1534,7 +1534,7 @@ HTML;
                         <option value="offline">آفلاین — ارسال بسته از سرور JaySub با SSH</option>
                     </select>
                     <div class="ui-card" id="xui-offline-info" hidden>
-                        <p class="muted form-hint">در حالت آفلاین، بسته رسمی نسخه v3.4.2 باید <strong>از قبل روی سرور JaySub</strong> ذخیره شده باشد. بسته از JaySub به VPS مقصد منتقل می‌شود و نصب بدون ارتباط با GitHub انجام می‌شود. برای شروع، VPS مقصد باید Ubuntu/Debian با systemd و ابزارهای پایه باشد و 3x-ui از قبل روی آن نصب نشده باشد.</p>
+                        <p class="muted form-hint">در حالت آفلاین، <strong>هیچ آپلود دستی لازم نیست.</strong> JaySub بسته رسمی v3.4.2 را از cache سرور مدیریت می‌خواند (و اگر موجود نباشد، فقط روی سرور مدیریت دریافت و ذخیره می‌کند)؛ سپس آن را خودکار به VPS مقصد منتقل کرده و نصب می‌کند. VPS مقصد به GitHub وصل نمی‌شود. برای شروع، VPS مقصد باید Ubuntu/Debian با systemd و ابزارهای پایه باشد و 3x-ui از قبل روی آن نصب نشده باشد.</p>
                         <p class="muted form-hint">وضعیت بسته‌ها: <strong dir="ltr">amd64:</strong> ' . $amd64Status . ' — <strong dir="ltr">arm64:</strong> ' . $arm64Status . '</p>
                         <p class="muted form-hint">مسیر بسته‌ها روی JaySub: <code>storage/xui-offline/v3.4.2/x-ui-linux-amd64.tar.gz</code> یا <code>x-ui-linux-arm64.tar.gz</code> (در مسیر storage پیکربندی‌شده). پیش از ارسال و روی VPS مقصد نیز SHA-256 رسمی کنترل می‌شود.</p>
                     </div>
@@ -1543,8 +1543,8 @@ HTML;
                 <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
             </form>
             <section class="ui-card" id="xui-offline-upload" hidden>
-                <h2 class="card-title">بارگذاری یک‌باره بسته رسمی 3x-ui v3.4.2</h2>
-                <p class="muted form-hint">فایل رسمی را از دستگاهی که به GitHub دسترسی دارد دانلود کنید و یک‌بار در JaySub بارگذاری کنید. بسته پس از بررسی SHA-256 ذخیره می‌شود و می‌توان از آن برای چند سرور استفاده کرد. بسته روی VPS ایران از GitHub دانلود نمی‌شود.</p>
+                <h2 class="card-title">بارگذاری دستی بسته (اختیاری — فقط در صورت مشکل دانلود روی JaySub)</h2>
+                <p class="muted form-hint">در حالت عادی این قسمت لازم نیست؛ بسته‌ها هنگام راه‌اندازی JaySub یا در اولین نصب آفلاین، فقط روی سرور مدیریت دریافت و ذخیره می‌شوند. اگر خود سرور JaySub دسترسی مناسبی به GitHub نداشت، می‌توانید به‌صورت اختیاری فایل رسمی را اینجا بارگذاری کنید.</p>
                 <form class="stack" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data">' . $csrfField . '
                     <label>معماری بسته</label>
                     <select name="architecture" required>
