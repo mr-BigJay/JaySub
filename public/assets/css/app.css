@@ -903,7 +903,7 @@ body.admin-menu-open { overflow: hidden; }
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.55);
 }
-.migration-form .migration-offline-choice-label {
+.migration-form.stack label.migration-offline-choice-label {
   display: flex;
   align-items: center;
   gap: 0.65rem;
