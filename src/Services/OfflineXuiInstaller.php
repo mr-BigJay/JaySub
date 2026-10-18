@@ -83,6 +83,57 @@ final class OfflineXuiInstaller
     }
 
     /**
+     * Store a verified archive received through the admin-only upload form.
+     * @param array<string, mixed> $config
+     * @param array<string, mixed> $file PHP $_FILES entry
+     */
+    public static function stageUpload(array $config, string $architecture, array $file): string
+    {
+        $destination = self::archivePath($config, $architecture);
+        $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($error !== UPLOAD_ERR_OK) {
+            throw new \RuntimeException('آپلود بسته 3x-ui کامل نشد (کد ' . $error . '). محدودیت upload_max_filesize و post_max_size را بررسی کنید.');
+        }
+
+        $tmpName = (string) ($file['tmp_name'] ?? '');
+        $size = (int) ($file['size'] ?? 0);
+        if ($size < 10_000_000 || $size > 105_000_000 || !is_uploaded_file($tmpName)) {
+            throw new \RuntimeException('فایل آپلودشده معتبر نیست یا حجم آن خارج از محدوده بسته رسمی است.');
+        }
+        $digest = hash_file('sha256', $tmpName);
+        if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+            throw new \RuntimeException('SHA-256 فایل آپلودشده با نسخه رسمی v3.4.2 و معماری انتخاب‌شده مطابقت ندارد.');
+        }
+
+        $dir = dirname($destination);
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            throw new \RuntimeException('پوشه نگهداری بسته آفلاین قابل ایجاد نیست.');
+        }
+        if (is_link($destination)) {
+            throw new \RuntimeException('مسیر بسته آفلاین نباید symbolic link باشد.');
+        }
+        $staged = tempnam($dir, 'xui-');
+        if ($staged === false) {
+            throw new \RuntimeException('ساخت فایل موقت برای بسته آفلاین ناموفق بود.');
+        }
+        try {
+            if (!move_uploaded_file($tmpName, $staged)) {
+                throw new \RuntimeException('انتقال بسته آپلودشده به storage ناموفق بود.');
+            }
+            chmod($staged, 0600);
+            if (!rename($staged, $destination)) {
+                throw new \RuntimeException('جایگزینی بسته آفلاین ناموفق بود.');
+            }
+        } finally {
+            if (is_file($staged)) {
+                @unlink($staged);
+            }
+        }
+
+        return $destination;
+    }
+
+    /**
      * Generate a network-free installer for a fresh Ubuntu/Debian systemd VPS.
      * @param string $remoteArchive a unique, fixed-format path under /tmp
      */
@@ -141,8 +192,23 @@ if [ -f "$TMP/x-ui/x-ui.service" ]; then
 elif [ -f "$TMP/x-ui/x-ui.service.debian" ]; then
   SERVICE="$TMP/x-ui/x-ui.service.debian"
 else
-  echo "Release does not contain an offline systemd service file" >&2
-  exit 1
+  # Some release bundles omit the service; supply a self-contained systemd unit.
+  SERVICE="$TMP/jaysub-x-ui.service"
+  cat >"$SERVICE" <<'UNIT'
+[Unit]
+Description=3x-ui Service
+After=network.target nss-lookup.target
+
+[Service]
+Type=simple
+WorkingDirectory=/usr/local/x-ui
+ExecStart=/usr/local/x-ui/x-ui
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 fi
 [ -f "$TMP/x-ui/bin/xray-linux-$ARCH" ] || { echo "Xray binary missing from release" >&2; exit 1; }
 chmod +x "$TMP/x-ui/x-ui" "$TMP/x-ui/x-ui.sh" "$TMP/x-ui/bin/xray-linux-$ARCH"
@@ -150,9 +216,9 @@ if [ -f "$TMP/x-ui/bin/mtg-linux-$ARCH" ]; then chmod +x "$TMP/x-ui/bin/mtg-linu
 mkdir -p /etc/x-ui /var/log/x-ui
 chmod 700 /etc/x-ui
 installed=1
+install -m 0644 "$SERVICE" /etc/systemd/system/x-ui.service
 mv "$TMP/x-ui" /usr/local/x-ui
 install -m 0755 /usr/local/x-ui/x-ui.sh /usr/bin/x-ui
-install -m 0644 "$SERVICE" /etc/systemd/system/x-ui.service
 # Generate throwaway randomized credentials while the restore step is pending.
 random_hex() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-20; }
 USER_TMP="js$(random_hex)"
