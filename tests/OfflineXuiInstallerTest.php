@@ -65,6 +65,25 @@ final class OfflineXuiInstallerTest extends TestCase
         OfflineXuiInstaller::validatedArchive($config, 'amd64');
     }
 
+    public function testRejectsCorruptExistingManagerCacheInsteadOfSilentlyDownloading(): void
+    {
+        $root = sys_get_temp_dir() . '/xui-cache-test-' . bin2hex(random_bytes(4));
+        $config = ['paths' => ['storage' => $root]];
+        $path = OfflineXuiInstaller::archivePath($config, 'amd64');
+        mkdir(dirname($path), 0700, true);
+        file_put_contents($path, 'invalid archive - must not be used');
+        try {
+            $this->expectException(RuntimeException::class);
+            OfflineXuiInstaller::ensureArchive($config, 'amd64');
+        } finally {
+            @unlink($path);
+            @unlink(dirname($path) . '/.download-amd64.lock');
+            @rmdir(dirname($path));
+            @rmdir($root . '/xui-offline');
+            @rmdir($root);
+        }
+    }
+
     public function testUploadRejectsAnUnsupportedArchitectureBeforeProcessing(): void
     {
         $this->expectException(InvalidArgumentException::class);
