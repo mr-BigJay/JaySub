@@ -1743,6 +1743,14 @@ HTML;
                 <select name="source_ssl_server_id" id="migration-source-ssl" required>' . $sslOpts . '</select>
                 </div>
                 <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
+                <div class="migration-offline-choice">
+                    <label for="migration-xui-install-mode" class="migration-offline-choice-label">
+                        <input type="checkbox" name="xui_install_mode" id="migration-xui-install-mode" value="offline">
+                        <span>نصب آفلاین 3x-ui نسخه 3.4.2</span>
+                    </label>
+                    <p class="muted form-hint migration-offline-choice-hint">پیش‌فرض نصب آنلاین فعلی است. با فعال‌کردن این گزینه، JaySub فایل رسمی را از سرور مدیریت با SCP به VPS مقصد منتقل می‌کند و بدون دانلود از GitHub روی مقصد نصب می‌کند.</p>
+                    <p class="muted form-hint migration-offline-cache-status">وضعیت بسته روی JaySub: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
+                </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
                 </div>
@@ -1778,15 +1786,6 @@ HTML;
                 <label for="migration-target-cert">مسیر گواهی روی VPS جدید</label>
                 <input name="target_cert_path" id="migration-target-cert" value="/root/cert" dir="ltr">
                 </div>
-                <div class="migration-field">
-                <label for="migration-xui-install-mode">روش نصب 3x-ui v3.4.2 روی سرور جدید</label>
-                <select name="xui_install_mode" id="migration-xui-install-mode">
-                    <option value="online">آنلاین — دریافت مستقیم روی VPS مقصد (روش قبلی)</option>
-                    <option value="offline">آفلاین — انتقال خودکار بسته از سرور JaySub (بدون GitHub روی VPS)</option>
-                </select>
-                <p class="muted form-hint">آفلاین: JaySub فایل رسمی مناسب معماری را روی سرور مدیریت بررسی یا یک‌بار دریافت می‌کند، سپس از طریق SSH/SCP به مقصد می‌فرستد و خودکار نصب می‌کند. روی VPS مقصد نیازی به دانلود از GitHub نیست. برای سرور تازه و بدون نصب قبلی 3x-ui.</p>
-                <p class="muted form-hint">Cache مدیریت: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
-                </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
                     <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
@@ -1799,6 +1798,7 @@ HTML;
                 <div class="migration-review" id="migration-review">
                     <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
                     <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
+                    <p><strong>روش نصب 3x-ui:</strong> <span id="migration-review-install-mode">آنلاین (پیش‌فرض)</span></p>
                 </div>
                 <div class="migration-wizard-actions" id="migration-start-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>

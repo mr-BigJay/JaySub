@@ -190,6 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const sourceSelect = document.getElementById('migration-source-ssl');
     const reviewSource = document.getElementById('migration-review-source');
     const reviewTarget = document.getElementById('migration-review-target');
+    const reviewInstallMode = document.getElementById('migration-review-install-mode');
+    const offlineInstallCheckbox = document.getElementById('migration-xui-install-mode');
     const sourceSummary = document.getElementById('migration-source-summary');
     const targetHost = document.getElementById('migration-target-host');
     const topBar = document.getElementById('migration-top-bar');
@@ -213,6 +215,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (reviewSource) reviewSource.textContent = selectedSourceLabel();
       const host = targetHost && targetHost.value.trim() ? targetHost.value.trim() : '—';
       if (reviewTarget) reviewTarget.textContent = host;
+      if (reviewInstallMode) {
+        reviewInstallMode.textContent = offlineInstallCheckbox && offlineInstallCheckbox.checked
+          ? 'آفلاین — فایل از سرور مدیریت JaySub'
+          : 'آنلاین (پیش‌فرض)';
+      }
     };
 
     const syncWizardFields = () => {
