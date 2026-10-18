@@ -1324,6 +1324,23 @@ if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
     exit;
 }
 
+if ($uri === '/admin/migration/offline-upload' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    try {
+        $architecture = trim((string) ($_POST['architecture'] ?? ''));
+        $file = $_FILES['xui_archive'] ?? [];
+        if (!is_array($file)) {
+            throw new \RuntimeException('بسته نصب آفلاین در درخواست پیدا نشد.');
+        }
+        \App\Services\OfflineXuiInstaller::stageUpload($config, $architecture, $file);
+        Session::set('flash_admin', 'بسته رسمی 3x-ui v3.4.2 (' . $architecture . ') آپلود و SHA-256 آن تأیید شد.');
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', 'خطای بسته نصب آفلاین: ' . $e->getMessage());
+    }
+    Response::redirect('/admin/migration');
+}
+
 if ($uri === '/admin/migration/status' && $method === 'GET') {
     requireAdmin();
     $jobId = trim((string) ($_GET['job'] ?? ''));
