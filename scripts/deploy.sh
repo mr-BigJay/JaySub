@@ -291,6 +291,21 @@ chown -R "${WEB_USER}:${WEB_USER}" "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs
 chmod -R 750 "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs"
 chmod 770 "${INSTALL_DIR}/storage/sessions"
 
+# Cache the pinned 3x-ui v3.4.2 packages ON THE JAYSUB MANAGEMENT VPS.
+# Never download on destination VPN servers. Reuses verified files on redeploy.
+# If JaySub cannot reach GitHub now, offline migration retries caching on JaySub
+# when first requested; failing to pre-cache must not break panel installation.
+if [[ "${JAYSUB_SKIP_OFFLINE_CACHE:-0}" != "1" ]]; then
+  echo "==> Preparing offline 3x-ui v3.4.2 packages on JaySub (amd64, arm64)..."
+  if command -v runuser >/dev/null 2>&1; then
+    if ! runuser -u "${WEB_USER}" -- /usr/bin/php "${INSTALL_DIR}/scripts/cache-xui-offline.php" amd64 arm64; then
+      echo "WARNING: Some offline 3x-ui archives are not cached. JaySub will retry from the management VPS when the offline mode is selected."
+    fi
+  else
+    echo "WARNING: runuser is missing; use 'sudo -u ${WEB_USER} php ${INSTALL_DIR}/scripts/cache-xui-offline.php' to pre-cache packages."
+  fi
+fi
+
 PHP_SOCK="/run/php/php${PHP_VER}-fpm.sock"
 if [[ ! -S "$PHP_SOCK" ]]; then
   PHP_SOCK="/var/run/php/php${PHP_VER}-fpm.sock"
