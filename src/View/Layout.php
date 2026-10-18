@@ -1679,6 +1679,7 @@ HTML;
         string $csrfField,
         array $sslServers,
         ?string $activeJobId,
+        array $offlineArchives = [],
     ): string {
         $sslOpts = '';
         foreach ($sslServers as $s) {
@@ -1700,6 +1701,9 @@ HTML;
         $jobAttr = $activeJobId !== null && $activeJobId !== ''
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
+
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'آماده روی JaySub' : 'در اولین درخواست روی JaySub دریافت می‌شود';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'آماده روی JaySub' : 'در اولین درخواست روی JaySub دریافت می‌شود';
 
         $stepNav = '<nav class="migration-wizard-nav" aria-label="مراحل انتقال">'
             . '<div class="migration-wizard-node" data-migration-nav-step="1"><span class="migration-wizard-circle">1</span><span class="migration-wizard-label">سرور مبدأ</span></div>'
@@ -1756,6 +1760,15 @@ HTML;
                 <div class="migration-field">
                 <label for="migration-target-cert">مسیر گواهی روی VPS جدید</label>
                 <input name="target_cert_path" id="migration-target-cert" value="/root/cert" dir="ltr">
+                </div>
+                <div class="migration-field">
+                <label for="migration-xui-install-mode">روش نصب 3x-ui v3.4.2 روی سرور جدید</label>
+                <select name="xui_install_mode" id="migration-xui-install-mode">
+                    <option value="online">آنلاین — دریافت مستقیم روی VPS مقصد (روش قبلی)</option>
+                    <option value="offline">آفلاین — انتقال خودکار بسته از سرور JaySub (بدون GitHub روی VPS)</option>
+                </select>
+                <p class="muted form-hint">آفلاین: JaySub فایل رسمی مناسب معماری را روی سرور مدیریت بررسی یا یک‌بار دریافت می‌کند، سپس از طریق SSH/SCP به مقصد می‌فرستد و خودکار نصب می‌کند. روی VPS مقصد نیازی به دانلود از GitHub نیست. برای سرور تازه و بدون نصب قبلی 3x-ui.</p>
+                <p class="muted form-hint">Cache مدیریت: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
                 </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
