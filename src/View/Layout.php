@@ -98,6 +98,9 @@ final class Layout
         $criticalCss = self::CRITICAL_CSS;
         $cssHref = Assets::url('css/app.css');
         $jsSrc = Assets::url('js/app.js');
+        $tehranNow = Format::tehranNow();
+        $tehranTime = $tehranNow->format('H:i');
+        $tehranIso = $tehranNow->format('c');
 
         return <<<HTML
 <!DOCTYPE html>
@@ -121,7 +124,13 @@ final class Layout
     <div class="admin-main">
         <header class="{$topClass}">
             {$backHtml}
-            <h1 class="page-title">{$t}</h1>
+            <div class="admin-page-heading">
+                <h1 class="page-title">{$t}</h1>
+                <div class="admin-tehran-clock" aria-label="ساعت رسمی تهران">
+                    <span class="admin-tehran-clock-label">ساعت تهران</span>
+                    <time class="admin-tehran-clock-time" data-tehran-clock datetime="{$tehranIso}" dir="ltr">{$tehranTime}</time>
+                </div>
+            </div>
             {$headerEndHtml}
         </header>
         <main class="admin-content app-container">{$content}</main>
@@ -716,7 +725,7 @@ HTML;
             . '<p class="muted sub-mgmt-hero-sub">' . $entryCount . ' مورد در این نما · فایل برای بازیابی</p>'
             . '</div>'
             . '<div class="sub-mgmt-days sub-mgmt-days-muted">'
-            . '<span class="sub-mgmt-days-label">هر ۴ ساعت</span>'
+            . '<span class="sub-mgmt-days-label">هر ساعت</span>'
             . '</div>'
             . '</section>'
             . '<section class="ui-card sub-mgmt-card xui-backup-main-card">'
@@ -1082,7 +1091,7 @@ HTML;
 
         return '<footer class="backup-hub-footer">'
             . '<span>' . self::backupHubSvg('shield') . ' فایل‌ها به‌صورت امن نگهداری می‌شوند</span>'
-            . '<span>' . self::backupHubSvg('clock') . ' آخرین بروزرسانی: ' . $updated . '</span>'
+            . '<span>' . self::backupHubSvg('clock') . ' آخرین بروزرسانی (تهران): ' . $updated . '</span>'
             . '</footer>';
     }
 
@@ -1427,7 +1436,7 @@ HTML;
             [
                 'href' => '/admin/backup',
                 'title' => 'بک‌آپ 3x-ui',
-                'desc' => 'پشتیبان دیتابیس پنل — هر ۴ ساعت',
+                'desc' => 'پشتیبان دیتابیس پنل — هر ساعت',
                 'icon' => 'backup',
                 'tone' => 'cyan',
             ],
