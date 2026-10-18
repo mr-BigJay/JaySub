@@ -1539,12 +1539,7 @@ HTML;
                         <p class="muted form-hint">مسیر بسته‌ها روی JaySub: <code>storage/xui-offline/v3.4.2/x-ui-linux-amd64.tar.gz</code> یا <code>x-ui-linux-arm64.tar.gz</code> (در مسیر storage پیکربندی‌شده). پیش از ارسال و روی VPS مقصد نیز SHA-256 رسمی کنترل می‌شود.</p>
                     </div>
                 </fieldset>
-                <fieldset>
-                    <legend>پنل 3x-ui جدید (بعد از نصب)</legend>
-                    <p class="muted form-hint">بعد از نصب، در پنل جدید وارد شوید، یک <strong>API Token</strong> بسازید و آدرس کامل پنل را اینجا بگذارید (مثلاً <code>https://IP:2053/RandomPath</code>).</p>
-                    <label>آدرس پنل جدید</label><input name="new_base_url" required dir="ltr" placeholder="https://203.0.113.10:2053/xxxx">
-                    <label>API Token پنل جدید</label><input name="new_api_token" required autocomplete="off" dir="ltr">
-                </fieldset>
+                <p class="muted form-hint">بعد از نصب، دیتابیس بک‌آپ روی پنل جدید بازیابی می‌شود. برای شروع انتقال، آدرس یا API Token پنلی که هنوز نصب نشده لازم نیست.</p>
                 <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
             </form>
             <section class="ui-card" id="xui-offline-upload" hidden>
