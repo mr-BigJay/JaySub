@@ -777,7 +777,7 @@ HTML;
             . '</div>'
             . '<div class="backup-hub-card-side">'
             . '<span class="backup-hub-stat">' . self::backupHubSvg('db') . ' ' . $sizeStr . '</span>'
-            . '<span class="backup-hub-stat">' . self::backupHubSvg('cal') . ' ' . $dateStr . '</span>'
+            . '<span class="backup-hub-stat" title="زمان ذخیره فایل روی JaySub، به وقت تهران">' . self::backupHubSvg('cal') . ' ' . $dateStr . '</span>'
             . '<a class="btn btn-primary backup-hub-dl" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">'
             . self::backupHubSvg('down') . ' دانلود</a>'
             . '</div></div></article>';
@@ -1095,7 +1095,7 @@ HTML;
 
         return '<footer class="backup-hub-footer">'
             . '<span>' . self::backupHubSvg('shield') . ' فایل‌ها به‌صورت امن نگهداری می‌شوند</span>'
-            . '<span>' . self::backupHubSvg('clock') . ' آخرین بروزرسانی (تهران): ' . $updated . '</span>'
+            . '<span>' . self::backupHubSvg('clock') . ' آخرین بک‌آپ ذخیره‌شده در JaySub (تهران): ' . $updated . '</span>'
             . '</footer>';
     }
 
