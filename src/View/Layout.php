@@ -1488,6 +1488,7 @@ HTML;
         array $panels,
         array $sslServers,
         ?string $activeJobId,
+        array $offlineArchives = [],
     ): string {
         $panelOpts = '';
         foreach ($panels as $p) {
@@ -1500,6 +1501,9 @@ HTML;
         $jobAttr = $activeJobId !== null && $activeJobId !== ''
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
+
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'موجود (بررسی SHA در شروع نصب)' : 'هنوز آماده نشده';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'موجود (بررسی SHA در شروع نصب)' : 'هنوز آماده نشده';
 
         return '<div class="migration-page"' . $jobAttr . '>
             <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
@@ -1521,6 +1525,19 @@ HTML;
                     <label>رمز یا کلید SSH</label>
                     <textarea name="target_secret" required rows="4" dir="ltr"></textarea>
                     <label>مسیر گواهی روی VPS جدید</label><input name="target_cert_path" value="/root/cert" dir="ltr">
+                </fieldset>
+                <fieldset>
+                    <legend>نصب 3x-ui v3.4.2</legend>
+                    <label for="xui-install-mode">روش نصب روی VPS مقصد</label>
+                    <select name="xui_install_mode" id="xui-install-mode">
+                        <option value="online">آنلاین — دانلود مستقیم از GitHub</option>
+                        <option value="offline">آفلاین — ارسال بسته از سرور JaySub با SSH</option>
+                    </select>
+                    <div class="ui-card" id="xui-offline-info" hidden>
+                        <p class="muted form-hint">در حالت آفلاین، بسته رسمی نسخه v3.4.2 باید <strong>از قبل روی سرور JaySub</strong> ذخیره شده باشد. بسته از JaySub به VPS مقصد منتقل می‌شود و نصب بدون ارتباط با GitHub انجام می‌شود. برای شروع، VPS مقصد باید Ubuntu/Debian با systemd و ابزارهای پایه باشد و 3x-ui از قبل روی آن نصب نشده باشد.</p>
+                        <p class="muted form-hint">وضعیت بسته‌ها: <strong dir="ltr">amd64:</strong> ' . $amd64Status . ' — <strong dir="ltr">arm64:</strong> ' . $arm64Status . '</p>
+                        <p class="muted form-hint">مسیر بسته‌ها روی JaySub: <code>storage/xui-offline/v3.4.2/x-ui-linux-amd64.tar.gz</code> یا <code>x-ui-linux-arm64.tar.gz</code> (در مسیر storage پیکربندی‌شده). پیش از ارسال و روی VPS مقصد نیز SHA-256 رسمی کنترل می‌شود.</p>
+                    </div>
                 </fieldset>
                 <fieldset>
                     <legend>پنل 3x-ui جدید (بعد از نصب)</legend>
