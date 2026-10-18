@@ -291,6 +291,19 @@ chown -R "${WEB_USER}:${WEB_USER}" "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs
 chmod -R 750 "${INSTALL_DIR}/storage" "${INSTALL_DIR}/logs"
 chmod 770 "${INSTALL_DIR}/storage/sessions"
 
+# Cache pinned official release archives only on the management server.
+# This is best effort; existing verified files are reused without redownload.
+if [[ "${JAYSUB_SKIP_OFFLINE_CACHE:-0}" != "1" ]]; then
+  echo "==> Preparing 3x-ui v3.4.2 offline cache ON JaySub manager..."
+  if command -v runuser >/dev/null 2>&1; then
+    if ! runuser -u "${WEB_USER}" -- /usr/bin/php "${INSTALL_DIR}/scripts/cache-xui-offline.php" amd64 arm64; then
+      echo "WARNING: 3x-ui cache incomplete; retry will occur on JaySub (not the VPN target) when offline install is requested."
+    fi
+  else
+    echo "WARNING: runuser missing; cache manually with the web worker user."
+  fi
+fi
+
 PHP_SOCK="/run/php/php${PHP_VER}-fpm.sock"
 if [[ ! -S "$PHP_SOCK" ]]; then
   PHP_SOCK="/var/run/php/php${PHP_VER}-fpm.sock"
