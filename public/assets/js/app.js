@@ -169,9 +169,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const installMode = document.getElementById('xui-install-mode');
   const offlineInfo = document.getElementById('xui-offline-info');
+  const offlineUpload = document.getElementById('xui-offline-upload');
   if (installMode && offlineInfo) {
     const syncInstallMode = () => {
       offlineInfo.hidden = installMode.value !== 'offline';
+      if (offlineUpload) offlineUpload.hidden = installMode.value !== 'offline';
     };
     installMode.addEventListener('change', syncInstallMode);
     syncInstallMode();
