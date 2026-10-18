@@ -77,7 +77,41 @@ final class PanelMigrationService
 
         // 2) نصب 3x-ui v3.4.2
         self::beginStep($job, 'install_xui', $config);
-        $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
+        $mode = ($job['xui_install_mode'] ?? 'online') === 'offline' ? 'offline' : 'online';
+        if ($mode === 'offline') {
+            self::log($job, 'آماده‌سازی نصب آفلاین v3.4.2 روی سرور مدیریت JaySub...');
+            self::touch($job, $config);
+
+            $archProbe = SshRemoteZip::runRemoteShell(
+                $target, $encryption, 'uname -m', 30, self::storageBase($config)
+            );
+            if (!$archProbe['ok']) {
+                throw new \RuntimeException('تشخیص معماری VPS مقصد: ' . ($archProbe['error'] ?? 'ناموفق'));
+            }
+            $arch = OfflineXuiInstaller::normalizeArchitecture((string) ($archProbe['stdout'] ?? ''));
+            if ($arch === null) {
+                throw new \RuntimeException('نصب آفلاین فقط برای amd64 و arm64 پشتیبانی می‌شود.');
+            }
+            // Cache downloads, if necessary, happen ONLY on the JaySub management server.
+            $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
+            $remoteArchive = '/tmp/jaysub-xui-' . $jobId . '-' . $arch . '.tar.gz';
+            self::log($job, 'بسته رسمی ' . $arch . ' روی JaySub با SHA-256 تأیید شد؛ انتقال SCP...');
+            self::touch($job, $config);
+
+            $transfer = SshRemoteZip::uploadLocalFile(
+                $target, $encryption, $archive['path'], $remoteArchive, self::storageBase($config)
+            );
+            if (!$transfer['ok']) {
+                throw new \RuntimeException('انتقال بسته آفلاین: ' . ($transfer['error'] ?? 'ناموفق'));
+            }
+            self::log($job, 'انتقال فایل پایان یافت؛ نصب روی سرور مقصد بدون GitHub...');
+            self::touch($job, $config);
+            $installCmd = 'bash -lc ' . escapeshellarg(
+                OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
+            );
+        } else {
+            $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
+        }
         $install = SshRemoteZip::runRemoteShell($target, $encryption, $installCmd, 1200, self::storageBase($config));
         if (!$install['ok']) {
             throw new \RuntimeException('نصب 3x-ui: ' . ($install['error'] ?? 'ناموفق'));

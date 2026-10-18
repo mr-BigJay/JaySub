@@ -1679,6 +1679,7 @@ HTML;
         string $csrfField,
         array $sslServers,
         ?string $activeJobId,
+        array $offlineArchives = [],
     ): string {
         $sslOpts = '';
         foreach ($sslServers as $s) {
@@ -1701,6 +1702,9 @@ HTML;
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
 
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'آماده روی JaySub' : 'در اولین درخواست روی JaySub دریافت می‌شود';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'آماده روی JaySub' : 'در اولین درخواست روی JaySub دریافت می‌شود';
+
         $stepNav = '<nav class="migration-wizard-nav" aria-label="مراحل انتقال">'
             . '<div class="migration-wizard-node" data-migration-nav-step="1"><span class="migration-wizard-circle">1</span><span class="migration-wizard-label">سرور مبدأ</span></div>'
             . '<div class="migration-wizard-line" aria-hidden="true"></div>'
@@ -1722,6 +1726,14 @@ HTML;
                 <select name="source_ssl_server_id" id="migration-source-ssl" required>' . $sslOpts . '</select>
                 </div>
                 <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
+                <div class="migration-offline-choice">
+                    <label for="migration-xui-install-mode" class="migration-offline-choice-label">
+                        <input type="checkbox" name="xui_install_mode" id="migration-xui-install-mode" value="offline">
+                        <span>نصب آفلاین 3x-ui نسخه 3.4.2</span>
+                    </label>
+                    <p class="muted form-hint migration-offline-choice-hint">پیش‌فرض نصب آنلاین فعلی است. با فعال‌کردن این گزینه، JaySub فایل رسمی را از سرور مدیریت با SCP به VPS مقصد منتقل می‌کند و بدون دانلود از GitHub روی مقصد نصب می‌کند.</p>
+                    <p class="muted form-hint migration-offline-cache-status">وضعیت بسته روی JaySub: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
+                </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
                 </div>
@@ -1769,6 +1781,7 @@ HTML;
                 <div class="migration-review" id="migration-review">
                     <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
                     <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
+                    <p><strong>روش نصب 3x-ui:</strong> <span id="migration-review-install-mode">آنلاین (پیش‌فرض)</span></p>
                 </div>
                 <div class="migration-wizard-actions" id="migration-start-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>

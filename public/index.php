@@ -1449,7 +1449,10 @@ if ($uri === '/admin/migration' && $method === 'GET') {
                 app_spawn_migration_runner($config, $jobId);
             }
         }
-        $body = Layout::adminMigrationPage(Csrf::field(), $sslServers, $jobId !== '' ? $jobId : null);
+        $body = Layout::adminMigrationPage(Csrf::field(), $sslServers, $jobId !== '' ? $jobId : null, [
+            'amd64' => \App\Services\OfflineXuiInstaller::archiveExists($config, 'amd64'),
+            'arm64' => \App\Services\OfflineXuiInstaller::archiveExists($config, 'arm64'),
+        ]);
         adminPage('انتقال سرور', 'migration', $body);
     } catch (\Throwable $e) {
         error_log('JaySub /admin/migration: ' . $e->getMessage());
@@ -1494,6 +1497,7 @@ if ($uri === '/admin/migration' && $method === 'POST') {
         'target_auth_type' => ($_POST['target_auth_type'] ?? '') === 'key' ? 'key' : 'password',
         'target_secret_encrypted' => app_encryption($config)->encrypt($secret),
         'target_cert_path' => trim((string) ($_POST['target_cert_path'] ?? '/root/cert')),
+        'xui_install_mode' => ($_POST['xui_install_mode'] ?? 'online') === 'offline' ? 'offline' : 'online',
         'steps' => PanelMigrationService::defaultSteps(),
         'log' => [],
         'created_at' => date('c'),

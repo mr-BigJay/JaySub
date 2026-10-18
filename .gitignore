@@ -8,3 +8,6 @@
 /storage/ssl-ssh/
 /logs/*.log
 !.gitkeep
+
+# Cache official binary releases ONLY on the management server.
+/storage/xui-offline/
