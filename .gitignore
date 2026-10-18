@@ -5,3 +5,6 @@
 /storage/.admin-init
 /logs/*.log
 !.gitkeep
+
+# Locally staged official 3x-ui archives (80+ MB); never commit binaries.
+/storage/xui-offline/

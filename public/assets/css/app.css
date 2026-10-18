@@ -1789,3 +1789,6 @@ body.modal-open { overflow: hidden; }
   background: var(--bg-elevated);
   color: var(--text);
 }
+
+/* Respect the offline install sections' hidden state regardless of card styles. */
+#xui-offline-info[hidden], #xui-offline-upload[hidden] { display: none !important; }

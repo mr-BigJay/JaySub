@@ -1488,6 +1488,7 @@ HTML;
         array $panels,
         array $sslServers,
         ?string $activeJobId,
+        array $offlineArchives = [],
     ): string {
         $panelOpts = '';
         foreach ($panels as $p) {
@@ -1500,6 +1501,9 @@ HTML;
         $jobAttr = $activeJobId !== null && $activeJobId !== ''
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
+
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'موجود روی سرور JaySub' : 'در صورت نیاز، خودکار روی JaySub دریافت می‌شود';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'موجود روی سرور JaySub' : 'در صورت نیاز، خودکار روی JaySub دریافت می‌شود';
 
         return '<div class="migration-page"' . $jobAttr . '>
             <p class="muted form-hint">انتقال خودکار: SSH به VPS جدید → نصب 3x-ui <strong>v3.4.2</strong> → کپی <code>/root/cert</code> از سرور فعلی → بازگردانی <strong>آخرین بک‌آپ</strong> همان پنل از JaySub (همان مسیر و تنظیمات پنل قدیم — بدون API Token جدید).</p>
@@ -1523,13 +1527,36 @@ HTML;
                     <label>مسیر گواهی روی VPS جدید</label><input name="target_cert_path" value="/root/cert" dir="ltr">
                 </fieldset>
                 <fieldset>
-                    <legend>پنل 3x-ui جدید (بعد از نصب)</legend>
-                    <p class="muted form-hint">بعد از نصب، در پنل جدید وارد شوید، یک <strong>API Token</strong> بسازید و آدرس کامل پنل را اینجا بگذارید (مثلاً <code>https://IP:2053/RandomPath</code>).</p>
-                    <label>آدرس پنل جدید</label><input name="new_base_url" required dir="ltr" placeholder="https://203.0.113.10:2053/xxxx">
-                    <label>API Token پنل جدید</label><input name="new_api_token" required autocomplete="off" dir="ltr">
+                    <legend>نصب 3x-ui v3.4.2</legend>
+                    <label for="xui-install-mode">روش نصب روی VPS مقصد</label>
+                    <select name="xui_install_mode" id="xui-install-mode">
+                        <option value="online">آنلاین — دانلود مستقیم از GitHub</option>
+                        <option value="offline">آفلاین — ارسال بسته از سرور JaySub با SSH</option>
+                    </select>
+                    <div class="ui-card" id="xui-offline-info" hidden>
+                        <p class="muted form-hint">در حالت آفلاین، <strong>هیچ آپلود دستی لازم نیست.</strong> JaySub بسته رسمی v3.4.2 را از cache سرور مدیریت می‌خواند (و اگر موجود نباشد، فقط روی سرور مدیریت دریافت و ذخیره می‌کند)؛ سپس آن را خودکار به VPS مقصد منتقل کرده و نصب می‌کند. VPS مقصد به GitHub وصل نمی‌شود. برای شروع، VPS مقصد باید Ubuntu/Debian با systemd و ابزارهای پایه باشد و 3x-ui از قبل روی آن نصب نشده باشد.</p>
+                        <p class="muted form-hint">وضعیت بسته‌ها: <strong dir="ltr">amd64:</strong> ' . $amd64Status . ' — <strong dir="ltr">arm64:</strong> ' . $arm64Status . '</p>
+                        <p class="muted form-hint">مسیر بسته‌ها روی JaySub: <code>storage/xui-offline/v3.4.2/x-ui-linux-amd64.tar.gz</code> یا <code>x-ui-linux-arm64.tar.gz</code> (در مسیر storage پیکربندی‌شده). پیش از ارسال و روی VPS مقصد نیز SHA-256 رسمی کنترل می‌شود.</p>
+                    </div>
                 </fieldset>
+                <p class="muted form-hint">بعد از نصب، دیتابیس بک‌آپ روی پنل جدید بازیابی می‌شود. برای شروع انتقال، آدرس یا API Token پنلی که هنوز نصب نشده لازم نیست.</p>
                 <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
             </form>
+            <section class="ui-card" id="xui-offline-upload" hidden>
+                <h2 class="card-title">بارگذاری دستی بسته (اختیاری — فقط در صورت مشکل دانلود روی JaySub)</h2>
+                <p class="muted form-hint">در حالت عادی این قسمت لازم نیست؛ بسته‌ها هنگام راه‌اندازی JaySub یا در اولین نصب آفلاین، فقط روی سرور مدیریت دریافت و ذخیره می‌شوند. اگر خود سرور JaySub دسترسی مناسبی به GitHub نداشت، می‌توانید به‌صورت اختیاری فایل رسمی را اینجا بارگذاری کنید.</p>
+                <form class="stack" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data">' . $csrfField . '
+                    <label>معماری بسته</label>
+                    <select name="architecture" required>
+                        <option value="amd64">amd64 (x86_64)</option>
+                        <option value="arm64">arm64 (aarch64)</option>
+                    </select>
+                    <label>فایل رسمی x-ui-linux-ARCH.tar.gz</label>
+                    <input type="file" name="xui_archive" accept=".gz,.tgz,application/gzip" required>
+                    <p class="muted form-hint">برای آپلود از مرورگر، تنظیمات PHP باید حداقل <code>upload_max_filesize=128M</code> و <code>post_max_size=130M</code> باشند. روش جایگزین: کپی فایل به پوشه <code>storage/xui-offline/v3.4.2/</code> روی سرور JaySub.</p>
+                    <button class="btn btn-secondary" type="submit">آپلود و بررسی اصالت فایل</button>
+                </form>
+            </section>
             <section class="ui-card migration-progress" id="migration-progress" hidden>
                 <h2 class="card-title">پیشرفت انتقال</h2>
                 <ul class="migration-steps" id="migration-steps"></ul>
