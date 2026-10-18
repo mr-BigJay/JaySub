@@ -92,7 +92,10 @@ final class PanelMigrationService
             if ($arch === null) {
                 throw new \RuntimeException('نصب آفلاین فعلاً فقط برای سرورهای amd64 و arm64 پشتیبانی می‌شود.');
             }
-            $archive = OfflineXuiInstaller::validatedArchive($config, $arch);
+            self::log($job, 'بررسی نسخه 3.4.2 در cache سرور مدیریت JaySub (' . $arch . ')...');
+            self::touch($job, $config);
+            // If absent: download once onto JaySub only, then reuse for every future VPS.
+            $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
             $remoteArchive = '/tmp/jaysub-xui-' . $jobId . '-' . $arch . '.tar.gz';
             self::log($job, 'SHA-256 بسته رسمی ' . $arch . ' تأیید شد؛ ارسال از JaySub به VPS مقصد...');
             self::touch($job, $config);
