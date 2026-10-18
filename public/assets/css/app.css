@@ -196,15 +196,38 @@ form.stack button { margin-top: 1rem; }
   top: 0;
   z-index: 20;
 }
+.admin-page-heading {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-self: center;
+  gap: 0.18rem;
+  min-width: 0;
+  max-width: 100%;
+}
 .page-title {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 600;
-  grid-column: 2;
   text-align: center;
-  justify-self: center;
   max-width: 100%;
   padding: 0 0.25rem;
+}
+.admin-tehran-clock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.admin-tehran-clock-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 600;
 }
 .admin-top-slot-start { grid-column: 1; justify-self: start; min-width: 42px; min-height: 42px; }
 .admin-top-slot-end { grid-column: 3; justify-self: end; min-width: 42px; min-height: 42px; }
