@@ -28,6 +28,25 @@ final class OfflineXuiInstallerTest extends TestCase
         self::assertStringNotContainsString('apt-get ', $script);
     }
 
+    public function testGeneratedBashScriptPassesSyntaxCheck(): void
+    {
+        if (!is_executable('/bin/bash')) {
+            self::markTestSkipped('Bash is unavailable');
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'xui-test-');
+        self::assertIsString($path);
+        try {
+            file_put_contents($path, OfflineXuiInstaller::remoteInstallScript(
+                'arm64', '/tmp/jaysub-xui-' . str_repeat('a', 32) . '-arm64.tar.gz'
+            ));
+            exec('bash -n ' . escapeshellarg($path) . ' 2>&1', $out, $code);
+            self::assertSame(0, $code, implode("\n", $out));
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function testRefusesMalformedRemoteArchivePaths(): void
     {
         $this->expectException(InvalidArgumentException::class);
