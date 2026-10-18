@@ -895,6 +895,49 @@ body.admin-menu-open { overflow: hidden; }
 @media (max-width: 420px) {
   .migration-form-row { grid-template-columns: 1fr; }
 }
+/* Step 1: optional offline 3x-ui mode; preserve the existing dark theme. */
+.migration-form .migration-offline-choice {
+  margin-top: 1rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.55);
+}
+.migration-form .migration-offline-choice-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+.migration-form input[type="checkbox"]#migration-xui-install-mode {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  accent-color: #8b5cf6;
+  cursor: pointer;
+}
+.migration-form .migration-offline-choice-hint {
+  margin: 0.5rem 0 0;
+  padding-right: 1.8rem;
+  line-height: 1.6;
+}
+.migration-form .migration-offline-cache-status {
+  margin: 0.45rem 0 0;
+  padding-right: 1.8rem;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
 .migration-summary-line {
   margin-top: 0.75rem;
   padding: 0.55rem 0.75rem;
