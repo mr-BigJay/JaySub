@@ -167,6 +167,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape' && adminMenuSheet && adminMenuSheet.classList.contains('is-open')) closeAdminMenu();
   });
 
+  const installMode = document.getElementById('xui-install-mode');
+  const offlineInfo = document.getElementById('xui-offline-info');
+  if (installMode && offlineInfo) {
+    const syncInstallMode = () => {
+      offlineInfo.hidden = installMode.value !== 'offline';
+    };
+    installMode.addEventListener('change', syncInstallMode);
+    syncInstallMode();
+  }
+
   const migrationPage = document.querySelector('.migration-page[data-migration-job]');
   if (migrationPage) {
     const jobId = migrationPage.getAttribute('data-migration-job');
