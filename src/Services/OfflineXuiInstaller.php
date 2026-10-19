@@ -242,6 +242,20 @@ final class OfflineXuiInstaller
     }
 
     /**
+     * Generate the upload destination independently of migration job IDs.
+     * Legacy persisted jobs might use an ID format that does not match the
+     * strict path validation required by the offline installer.
+     */
+    public static function remoteArchivePath(string $architecture): string
+    {
+        if (!isset(self::SHA256[$architecture])) {
+            throw new \InvalidArgumentException('Unsupported x-ui architecture');
+        }
+
+        return '/tmp/jaysub-xui-' . bin2hex(random_bytes(16)) . '-' . $architecture . '.tar.gz';
+    }
+
+    /**
      * Generate a network-free installer for a fresh Ubuntu/Debian systemd VPS.
      * @param string $remoteArchive a unique, fixed-format path under /tmp
      */
@@ -250,7 +264,8 @@ final class OfflineXuiInstaller
         if (!isset(self::SHA256[$architecture])) {
             throw new \InvalidArgumentException('Unsupported x-ui architecture');
         }
-        if (!preg_match('~\A/tmp/jaysub-xui-[a-f0-9]{32}-(?:amd64|arm64)\.tar\.gz\z~D', $remoteArchive)) {
+        $pathPattern = '~\A/tmp/jaysub-xui-[a-f0-9]{32}-' . $architecture . '\.tar\.gz\z~D';
+        if (!preg_match($pathPattern, $remoteArchive)) {
             throw new \InvalidArgumentException('Unexpected remote x-ui package path');
         }
 
