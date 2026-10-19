@@ -242,6 +242,30 @@ final class OfflineXuiInstaller
     }
 
     /**
+     * Canonical SCP destination path on the target VPS (must match {@see remoteInstallScript}).
+     */
+    public static function remotePackagePath(string $transferId, string $architecture): string
+    {
+        if (!isset(self::SHA256[$architecture])) {
+            throw new \InvalidArgumentException('Unsupported x-ui architecture');
+        }
+        $id = strtolower(preg_replace('/[^a-f0-9]/', '', $transferId) ?? '');
+        if (strlen($id) !== 32) {
+            throw new \InvalidArgumentException('Migration transfer id must be 32 hex characters');
+        }
+
+        return '/tmp/jaysub-xui-' . $id . '-' . $architecture . '.tar.gz';
+    }
+
+    public static function isValidRemotePackagePath(string $path): bool
+    {
+        return (bool) preg_match(
+            '~\A/tmp/jaysub-xui-[a-f0-9]{32}-(?:amd64|arm64)\.tar\.gz\z~D',
+            $path
+        );
+    }
+
+    /**
      * Generate a network-free installer for a fresh Ubuntu/Debian systemd VPS.
      * @param string $remoteArchive a unique, fixed-format path under /tmp
      */
@@ -250,7 +274,7 @@ final class OfflineXuiInstaller
         if (!isset(self::SHA256[$architecture])) {
             throw new \InvalidArgumentException('Unsupported x-ui architecture');
         }
-        if (!preg_match('~\A/tmp/jaysub-xui-[a-f0-9]{32}-(?:amd64|arm64)\.tar\.gz\z~D', $remoteArchive)) {
+        if (!self::isValidRemotePackagePath($remoteArchive)) {
             throw new \InvalidArgumentException('Unexpected remote x-ui package path');
         }
 
@@ -293,6 +317,10 @@ cleanup() {
   exit "$code"
 }
 trap cleanup EXIT
+if tar -tzf "$ARCHIVE" | grep -qE '(^|/)\.\.(/|$)'; then
+  echo "Unsafe paths in archive" >&2
+  exit 1
+fi
 tar -xzf "$ARCHIVE" -C "$TMP"
 [ -f "$TMP/x-ui/x-ui" ] && [ -f "$TMP/x-ui/x-ui.sh" ] || { echo "Invalid x-ui release layout" >&2; exit 1; }
 if [ -f "$TMP/x-ui/x-ui.service" ]; then
@@ -326,7 +354,12 @@ chmod 700 /etc/x-ui
 installed=1
 install -m 0644 "$SERVICE" /etc/systemd/system/x-ui.service
 mv "$TMP/x-ui" /usr/local/x-ui
+chmod 755 /usr/local/x-ui /usr/local/x-ui/x-ui /usr/local/x-ui/x-ui.sh
 install -m 0755 /usr/local/x-ui/x-ui.sh /usr/bin/x-ui
+if ! file /usr/local/x-ui/x-ui | grep -qE 'ELF .* executable'; then
+  echo "Installed x-ui binary is not a valid ELF executable" >&2
+  exit 1
+fi
 # Generate throwaway randomized credentials while the restore step is pending.
 random_hex() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-20; }
 USER_TMP="js$(random_hex)"
