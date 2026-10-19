@@ -201,7 +201,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const stepsEl = document.getElementById('migration-steps');
     const logEl = document.getElementById('migration-log');
     const startBtn = document.getElementById('migration-start-btn');
+    const xuiInstallMode = document.getElementById('xui-install-mode');
+    const xuiOfflineInfo = document.getElementById('xui-offline-info');
+    const xuiOfflineUpload = document.getElementById('xui-offline-upload');
     let wizardStep = 1;
+
+    const syncXuiInstallModeUi = () => {
+      const offline = xuiInstallMode && xuiInstallMode.value === 'offline';
+      if (xuiOfflineInfo) xuiOfflineInfo.hidden = !offline;
+      if (xuiOfflineUpload) xuiOfflineUpload.hidden = !offline;
+    };
+    xuiInstallMode?.addEventListener('change', syncXuiInstallModeUi);
+    syncXuiInstallModeUi();
 
     const selectedSourceLabel = () => {
       if (!sourceSelect || sourceSelect.selectedIndex < 0) return '—';

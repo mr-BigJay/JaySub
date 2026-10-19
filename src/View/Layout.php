@@ -1675,11 +1675,17 @@ HTML;
     /**
      * @param list<array<string, mixed>> $sslServers
      */
+    /**
+     * @param array{amd64?:bool,arm64?:bool} $offlineArchives
+     */
     public static function adminMigrationPage(
         string $csrfField,
         array $sslServers,
         ?string $activeJobId,
+        array $offlineArchives = [],
     ): string {
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'موجود روی JaySub' : 'در صورت نیاز روی JaySub دریافت می‌شود';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'موجود روی JaySub' : 'در صورت نیاز روی JaySub دریافت می‌شود';
         $sslOpts = '';
         foreach ($sslServers as $s) {
             $sid = (int) $s['id'];
@@ -1770,6 +1776,27 @@ HTML;
                     <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
                     <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
                 </div>
+                <div class="migration-field">
+                <label for="xui-install-mode">روش نصب 3x-ui v3.4.2 روی مقصد</label>
+                <select name="xui_install_mode" id="xui-install-mode">
+                    <option value="online">آنلاین — دانلود از GitHub روی VPS</option>
+                    <option value="offline">آفلاین — بسته تأیید‌شده از JaySub (بدون GitHub روی مقصد)</option>
+                </select>
+                </div>
+                <div class="ui-card" id="xui-offline-info" hidden>
+                    <p class="muted form-hint">JaySub بسته رسمی v3.4.2 را از <code>storage/xui-offline/v3.4.2/</code> می‌فرستد؛ SHA-256 روی مبدأ و مقصد کنترل می‌شود. VPS تازه باید Ubuntu/Debian با systemd باشد.</p>
+                    <p class="muted form-hint">وضعیت cache: <strong dir="ltr">amd64</strong> ' . htmlspecialchars($amd64Status, ENT_QUOTES, 'UTF-8') . ' — <strong dir="ltr">arm64</strong> ' . htmlspecialchars($arm64Status, ENT_QUOTES, 'UTF-8') . '</p>
+                </div>
+                <details class="ui-card" id="xui-offline-upload" hidden>
+                    <summary class="card-title">آپلود دستی بسته (اختیاری)</summary>
+                    <form class="stack" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data">' . $csrfField . '
+                    <label>معماری</label>
+                    <select name="architecture" required><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
+                    <label>فایل x-ui-linux-ARCH.tar.gz</label>
+                    <input type="file" name="xui_archive" accept=".gz,.tgz,application/gzip" required>
+                    <button class="btn btn-secondary" type="submit">آپلود و تأیید SHA-256</button>
+                    </form>
+                </details>
                 <div class="migration-wizard-actions" id="migration-start-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
                     <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
