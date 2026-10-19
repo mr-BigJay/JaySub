@@ -10,4 +10,3 @@
 .phpunit.result.cache
 /logs/*.log
 !.gitkeep
-.phpunit.result.cache
