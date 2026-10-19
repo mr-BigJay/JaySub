@@ -28,6 +28,36 @@ final class OfflineXuiInstallerTest extends TestCase
         self::assertStringNotContainsString('apt-get ', $script);
     }
 
+    public function testGeneratedTransferPathsAlwaysPassStrictInstallerValidation(): void
+    {
+        foreach (['amd64', 'arm64'] as $arch) {
+            $one = OfflineXuiInstaller::remoteArchivePath($arch);
+            $two = OfflineXuiInstaller::remoteArchivePath($arch);
+
+            self::assertMatchesRegularExpression(
+                '~\\A/tmp/jaysub-xui-[a-f0-9]{32}-' . $arch . '\\.tar\\.gz\\z~D',
+                $one,
+            );
+            self::assertNotSame($one, $two, 'Each transfer must get its own unique destination');
+            $script = OfflineXuiInstaller::remoteInstallScript($arch, $one);
+            self::assertStringContainsString(escapeshellarg($one), $script);
+            self::assertStringContainsString('sha256sum -c -', $script);
+        }
+    }
+
+    public function testRejectsRemotePathWithDifferentArchitecture(): void
+    {
+        $wrongPath = OfflineXuiInstaller::remoteArchivePath('arm64');
+        $this->expectException(InvalidArgumentException::class);
+        OfflineXuiInstaller::remoteInstallScript('amd64', $wrongPath);
+    }
+
+    public function testRefusesUnsupportedArchitectureBeforeGeneratingRemotePath(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        OfflineXuiInstaller::remoteArchivePath('mips64');
+    }
+
     public function testGeneratedBashScriptPassesSyntaxCheck(): void
     {
         if (!is_executable('/bin/bash')) {
