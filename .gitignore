@@ -6,5 +6,7 @@
 /storage/backups/
 /storage/sessions/
 /storage/ssl-ssh/
+/storage/xui-offline/
+.phpunit.result.cache
 /logs/*.log
 !.gitkeep

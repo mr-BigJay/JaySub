@@ -77,9 +77,42 @@ final class PanelMigrationService
 
         // 2) نصب 3x-ui v3.4.2
         self::beginStep($job, 'install_xui', $config);
-        $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
+        $mode = ($job['xui_install_mode'] ?? 'online') === 'offline' ? 'offline' : 'online';
+        if ($mode === 'offline') {
+            self::log($job, 'نصب آفلاین v3.4.2؛ بسته از cache JaySub (بدون GitHub روی مقصد).');
+            self::touch($job, $config);
+            $archProbe = SshRemoteZip::runRemoteShell(
+                $target, $encryption, 'uname -m', 30, self::storageBase($config)
+            );
+            if (!$archProbe['ok']) {
+                throw new \RuntimeException('تشخیص معماری VPS مقصد: ' . ($archProbe['error'] ?? 'ناموفق'));
+            }
+            $arch = OfflineXuiInstaller::normalizeArchitecture((string) ($archProbe['stdout'] ?? ''));
+            if ($arch === null) {
+                throw new \RuntimeException('نصب آفلاین فقط برای amd64 و arm64 پشتیبانی می‌شود.');
+            }
+            $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
+            $remoteArchive = OfflineXuiInstaller::remotePackagePath((string) ($job['id'] ?? ''), $arch);
+            self::log($job, 'SHA-256 تأیید شد؛ SCP به مقصد...');
+            self::touch($job, $config);
+            $transfer = SshRemoteZip::uploadLocalFile(
+                $target, $encryption, $archive['path'], $remoteArchive, self::storageBase($config)
+            );
+            if (!$transfer['ok']) {
+                throw new \RuntimeException('انتقال بسته آفلاین: ' . ($transfer['error'] ?? 'ناموفق'));
+            }
+            $installCmd = 'bash -lc ' . escapeshellarg(
+                OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
+            );
+        } else {
+            $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
+        }
         $install = SshRemoteZip::runRemoteShell($target, $encryption, $installCmd, 1200, self::storageBase($config));
         if (!$install['ok']) {
+            $failOut = trim((string) ($install['stdout'] ?? ''));
+            if ($failOut !== '') {
+                self::log($job, $failOut);
+            }
             throw new \RuntimeException('نصب 3x-ui: ' . ($install['error'] ?? 'ناموفق'));
         }
         $out = trim((string) ($install['stdout'] ?? ''));
@@ -165,7 +198,9 @@ final class PanelMigrationService
 
         // 4) آخرین بک‌آپ JaySub → جایگزینی دیتابیس x-ui روی VPS جدید (همان تنظیمات پنل قدیم)
         self::beginStep($job, 'restore_backup', $config);
-        $remoteBackup = '/tmp/jaysub-restore-' . basename($backupPath);
+        XuiMigrationRestore::assertLocalSqliteBackup($backupPath);
+        $remoteBackup = XuiMigrationRestore::remoteBackupPath(basename($backupPath));
+        self::log($job, 'بک‌آپ JaySub: ' . basename($backupPath));
         $upDb = SshRemoteZip::uploadLocalFile(
             $target,
             $encryption,
@@ -176,29 +211,9 @@ final class PanelMigrationService
         if (!$upDb['ok']) {
             throw new \RuntimeException('آپلود بک‌آپ به سرور جدید: ' . ($upDb['error'] ?? 'ناموفق'));
         }
-        self::log($job, 'بک‌آپ JaySub: ' . basename($backupPath));
 
-        $restoreEsc = escapeshellarg($remoteBackup);
         $restoreCmd = 'bash -lc ' . escapeshellarg(
-            'set -e; RESTORE=' . $restoreEsc . '; '
-            . 'mkdir -p /etc/x-ui; '
-            . 'DB=""; for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && DB="$c" && break; done; '
-            . 'if [ -z "$DB" ]; then DB="/etc/x-ui/x-ui.db"; fi; '
-            . 'systemctl stop x-ui 2>/dev/null || systemctl stop 3x-ui 2>/dev/null || true; '
-            . 'sleep 2; '
-            . 'if [ -f "$DB" ]; then cp -a "$DB" "${DB}.jaysub.bak.$(date +%s)"; fi; '
-            . 'cp -f "$RESTORE" "$DB"; chmod 600 "$DB"; chown root:root "$DB" 2>/dev/null || true; '
-            . 'systemctl daemon-reload 2>/dev/null || true; '
-            . 'systemctl enable x-ui 2>/dev/null || true; '
-            . 'systemctl restart x-ui 2>/dev/null || true; '
-            . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
-            . 'command -v x-ui >/dev/null && x-ui restart 2>/dev/null || x-ui start 2>/dev/null || true; '
-            . 'sleep 8; fi; '
-            . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
-            . 'echo "x-ui service not running after restore" >&2; '
-            . 'systemctl status x-ui --no-pager 2>&1 | tail -25 >&2; '
-            . 'journalctl -u x-ui -n 30 --no-pager 2>&1 >&2; exit 1; fi; '
-            . 'echo "x-ui active after restore"; rm -f "$RESTORE"'
+            XuiMigrationRestore::remoteRestoreScript($remoteBackup)
         );
         $rest = SshRemoteZip::runRemoteShell($target, $encryption, $restoreCmd, 180, self::storageBase($config));
         if (!$rest['ok']) {
@@ -346,9 +361,17 @@ final class PanelMigrationService
             . 'echo "x-ui systemd unit missing — install incomplete (see log)" >&2; exit 1';
     }
 
+    /**
+     * Secondary guard when remote bash exited 0 but printed a known failure line.
+     * Must not match offline/online success messages (e.g. MainPID verification text).
+     */
     public static function remoteOutputIndicatesXuiInstallFailure(string $output): bool
     {
         if ($output === '') {
+            return false;
+        }
+
+        if (str_contains($output, 'Offline 3x-ui v3.4.2 installation verified')) {
             return false;
         }
 
@@ -356,8 +379,12 @@ final class PanelMigrationService
             'Failed to extract the x-ui release archive',
             'x-ui binary not found after install',
             'x-ui systemd unit missing',
-            'x-ui service not running after restore',
+            'Unexpected remote x-ui package path',
             'x-ui install failed (archive extract)',
+            'Transferred archive missing',
+            'Invalid x-ui release layout',
+            'x-ui service or database failed after offline install',
+            'x-ui service failed stability check',
             'Download x-ui',
             ' failed, please check if the version exists',
             'Downloading x-ui failed',

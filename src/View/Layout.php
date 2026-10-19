@@ -98,6 +98,9 @@ final class Layout
         $criticalCss = self::CRITICAL_CSS;
         $cssHref = Assets::url('css/app.css');
         $jsSrc = Assets::url('js/app.js');
+        $tehranNow = Format::tehranNow();
+        $tehranTime = $tehranNow->format('H:i');
+        $tehranIso = $tehranNow->format('c');
 
         return <<<HTML
 <!DOCTYPE html>
@@ -121,7 +124,13 @@ final class Layout
     <div class="admin-main">
         <header class="{$topClass}">
             {$backHtml}
-            <h1 class="page-title">{$t}</h1>
+            <div class="admin-page-heading">
+                <h1 class="page-title">{$t}</h1>
+                <div class="admin-tehran-clock" aria-label="ساعت رسمی تهران">
+                    <span class="admin-tehran-clock-label">ساعت تهران</span>
+                    <time class="admin-tehran-clock-time" data-tehran-clock datetime="{$tehranIso}" dir="ltr">{$tehranTime}</time>
+                </div>
+            </div>
             {$headerEndHtml}
         </header>
         <main class="admin-content app-container">{$content}</main>
@@ -716,7 +725,7 @@ HTML;
             . '<p class="muted sub-mgmt-hero-sub">' . $entryCount . ' مورد در این نما · فایل برای بازیابی</p>'
             . '</div>'
             . '<div class="sub-mgmt-days sub-mgmt-days-muted">'
-            . '<span class="sub-mgmt-days-label">هر ۴ ساعت</span>'
+            . '<span class="sub-mgmt-days-label">هر ساعت</span>'
             . '</div>'
             . '</section>'
             . '<section class="ui-card sub-mgmt-card xui-backup-main-card">'
@@ -764,7 +773,7 @@ HTML;
             . '</div>'
             . '<div class="backup-hub-card-side">'
             . '<span class="backup-hub-stat">' . self::backupHubSvg('db') . ' ' . $sizeStr . '</span>'
-            . '<span class="backup-hub-stat">' . self::backupHubSvg('cal') . ' ' . $dateStr . '</span>'
+            . '<span class="backup-hub-stat" title="زمان ذخیره فایل روی JaySub، به وقت تهران">' . self::backupHubSvg('cal') . ' ' . $dateStr . '</span>'
             . '<a class="btn btn-primary backup-hub-dl" href="' . htmlspecialchars($dl, ENT_QUOTES, 'UTF-8') . '">'
             . self::backupHubSvg('down') . ' دانلود</a>'
             . '</div></div></article>';
@@ -1082,7 +1091,7 @@ HTML;
 
         return '<footer class="backup-hub-footer">'
             . '<span>' . self::backupHubSvg('shield') . ' فایل‌ها به‌صورت امن نگهداری می‌شوند</span>'
-            . '<span>' . self::backupHubSvg('clock') . ' آخرین بروزرسانی: ' . $updated . '</span>'
+            . '<span>' . self::backupHubSvg('clock') . ' آخرین بک‌آپ ذخیره‌شده در JaySub (تهران): ' . $updated . '</span>'
             . '</footer>';
     }
 
@@ -1427,7 +1436,7 @@ HTML;
             [
                 'href' => '/admin/backup',
                 'title' => 'بک‌آپ 3x-ui',
-                'desc' => 'پشتیبان دیتابیس پنل — هر ۴ ساعت',
+                'desc' => 'پشتیبان دیتابیس پنل — هر ساعت',
                 'icon' => 'backup',
                 'tone' => 'cyan',
             ],
@@ -1675,10 +1684,14 @@ HTML;
     /**
      * @param list<array<string, mixed>> $sslServers
      */
+    /**
+     * @param array{amd64?:bool,arm64?:bool} $offlineArchives
+     */
     public static function adminMigrationPage(
         string $csrfField,
         array $sslServers,
         ?string $activeJobId,
+        array $offlineArchives = [],
     ): string {
         $sslOpts = '';
         foreach ($sslServers as $s) {
@@ -1701,6 +1714,9 @@ HTML;
             ? ' data-migration-job="' . htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') . '"'
             : '';
 
+        $amd64Status = !empty($offlineArchives['amd64']) ? 'آماده روی JaySub' : 'در اولین درخواست روی JaySub دریافت می‌شود';
+        $arm64Status = !empty($offlineArchives['arm64']) ? 'آماده روی JaySub' : 'در اولین درخواست روی JaySub دریافت می‌شود';
+
         $stepNav = '<nav class="migration-wizard-nav" aria-label="مراحل انتقال">'
             . '<div class="migration-wizard-node" data-migration-nav-step="1"><span class="migration-wizard-circle">1</span><span class="migration-wizard-label">سرور مبدأ</span></div>'
             . '<div class="migration-wizard-line" aria-hidden="true"></div>'
@@ -1722,6 +1738,24 @@ HTML;
                 <select name="source_ssl_server_id" id="migration-source-ssl" required>' . $sslOpts . '</select>
                 </div>
                 <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
+                <div class="migration-offline-choice">
+                    <label for="migration-xui-install-mode" class="migration-offline-choice-label">
+                        <input type="checkbox" name="xui_install_mode" id="migration-xui-install-mode" value="offline">
+                        <span>نصب آفلاین 3x-ui نسخه 3.4.2</span>
+                    </label>
+                    <p class="muted form-hint migration-offline-choice-hint">پیش‌فرض نصب آنلاین فعلی است. با فعال‌کردن این گزینه، JaySub فایل رسمی را از سرور مدیریت با SCP به VPS مقصد منتقل می‌کند و بدون دانلود از GitHub روی مقصد نصب می‌کند.</p>
+                    <p class="muted form-hint migration-offline-cache-status">وضعیت بسته روی JaySub: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
+                    <details class="migration-offline-upload" id="xui-offline-upload">
+                    <summary class="muted form-hint">آپلود دستی بسته (اختیاری — فقط اگر cache JaySub خالی است)</summary>
+                    <form class="stack" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data">' . $csrfField . '
+                    <label>معماری</label>
+                    <select name="architecture" required><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
+                    <label>فایل x-ui-linux-ARCH.tar.gz</label>
+                    <input type="file" name="xui_archive" accept=".gz,.tgz,application/gzip" required>
+                    <button class="btn btn-secondary" type="submit">آپلود و تأیید SHA-256</button>
+                    </form>
+                    </details>
+                </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
                 </div>
@@ -1769,6 +1803,7 @@ HTML;
                 <div class="migration-review" id="migration-review">
                     <p><strong>مبدأ:</strong> <span id="migration-review-source">—</span></p>
                     <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
+                    <p><strong>روش نصب 3x-ui:</strong> <span id="migration-review-install-mode">آنلاین (پیش‌فرض)</span></p>
                 </div>
                 <div class="migration-wizard-actions" id="migration-start-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
