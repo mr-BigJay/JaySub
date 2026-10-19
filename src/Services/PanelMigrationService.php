@@ -94,7 +94,12 @@ final class PanelMigrationService
             }
             // Cache downloads, if necessary, happen ONLY on the JaySub management server.
             $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
-            $remoteArchive = '/tmp/jaysub-xui-' . $jobId . '-' . $arch . '.tar.gz';
+            // Validate the destination before any SCP transfer. Job IDs loaded
+            // from existing migrations may have a different historical format.
+            $remoteArchive = OfflineXuiInstaller::remoteArchivePath($arch);
+            $installCmd = 'bash -lc ' . escapeshellarg(
+                OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
+            );
             self::log($job, 'بسته رسمی ' . $arch . ' روی JaySub با SHA-256 تأیید شد؛ انتقال SCP...');
             self::touch($job, $config);
 
@@ -106,9 +111,6 @@ final class PanelMigrationService
             }
             self::log($job, 'انتقال فایل پایان یافت؛ نصب روی سرور مقصد بدون GitHub...');
             self::touch($job, $config);
-            $installCmd = 'bash -lc ' . escapeshellarg(
-                OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
-            );
         } else {
             $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
         }
