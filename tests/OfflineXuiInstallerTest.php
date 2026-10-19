@@ -53,6 +53,38 @@ final class OfflineXuiInstallerTest extends TestCase
         OfflineXuiInstaller::remoteInstallScript('amd64', '/root/malicious.tar.gz');
     }
 
+    public function testRemotePackagePathMatchesInstallScriptContract(): void
+    {
+        $id = str_repeat('b', 32);
+        $path = OfflineXuiInstaller::remotePackagePath($id, 'amd64');
+        self::assertSame('/tmp/jaysub-xui-' . $id . '-amd64.tar.gz', $path);
+        self::assertTrue(OfflineXuiInstaller::isValidRemotePackagePath($path));
+        OfflineXuiInstaller::remoteInstallScript('amd64', $path);
+    }
+
+    public function testRemotePackagePathRejectsInvalidTransferId(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        OfflineXuiInstaller::remotePackagePath('', 'amd64');
+    }
+
+    public function testOfflineScriptRejectsPathTraversalInArchiveListing(): void
+    {
+        $remote = '/tmp/jaysub-xui-' . str_repeat('c', 32) . '-arm64.tar.gz';
+        $script = OfflineXuiInstaller::remoteInstallScript('arm64', $remote);
+        self::assertStringContainsString('Unsafe paths in archive', $script);
+        self::assertStringContainsString('grep -qE', $script);
+    }
+
+    public function testOfflineScriptExpectsOfficialV342Layout(): void
+    {
+        $remote = '/tmp/jaysub-xui-' . str_repeat('d', 32) . '-amd64.tar.gz';
+        $script = OfflineXuiInstaller::remoteInstallScript('amd64', $remote);
+        self::assertStringContainsString('$TMP/x-ui/x-ui', $script);
+        self::assertStringContainsString('x-ui.service.debian', $script);
+        self::assertStringContainsString('xray-linux-$ARCH', $script);
+    }
+
     public function testProvidesFixedStoragePathsAndDoesNotFetchMissingPackage(): void
     {
         $config = ['paths' => ['storage' => '/tmp/jaysub-archive-test']];

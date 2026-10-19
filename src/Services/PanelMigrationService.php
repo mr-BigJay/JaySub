@@ -96,7 +96,7 @@ final class PanelMigrationService
             self::touch($job, $config);
             // If absent: download once onto JaySub only, then reuse for every future VPS.
             $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
-            $remoteArchive = '/tmp/jaysub-xui-' . $jobId . '-' . $arch . '.tar.gz';
+            $remoteArchive = OfflineXuiInstaller::remotePackagePath((string) ($job['id'] ?? ''), $arch);
             self::log($job, 'SHA-256 بسته رسمی ' . $arch . ' تأیید شد؛ ارسال از JaySub به VPS مقصد...');
             self::touch($job, $config);
 
@@ -135,22 +135,44 @@ final class PanelMigrationService
 
         // 3) کپی گواهی از VPS فعلی
         self::beginStep($job, 'ssl_copy', $config);
+        $sourceCertPath = trim((string) ($source['cert_path'] ?? '/root/cert'));
+        if ($sourceCertPath === '') {
+            $sourceCertPath = '/root/cert';
+        }
         $archive = SshRemoteZip::zipCertDirectory($source, $encryption, self::storageBase($config));
-        if (!$archive['ok'] || empty($archive['body'])) {
-            throw new \RuntimeException('خواندن /root/cert از سرور مبدأ: ' . ($archive['error'] ?? 'ناموفق'));
+        $localArchive = '';
+        $ext = '.zip';
+        if ($archive['ok'] && !empty($archive['body'])) {
+            $ext = (string) ($archive['extension'] ?? '.zip');
+            $tmp = tempnam(sys_get_temp_dir(), 'jscert_');
+            if ($tmp === false) {
+                throw new \RuntimeException('فایل موقت ایجاد نشد.');
+            }
+            $localArchive = $tmp . $ext;
+            rename($tmp, $localArchive);
+            file_put_contents($localArchive, $archive['body']);
+        } else {
+            $storedSsl = SslBackupService::latestBackupFilePath($config, $sourceSslId);
+            if ($storedSsl === null) {
+                throw new \RuntimeException(
+                    'خواندن گواهی از سرور مبدأ (' . $sourceCertPath . '): '
+                    . ($archive['error'] ?? 'ناموفق')
+                    . ' — مسیر cert_path را در بکاپ SSL اصلاح کنید یا یک‌بار بکاپ SSL بگیرید.'
+                );
+            }
+            $localArchive = $storedSsl;
+            $ext = str_ends_with(strtolower($storedSsl), '.tar.gz') ? '.tar.gz' : '.zip';
+            self::log(
+                $job,
+                'پوشه گواهی روی سرور مبدأ در دسترس نبود؛ استفاده از آخرین بکاپ SSL JaySub: ' . basename($storedSsl),
+            );
         }
-        $ext = (string) ($archive['extension'] ?? '.zip');
-        $tmp = tempnam(sys_get_temp_dir(), 'jscert_');
-        if ($tmp === false) {
-            throw new \RuntimeException('فایل موقت ایجاد نشد.');
-        }
-        $localArchive = $tmp . $ext;
-        rename($tmp, $localArchive);
-        file_put_contents($localArchive, $archive['body']);
 
         $remoteArchive = '/tmp/jaysub-certs' . $ext;
         $up = SshRemoteZip::uploadLocalFile($target, $encryption, $localArchive, $remoteArchive, self::storageBase($config));
-        @unlink($localArchive);
+        if ($archive['ok'] ?? false) {
+            @unlink($localArchive);
+        }
         if (!$up['ok']) {
             throw new \RuntimeException('آپلود گواهی به سرور جدید: ' . ($up['error'] ?? 'ناموفق'));
         }
@@ -179,7 +201,9 @@ final class PanelMigrationService
 
         // 4) آخرین بک‌آپ JaySub → جایگزینی دیتابیس x-ui روی VPS جدید (همان تنظیمات پنل قدیم)
         self::beginStep($job, 'restore_backup', $config);
-        $remoteBackup = '/tmp/jaysub-restore-' . basename($backupPath);
+        XuiMigrationRestore::assertLocalSqliteBackup($backupPath);
+        $remoteBackup = XuiMigrationRestore::remoteBackupPath(basename($backupPath));
+        self::log($job, 'بک‌آپ JaySub: ' . basename($backupPath));
         $upDb = SshRemoteZip::uploadLocalFile(
             $target,
             $encryption,
@@ -190,20 +214,8 @@ final class PanelMigrationService
         if (!$upDb['ok']) {
             throw new \RuntimeException('آپلود بک‌آپ به سرور جدید: ' . ($upDb['error'] ?? 'ناموفق'));
         }
-        self::log($job, 'بک‌آپ JaySub: ' . basename($backupPath));
-
-        $restoreEsc = escapeshellarg($remoteBackup);
         $restoreCmd = 'bash -lc ' . escapeshellarg(
-            'set -e; RESTORE=' . $restoreEsc . '; '
-            . 'DB=""; for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && DB="$c" && break; done; '
-            . 'if [ -z "$DB" ]; then echo "x-ui.db not found after install" >&2; exit 1; fi; '
-            . 'systemctl stop x-ui 2>/dev/null || systemctl stop 3x-ui 2>/dev/null || true; '
-            . 'sleep 2; '
-            . 'cp -a "$DB" "${DB}.jaysub.bak.$(date +%s)"; '
-            . 'cp -f "$RESTORE" "$DB"; chmod 600 "$DB"; '
-            . 'systemctl start x-ui 2>/dev/null || systemctl start 3x-ui 2>/dev/null || (command -v x-ui >/dev/null && x-ui restart); '
-            . 'sleep 3; systemctl is-active x-ui 2>/dev/null || systemctl is-active 3x-ui 2>/dev/null || echo x-ui restarted; '
-            . 'rm -f "$RESTORE"'
+            XuiMigrationRestore::remoteRestoreScript($remoteBackup)
         );
         $rest = SshRemoteZip::runRemoteShell($target, $encryption, $restoreCmd, 180, self::storageBase($config));
         if (!$rest['ok']) {

@@ -160,6 +160,27 @@ final class SslBackupService
         return is_file($path) ? $path : null;
     }
 
+    /**
+     * Newest stored SSL archive for a server (migration fallback when live cert dir is missing).
+     *
+     * @param array<string, mixed> $config
+     */
+    public static function latestBackupFilePath(array $config, int $serverId): ?string
+    {
+        if ($serverId <= 0) {
+            return null;
+        }
+        $dir = self::serverDir($config, $serverId);
+        $files = array_merge(glob($dir . '/*.zip') ?: [], glob($dir . '/*.tar.gz') ?: []);
+        if ($files === []) {
+            return null;
+        }
+        usort($files, static fn ($a, $b) => filemtime($b) <=> filemtime($a));
+        $best = $files[0];
+
+        return is_file($best) ? $best : null;
+    }
+
     private static function pruneServerDir(string $dir, int $keep): void
     {
         $files = array_merge(glob($dir . '/*.zip') ?: [], glob($dir . '/*.tar.gz') ?: []);
