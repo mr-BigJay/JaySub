@@ -27,4 +27,10 @@ final class PanelMigrationServiceTest extends TestCase
         self::assertTrue(PanelMigrationService::remoteOutputIndicatesXuiInstallFailure($log));
         self::assertFalse(PanelMigrationService::remoteOutputIndicatesXuiInstallFailure("Install complete\n"));
     }
+
+    public function testOfflineSuccessOutputWithMainPidTextIsNotFailure(): void
+    {
+        $out = 'Offline 3x-ui v3.4.2 installation verified (MainPID/exe + database).';
+        self::assertFalse(PanelMigrationService::remoteOutputIndicatesXuiInstallFailure($out));
+    }
 }

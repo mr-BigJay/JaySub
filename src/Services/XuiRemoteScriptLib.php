@@ -15,7 +15,7 @@ final class XuiRemoteScriptLib
     public static function bashPrerequisitesBlock(): string
     {
         return <<<'BASH'
-for cmd in tar sha256sum mktemp systemctl install uname od head tr cut readlink file; do
+for cmd in tar sha256sum mktemp systemctl install uname od head tr cut readlink file sqlite3; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "Missing local prerequisite: $cmd" >&2; exit 1; }
 done
 XUI_BIN=/usr/local/x-ui/x-ui
@@ -196,13 +196,13 @@ BASH;
         return <<<'BASH'
 sqlite_quick_check() {
   local db=$1
-  if command -v sqlite3 >/dev/null 2>&1; then
-    local qc
-    qc="$(sqlite3 "$db" 'PRAGMA quick_check;' 2>/dev/null || echo fail)"
-    [ "$qc" = "ok" ] || { echo "SQLite quick_check failed: $qc" >&2; return 1; }
-    return 0
-  fi
-  head -c 15 "$db" | grep -q 'SQLite format 3' || { echo "Not a SQLite file" >&2; return 1; }
+  command -v sqlite3 >/dev/null 2>&1 || {
+    echo "sqlite3 CLI is required on the destination VPS for PRAGMA quick_check (install: apt install sqlite3)" >&2
+    return 1
+  }
+  local qc
+  qc="$(sqlite3 "$db" 'PRAGMA quick_check;' 2>/dev/null || echo fail)"
+  [ "$qc" = "ok" ] || { echo "SQLite quick_check failed: $qc" >&2; return 1; }
   return 0
 }
 BASH;

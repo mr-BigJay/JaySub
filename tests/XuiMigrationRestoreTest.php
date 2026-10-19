@@ -27,7 +27,7 @@ final class XuiMigrationRestoreTest extends TestCase
 
         self::assertStringContainsString('/usr/local/x-ui/x-ui', $script);
         self::assertStringContainsString('/etc/x-ui/x-ui.db', $script);
-        self::assertStringContainsString('SQLite format 3', $script);
+        self::assertStringContainsString('sqlite3 CLI is required', $script);
         self::assertStringContainsString('203/EXEC risk', $script);
         self::assertStringContainsString('wait_xui_service_healthy', $script);
         self::assertStringContainsString('MainPID', $script);

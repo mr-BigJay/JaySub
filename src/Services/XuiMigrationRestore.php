@@ -184,17 +184,9 @@ BASH;
         $code = 1;
         exec('sqlite3 ' . $escaped . ' "PRAGMA quick_check;" 2>/dev/null', $out, $code);
         if ($code !== 0 || !isset($out[0]) || strtolower(trim((string) $out[0])) !== 'ok') {
-            if (!self::canSkipCliQuickCheck()) {
-                throw new \RuntimeException(
-                    'PRAGMA quick_check روی بک‌آپ نیاز به php-sqlite3 یا sqlite3 CLI دارد.'
-                );
-            }
+            throw new \RuntimeException(
+                'PRAGMA quick_check روی بک‌آپ ناموفق بود — php-sqlite3 یا sqlite3 CLI روی JaySub لازم است.'
+            );
         }
-    }
-
-    /** Allow unit tests without sqlite3 extension when header already validated. */
-    private static function canSkipCliQuickCheck(): bool
-    {
-        return getenv('JAYSUB_TEST_SKIP_SQLITE_QUICKCHECK') === '1';
     }
 }

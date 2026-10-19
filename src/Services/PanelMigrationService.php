@@ -109,6 +109,10 @@ final class PanelMigrationService
         }
         $install = SshRemoteZip::runRemoteShell($target, $encryption, $installCmd, 1200, self::storageBase($config));
         if (!$install['ok']) {
+            $failOut = trim((string) ($install['stdout'] ?? ''));
+            if ($failOut !== '') {
+                self::log($job, $failOut);
+            }
             throw new \RuntimeException('نصب 3x-ui: ' . ($install['error'] ?? 'ناموفق'));
         }
         $out = trim((string) ($install['stdout'] ?? ''));
@@ -357,9 +361,17 @@ final class PanelMigrationService
             . 'echo "x-ui systemd unit missing — install incomplete (see log)" >&2; exit 1';
     }
 
+    /**
+     * Secondary guard when remote bash exited 0 but printed a known failure line.
+     * Must not match offline/online success messages (e.g. MainPID verification text).
+     */
     public static function remoteOutputIndicatesXuiInstallFailure(string $output): bool
     {
         if ($output === '') {
+            return false;
+        }
+
+        if (str_contains($output, 'Offline 3x-ui v3.4.2 installation verified')) {
             return false;
         }
 
@@ -367,12 +379,12 @@ final class PanelMigrationService
             'Failed to extract the x-ui release archive',
             'x-ui binary not found after install',
             'x-ui systemd unit missing',
-            'x-ui service not running after restore',
-            'x-ui service unhealthy after restore',
-            '203/EXEC',
-            'MainPID/exe',
             'Unexpected remote x-ui package path',
             'x-ui install failed (archive extract)',
+            'Transferred archive missing',
+            'Invalid x-ui release layout',
+            'x-ui service or database failed after offline install',
+            'x-ui service failed stability check',
             'Download x-ui',
             ' failed, please check if the version exists',
             'Downloading x-ui failed',
