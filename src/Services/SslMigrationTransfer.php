@@ -51,7 +51,25 @@ BASH;
             $extract
         );
 
-        $verify = <<<'BASH'
+        $keyMatch = XuiRemoteScriptLib::bashCertKeyPubkeySha256Block();
+        $rollbackDir = MigrationTargetSnapshot::ROLLBACK_DIR;
+
+        $verify = $keyMatch . "\n" . <<<'BASH'
+
+rollback_cert_from_snapshot() {
+  local env="__ROLLBACK_DIR__/latest.env"
+  [ -f "$env" ] || return 0
+  # shellcheck disable=SC1090
+  . "$env"
+  if [ -n "${CERT_BAK:-}" ] && [ -f "$CERT_BAK" ] && [ -n "${CERT_DIR:-}" ]; then
+    parent=$(dirname "$CERT_DIR")
+    base=$(basename "$CERT_DIR")
+    mkdir -p "$CERT_DIR"
+    find "$CERT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    tar -xzf "$CERT_BAK" -C "$parent"
+    echo "Rolled back certificate tree from pre-migration snapshot" >&2
+  fi
+}
 
 verify_ssl_tree() {
   local dir=$1
@@ -87,15 +105,12 @@ verify_ssl_tree() {
     esac
   done < <(find "$dir" -type f \( -name '*.crt' -o -name '*.cer' -o -name '*.pem' -o -name '*.key' \) -print0 2>/dev/null)
   [ "$valid_cert" -gt 0 ] || { echo "No valid X.509 certificate found under $dir" >&2; return 1; }
-  local matched=0 certf keyf cm km
+  local matched=0 certf keyf
   while IFS= read -r -d '' certf; do
     openssl x509 -in "$certf" -noout 2>/dev/null || continue
-    cm="$(openssl x509 -noout -modulus -in "$certf" 2>/dev/null | openssl md5 2>/dev/null || true)"
-    [ -n "$cm" ] || continue
     while IFS= read -r -d '' keyf; do
       grep -q 'PRIVATE KEY' "$keyf" 2>/dev/null || continue
-      km="$(openssl rsa -noout -modulus -in "$keyf" 2>/dev/null | openssl md5 2>/dev/null || openssl pkey -noout -modulus -in "$keyf" 2>/dev/null | openssl md5 2>/dev/null || true)"
-      if [ -n "$km" ] && [ "$cm" = "$km" ]; then
+      if verify_cert_key_match "$certf" "$keyf" "ssl-tree"; then
         matched=1
         break 2
       fi
@@ -105,16 +120,20 @@ verify_ssl_tree() {
     echo "No matching private key for certificate under $dir" >&2
     return 1
   fi
-  echo "SSL verify: ${valid_cert} certificate(s), ${key_count} private key file(s), cert/key pair OK under $dir"
+  echo "SSL verify: ${valid_cert} certificate(s), ${key_count} private key file(s), cert/key pubkey SHA-256 OK under $dir"
   return 0
 }
-verify_ssl_tree __CERT__ || exit 1
+if ! verify_ssl_tree __CERT__; then
+  rollback_cert_from_snapshot
+  exit 1
+fi
 rm -f __ARCHIVE__
 echo "JaySub SSL transfer verified"
 BASH;
 
         $verify = str_replace('__CERT__', $certEsc, $verify);
         $verify = str_replace('__ARCHIVE__', $archEsc, $verify);
+        $verify = str_replace('__ROLLBACK_DIR__', $rollbackDir, $verify);
 
         return 'set -euo pipefail; mkdir -p ' . $certEsc . '; ' . $extract . $verify;
     }
@@ -124,7 +143,9 @@ BASH;
     {
         $certEsc = escapeshellarg($certPath);
 
-        $script = <<<'BASH'
+        $keyMatch = XuiRemoteScriptLib::bashCertKeyPubkeySha256Block();
+
+        $script = $keyMatch . "\n" . <<<'BASH'
 set -euo pipefail
 command -v sqlite3 >/dev/null 2>&1 || { echo "sqlite3 required to verify panel cert paths in DB" >&2; exit 1; }
 command -v openssl >/dev/null 2>&1 || { echo "openssl required to verify cert/key pairs" >&2; exit 1; }
@@ -142,14 +163,7 @@ resolve_path() {
 }
 verify_pair_files() {
   local cert=$1 key=$2 label=$3
-  [ -f "$cert" ] || { echo "Panel $label cert missing at $cert (from DB)" >&2; return 1; }
-  [ -f "$key" ] || { echo "Panel $label key missing at $key (from DB)" >&2; return 1; }
-  openssl x509 -in "$cert" -noout 2>/dev/null || { echo "Invalid certificate at $cert" >&2; return 1; }
-  grep -q 'PRIVATE KEY' "$key" 2>/dev/null || { echo "Invalid private key at $key" >&2; return 1; }
-  local cm km
-  cm="$(openssl x509 -noout -modulus -in "$cert" | openssl md5)"
-  km="$(openssl rsa -noout -modulus -in "$key" 2>/dev/null | openssl md5 || openssl pkey -noout -modulus -in "$key" | openssl md5)"
-  [ "$cm" = "$km" ] || { echo "Certificate and private key mismatch for $label ($cert)" >&2; return 1; }
+  verify_cert_key_match "$cert" "$key" "$label" || return 1
   echo "DB SSL paths OK for $label: $cert"
   return 0
 }

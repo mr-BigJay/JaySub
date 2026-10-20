@@ -18,7 +18,7 @@ final class MigrationExistingInstallProbe
     public static function remoteProbeScript(): string
     {
         $lib = XuiRemoteScriptLib::bashVerifyBinaryBlock() . "\n"
-            . XuiRemoteScriptLib::bashWaitServiceHealthyBlock(8, 2);
+            . XuiRemoteScriptLib::bashProbeServiceHealthyBlock();
 
         return <<<'BASH'
 set -euo pipefail
@@ -58,7 +58,7 @@ if ! systemctl is-active --quiet x-ui 2>/dev/null; then
   echo "JaySub x-ui probe: present-unhealthy"
   exit 3
 fi
-if ! wait_xui_service_healthy "$XUI_BIN"; then
+if ! probe_xui_service_healthy "$XUI_BIN"; then
   echo "JaySub x-ui probe: present-unhealthy"
   exit 3
 fi

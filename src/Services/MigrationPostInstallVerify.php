@@ -44,4 +44,39 @@ echo "JaySub post-install verify: binary, systemd, service, and database OK"
 exit 0
 BASH;
     }
+
+    /** Existing healthy panel: no systemctl restart (non-disruptive). */
+    public static function remoteVerifyExistingScript(): string
+    {
+        $lib = XuiRemoteScriptLib::bashVerifyBinaryBlock() . "\n"
+            . XuiRemoteScriptLib::bashProbeServiceHealthyBlock() . "\n"
+            . XuiRemoteScriptLib::bashSqliteQuickCheckBlock();
+
+        return $lib . <<<'BASH'
+
+set -euo pipefail
+command -v sqlite3 >/dev/null 2>&1 || { echo "Missing sqlite3 for existing panel verify" >&2; exit 1; }
+XUI_BIN=/usr/local/x-ui/x-ui
+XUI_UNIT=/etc/systemd/system/x-ui.service
+case "$(uname -m)" in
+  x86_64|amd64) ARCH=amd64 ;;
+  aarch64|arm64|armv8|armv8l) ARCH=arm64 ;;
+  *) echo "Unsupported architecture for x-ui verify" >&2; exit 1 ;;
+esac
+verify_xui_binary "$ARCH" || exit 1
+if ! probe_xui_service_healthy "$XUI_BIN"; then
+  echo "x-ui service probe failed (no restart performed)" >&2
+  exit 1
+fi
+DB=""
+for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do
+  [ -f "$c" ] && DB="$c" && break
+done
+if [ -n "$DB" ]; then
+  sqlite_quick_check "$DB" || exit 1
+fi
+echo "JaySub existing x-ui verify OK (no service restart)"
+exit 0
+BASH;
+    }
 }

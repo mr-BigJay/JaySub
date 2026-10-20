@@ -129,6 +129,61 @@ repair_xui_binary_from_tree() {
 BASH;
     }
 
+    /** Compare cert and private key via DER public key SHA-256 (RSA and ECDSA). */
+    public static function bashCertKeyPubkeySha256Block(): string
+    {
+        return <<<'BASH'
+cert_pubkey_sha256() {
+  local f=$1
+  openssl x509 -in "$f" -pubkey -noout 2>/dev/null \
+    | openssl pkey -pubin -outform DER 2>/dev/null \
+    | sha256sum | awk '{print $1}'
+}
+key_pubkey_sha256() {
+  local f=$1
+  grep -q 'PRIVATE KEY' "$f" 2>/dev/null || return 1
+  openssl pkey -in "$f" -pubout -outform DER 2>/dev/null \
+    | sha256sum | awk '{print $1}'
+}
+verify_cert_key_match() {
+  local cert=$1 key=$2 label=${3:-pair}
+  [ -f "$cert" ] || { echo "Certificate missing for $label" >&2; return 1; }
+  [ -f "$key" ] || { echo "Private key missing for $label" >&2; return 1; }
+  openssl x509 -in "$cert" -noout 2>/dev/null || { echo "Invalid certificate for $label" >&2; return 1; }
+  local cs ks
+  cs="$(cert_pubkey_sha256 "$cert" 2>/dev/null || true)"
+  ks="$(key_pubkey_sha256 "$key" 2>/dev/null || true)"
+  [ -n "$cs" ] || { echo "Could not derive public key from certificate ($label)" >&2; return 1; }
+  [ -n "$ks" ] || { echo "Could not derive public key from private key ($label)" >&2; return 1; }
+  [ "$cs" = "$ks" ] || { echo "Certificate and private key public key mismatch ($label)" >&2; return 1; }
+  return 0
+}
+BASH;
+    }
+
+    /**
+     * Non-disruptive service check (no systemctl restart).
+     */
+    public static function bashProbeServiceHealthyBlock(): string
+    {
+        return <<<'BASH'
+probe_xui_service_healthy() {
+  local expect="$1"
+  systemctl is-active --quiet x-ui 2>/dev/null || return 1
+  local pid exe
+  pid="$(systemctl show x-ui -p MainPID --value 2>/dev/null || echo 0)"
+  case "$pid" in
+    ''|0) return 1 ;;
+  esac
+  [ -r "/proc/$pid/exe" ] || return 1
+  exe="$(readlink -f "/proc/$pid/exe" 2>/dev/null || true)"
+  [ "$exe" = "$expect" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  return 0
+}
+BASH;
+    }
+
     /**
      * Wait for systemd active + stable MainPID whose /proc/PID/exe resolves to expected binary.
      */

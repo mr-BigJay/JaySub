@@ -21,8 +21,14 @@ final class PanelMigrationService
 
         try {
             self::runSteps($job, $config, $encryption);
-            $job['status'] = 'done';
-            self::log($job, 'انتقال با موفقیت تمام شد.');
+            if (($job['migration_outcome'] ?? '') === 'verified_only') {
+                $job['status'] = 'partial';
+                $summary = (string) ($job['result_summary'] ?? 'فقط بررسی شد؛ SSL و Restore انجام نشد.');
+                self::log($job, $summary);
+            } else {
+                $job['status'] = 'done';
+                self::log($job, 'انتقال با موفقیت تمام شد.');
+            }
         } catch (\Throwable $e) {
             $job['status'] = 'error';
             self::log($job, 'خطا: ' . $e->getMessage());
@@ -179,7 +185,10 @@ final class PanelMigrationService
                 );
             }
         }
-        $verifyCmd = 'bash -lc ' . escapeshellarg(MigrationPostInstallVerify::remoteVerifyScript());
+        $verifyScript = $skipInstall
+            ? MigrationPostInstallVerify::remoteVerifyExistingScript()
+            : MigrationPostInstallVerify::remoteVerifyScript();
+        $verifyCmd = 'bash -lc ' . escapeshellarg($verifyScript);
         $verify = self::runRemoteChecked($job, $target, $encryption, $verifyCmd, 300, $config, 'تأیید سلامت x-ui');
         self::logRemoteOutput($job, $verify);
         self::assertRemoteShellSuccess($verify, 'تأیید نصب 3x-ui');
@@ -192,9 +201,16 @@ final class PanelMigrationService
             );
             self::skipStep($job, 'ssl_copy', 'رد شد: x-ui موجود — بدون تأیید بازنویسی SSL', $config);
             self::skipStep($job, 'restore_backup', 'رد شد: x-ui موجود — بدون تأیید بازنویسی DB', $config);
+            $job['migration_outcome'] = 'verified_only';
+            $job['result_summary'] = 'فقط بررسی شد؛ SSL و Restore انجام نشد.';
 
             return;
         }
+
+        $snapCmd = 'bash -lc ' . escapeshellarg(MigrationTargetSnapshot::remoteCreateSnapshotScript($certPath));
+        $snap = self::runRemoteChecked($job, $target, $encryption, $snapCmd, 120, $config, 'نسخه پشتیبان مقصد قبل از SSL/DB');
+        self::logRemoteOutput($job, $snap);
+        self::assertRemoteShellSuccess($snap, 'نسخه پشتیبان SSL و DB روی مقصد');
 
         // 3) کپی گواهی از VPS فعلی
         self::beginStep($job, 'ssl_copy', $config);
@@ -244,6 +260,9 @@ final class PanelMigrationService
         $extract = 'bash -lc ' . escapeshellarg($sslScript);
         $ex = self::runRemoteChecked($job, $target, $encryption, $extract, 300, $config, 'انتقال SSL');
         self::logRemoteOutput($job, $ex);
+        if (!($ex['ok'] ?? false)) {
+            self::rollbackTargetSnapshot($job, $target, $encryption, $config);
+        }
         self::assertRemoteShellSuccess($ex, 'انتقال و اعتبارسنجی SSL');
         self::log($job, 'گواهی‌ها در ' . $certPath . ' منتقل و با openssl بررسی شدند.');
         self::finishStep($job, 'ssl_copy', $config);
@@ -273,6 +292,9 @@ final class PanelMigrationService
         $dbSslCmd = 'bash -lc ' . escapeshellarg(SslMigrationTransfer::remoteVerifyDbCertPathsScript($certPath));
         $dbSsl = self::runRemoteChecked($job, $target, $encryption, $dbSslCmd, 120, $config, 'تطابق SSL با دیتابیس');
         self::logRemoteOutput($job, $dbSsl);
+        if (!($dbSsl['ok'] ?? false)) {
+            self::rollbackTargetSnapshot($job, $target, $encryption, $config);
+        }
         self::assertRemoteShellSuccess($dbSsl, 'تطابق مسیرها و جفت cert/key در دیتابیس x-ui');
         self::log($job, 'تنظیمات پنل از بک‌آپ اعمال شد — همان مسیر/کاربر پنل قبلی (DNS را به IP جدید بزنید).');
         self::finishStep($job, 'restore_backup', $config);
@@ -335,6 +357,27 @@ final class PanelMigrationService
         self::setStep($job, $id, 'skipped', $message);
         self::log($job, $message);
         self::touch($job, $config);
+    }
+
+    /**
+     * @param array<string, mixed> $job
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $config
+     */
+    private static function rollbackTargetSnapshot(
+        array &$job,
+        array $target,
+        Encryption $encryption,
+        array $config,
+    ): void {
+        $cmd = 'bash -lc ' . escapeshellarg(MigrationTargetSnapshot::remoteRollbackSnapshotScript());
+        $rb = self::runRemoteChecked($job, $target, $encryption, $cmd, 180, $config, 'بازگردانی snapshot مقصد');
+        self::logRemoteOutput($job, $rb);
+        if ($rb['ok'] ?? false) {
+            self::log($job, 'پس از خطا، SSL و DB مقصد از snapshot قبل از migration بازگردانی شد.');
+        } else {
+            self::log($job, 'هشدار: بازگردانی snapshot مقصد ناموفق — VPS را دستی بررسی کنید (docs/MIGRATION-RECOVERY.md).');
+        }
     }
 
     /**

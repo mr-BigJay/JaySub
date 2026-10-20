@@ -379,6 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const stepIcon = (st) => {
       if (st === 'ok') return '<span class="migration-step-mark ok" aria-hidden="true">✓</span>';
+      if (st === 'skipped') return '<span class="migration-step-mark skip" aria-hidden="true">—</span>';
       if (st === 'running') return '<span class="migration-step-mark run" aria-hidden="true"></span>';
       if (st === 'error') return '<span class="migration-step-mark err" aria-hidden="true">!</span>';
       return '<span class="migration-step-mark pending" aria-hidden="true"></span>';
@@ -391,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let hasRunning = false;
       stepsEl.innerHTML = job.steps.map((s) => {
         const st = s.status || 'pending';
-        if (st === 'ok') done += 1;
+        if (st === 'ok' || st === 'skipped') done += 1;
         if (st === 'running') hasRunning = true;
         const cls = 'migration-step migration-step-' + st;
         const msg = s.message ? '<span class="migration-step-msg">' + s.message + '</span>' : '';
@@ -406,20 +407,30 @@ document.addEventListener('DOMContentLoaded', () => {
       if (topBarFill) {
         let pct = total > 0 ? (done / total) * 100 : 0;
         if (hasRunning && pct < 95) pct += 8;
-        if (job.status === 'done') pct = 100;
+        if (job.status === 'done' || job.status === 'partial') pct = 100;
         topBarFill.style.width = Math.min(100, pct) + '%';
       }
-      if (job.status === 'done' && completeBox) {
+      if ((job.status === 'done' || job.status === 'partial') && completeBox) {
         completeBox.hidden = false;
+        completeBox.classList.remove('is-error');
+        if (job.status === 'partial') {
+          completeBox.classList.add('is-partial');
+        } else {
+          completeBox.classList.remove('is-partial');
+        }
         if (completeMsg) {
-          const last = Array.isArray(job.log) && job.log.length ? job.log[job.log.length - 1].line : '';
-          completeMsg.textContent = last || 'انتقال با موفقیت انجام شد.';
+          if (job.migration_outcome === 'verified_only' || job.status === 'partial') {
+            completeMsg.textContent = job.result_summary || 'فقط بررسی شد؛ SSL و Restore انجام نشد.';
+          } else {
+            const last = Array.isArray(job.log) && job.log.length ? job.log[job.log.length - 1].line : '';
+            completeMsg.textContent = last || 'انتقال با موفقیت انجام شد.';
+          }
         }
         navNodes.forEach((node) => {
           node.classList.add('is-done');
           node.classList.remove('is-active');
           const circle = node.querySelector('.migration-wizard-circle');
-          if (circle) circle.textContent = '✓';
+          if (circle) circle.textContent = job.status === 'partial' ? 'i' : '✓';
         });
       }
       if (job.status === 'error' && completeBox) {

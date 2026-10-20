@@ -52,14 +52,15 @@ final class MigrationHardeningTest extends TestCase
         self::assertStringContainsString('gzip -t', $script);
         self::assertStringContainsString('openssl x509', $script);
         self::assertStringContainsString('chmod 600', $script);
-        self::assertStringContainsString('cert/key pair OK', $script);
+        self::assertStringContainsString('pubkey SHA-256 OK', $script);
+        self::assertStringContainsString('verify_cert_key_match', $script);
     }
 
     public function testDbSslVerifyChecksPanelPaths(): void
     {
         $script = SslMigrationTransfer::remoteVerifyDbCertPathsScript('/root/cert');
         self::assertStringContainsString('webCertFile', $script);
-        self::assertStringContainsString('Certificate and private key mismatch', $script);
+        self::assertStringContainsString('public key mismatch', $script);
     }
 
     public function testOnlineInstallRequiresChecksumVerifiedInLog(): void

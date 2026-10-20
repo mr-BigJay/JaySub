@@ -13,6 +13,8 @@ final class MigrationExistingInstallProbeTest extends TestCase
         $script = MigrationExistingInstallProbe::remoteProbeScript();
         self::assertStringNotContainsString('sqlite3', $script);
         self::assertStringContainsString('healthy-existing', $script);
+        self::assertStringContainsString('probe_xui_service_healthy', $script);
+        self::assertStringNotContainsString('wait_xui_service_healthy', $script);
     }
 
     public function testRemoteArchivePathIsIndependentOfJobId(): void
