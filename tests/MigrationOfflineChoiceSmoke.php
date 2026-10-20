@@ -31,10 +31,28 @@ if (!preg_match($checkboxPattern, $step1, $match)) {
 }
 
 $input = $match[0];
-foreach (['type="checkbox"', 'name="xui_install_mode"', 'value="offline"'] as $expected) {
+foreach (['type="checkbox"', 'value="offline"'] as $expected) {
     if (!str_contains($input, $expected)) {
         throw new \RuntimeException('Offline checkbox missing attribute: ' . $expected);
     }
+}
+if (str_contains($input, 'name="xui_install_mode"')) {
+    throw new \RuntimeException('Checkbox must not duplicate xui_install_mode name; hidden field carries POST value.');
+}
+if (!preg_match('~<input\b(?=[^>]*\bid="migration-xui-install-mode-value")(?=[^>]*\bname="xui_install_mode")[^>]*>~', $html)) {
+    throw new \RuntimeException('Hidden xui_install_mode field missing.');
+}
+$formStart = strpos($html, 'id="migration-form"');
+$formEnd = strpos($html, '</form>', (int) $formStart);
+if ($formStart === false || $formEnd === false) {
+    throw new \RuntimeException('Migration form bounds not found.');
+}
+$migrationFormBody = substr($html, $formStart, $formEnd - $formStart);
+if (preg_match('~<form\b~', $migrationFormBody)) {
+    throw new \RuntimeException('Nested form inside migration-form is not allowed.');
+}
+if (!str_contains($html, 'id="migration-offline-upload-form"')) {
+    throw new \RuntimeException('Standalone offline upload form missing.');
 }
 if (preg_match('~\bchecked(?:\s|=|>)~', $input)) {
     throw new \RuntimeException('Offline checkbox must be unchecked by default.');

@@ -216,6 +216,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const reviewTarget = document.getElementById('migration-review-target');
     const reviewInstallMode = document.getElementById('migration-review-install-mode');
     const offlineInstallCheckbox = document.getElementById('migration-xui-install-mode');
+    const offlineInstallModeValue = document.getElementById('migration-xui-install-mode-value');
+    const syncOfflineInstallModeField = () => {
+      if (offlineInstallModeValue) {
+        offlineInstallModeValue.value = offlineInstallCheckbox && offlineInstallCheckbox.checked ? 'offline' : 'online';
+      }
+    };
+    offlineInstallCheckbox?.addEventListener('change', syncOfflineInstallModeField);
+    syncOfflineInstallModeField();
     const sourceSummary = document.getElementById('migration-source-summary');
     const targetHost = document.getElementById('migration-target-host');
     const topBar = document.getElementById('migration-top-bar');
@@ -364,6 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setWizardStep(2);
           return;
         }
+        syncOfflineInstallModeField();
         prepareWizardSubmit();
       });
     }

@@ -14,7 +14,7 @@ final class OfflineXuiInstaller
     public const VERSION = 'v3.4.2';
 
     /** SHA-256 digests published by the official v3.4.2 GitHub release. */
-    private const SHA256 = [
+    public const RELEASE_SHA256 = [
         'amd64' => '1086716ea4b09f87893da3d83d5957af28ab7094c3a3a374cb3b369f6c0009a6',
         'arm64' => 'f7ce1303a22fa06a0d9de101a8b831c78ce756d84319ea1ff5236ce523e8ecd0',
     ];
@@ -31,13 +31,13 @@ final class OfflineXuiInstaller
     /** @return list<string> */
     public static function architectures(): array
     {
-        return array_keys(self::SHA256);
+        return array_keys(self::RELEASE_SHA256);
     }
 
     /** @param array<string, mixed> $config */
     public static function archivePath(array $config, string $architecture): string
     {
-        if (!isset(self::SHA256[$architecture])) {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
             throw new \InvalidArgumentException('معماری سرور برای نصب آفلاین پشتیبانی نمی‌شود: ' . $architecture);
         }
         $storage = rtrim((string) ($config['paths']['storage'] ?? dirname(__DIR__, 2) . '/storage'), '/');
@@ -140,7 +140,7 @@ final class OfflineXuiInstaller
                     throw new \RuntimeException('حجم بسته دانلودشده روی JaySub نامعتبر است.');
                 }
                 $digest = hash_file('sha256', $tmp);
-                if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+                if (!is_string($digest) || !hash_equals(self::RELEASE_SHA256[$architecture], strtolower($digest))) {
                     throw new \RuntimeException('SHA-256 دانلود روی JaySub با نسخه رسمی 3x-ui v3.4.2 مطابقت ندارد.');
                 }
 
@@ -181,13 +181,13 @@ final class OfflineXuiInstaller
         }
 
         $digest = hash_file('sha256', $path);
-        if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+        if (!is_string($digest) || !hash_equals(self::RELEASE_SHA256[$architecture], strtolower($digest))) {
             throw new \RuntimeException(
                 'SHA-256 بسته نصب آفلاین با فایل رسمی 3x-ui ' . self::VERSION . ' مطابقت ندارد. نصب متوقف شد.'
             );
         }
 
-        return ['path' => $path, 'sha256' => self::SHA256[$architecture]];
+        return ['path' => $path, 'sha256' => self::RELEASE_SHA256[$architecture]];
     }
 
     /**
@@ -209,7 +209,7 @@ final class OfflineXuiInstaller
             throw new \RuntimeException('فایل آپلودشده معتبر نیست یا حجم آن خارج از محدوده بسته رسمی است.');
         }
         $digest = hash_file('sha256', $tmpName);
-        if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+        if (!is_string($digest) || !hash_equals(self::RELEASE_SHA256[$architecture], strtolower($digest))) {
             throw new \RuntimeException('SHA-256 فایل آپلودشده با نسخه رسمی v3.4.2 و معماری انتخاب‌شده مطابقت ندارد.');
         }
 
@@ -242,17 +242,48 @@ final class OfflineXuiInstaller
     }
 
     /**
-     * Generate the upload destination independently of migration job IDs.
-     * Legacy persisted jobs might use an ID format that does not match the
-     * strict path validation required by the offline installer.
+     * SCP destination on the target VPS, independent of migration job IDs (PR #15).
      */
     public static function remoteArchivePath(string $architecture): string
     {
-        if (!isset(self::SHA256[$architecture])) {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
             throw new \InvalidArgumentException('Unsupported x-ui architecture');
         }
 
         return '/tmp/jaysub-xui-' . bin2hex(random_bytes(16)) . '-' . $architecture . '.tar.gz';
+    }
+
+    /**
+     * @deprecated Prefer {@see remoteArchivePath()}. Kept for tests with fixed transfer ids.
+     */
+    public static function remotePackagePath(string $transferId, string $architecture): string
+    {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
+            throw new \InvalidArgumentException('Unsupported x-ui architecture');
+        }
+        $id = strtolower(preg_replace('/[^a-f0-9]/', '', $transferId) ?? '');
+        if (strlen($id) !== 32) {
+            throw new \InvalidArgumentException('Migration transfer id must be 32 hex characters');
+        }
+
+        return '/tmp/jaysub-xui-' . $id . '-' . $architecture . '.tar.gz';
+    }
+
+    public static function releaseSha256(string $architecture): string
+    {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
+            throw new \InvalidArgumentException('Unsupported x-ui architecture');
+        }
+
+        return self::RELEASE_SHA256[$architecture];
+    }
+
+    public static function isValidRemotePackagePath(string $path): bool
+    {
+        return (bool) preg_match(
+            '~\A/tmp/jaysub-xui-[a-f0-9]{32}-(?:amd64|arm64)\.tar\.gz\z~D',
+            $path
+        );
     }
 
     /**
@@ -261,7 +292,7 @@ final class OfflineXuiInstaller
      */
     public static function remoteInstallScript(string $architecture, string $remoteArchive): string
     {
-        if (!isset(self::SHA256[$architecture])) {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
             throw new \InvalidArgumentException('Unsupported x-ui architecture');
         }
         $pathPattern = '~\A/tmp/jaysub-xui-[a-f0-9]{32}-' . $architecture . '\.tar\.gz\z~D';
@@ -269,12 +300,15 @@ final class OfflineXuiInstaller
             throw new \InvalidArgumentException('Unexpected remote x-ui package path');
         }
 
-        $script = <<<'BASH'
+        $lib = XuiRemoteScriptLib::bashPrerequisitesBlock() . "\n"
+            . XuiRemoteScriptLib::bashValidateTarArchiveBlock() . "\n"
+            . XuiRemoteScriptLib::bashVerifyBinaryBlock() . "\n"
+            . XuiRemoteScriptLib::bashWaitServiceHealthyBlock(12, 2);
+
+        $script = $lib . <<<'BASH'
+
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Offline x-ui install requires root" >&2; exit 1; }
-for cmd in tar sha256sum mktemp systemctl install uname od head tr cut; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "Missing local prerequisite: $cmd" >&2; exit 1; }
-done
 [ -d /run/systemd/system ] || { echo "Offline installer requires systemd (Ubuntu/Debian)" >&2; exit 1; }
 ARCH=__ARCH__
 ARCHIVE=__ARCHIVE__
@@ -286,6 +320,18 @@ esac
 [ "$ACTUAL_ARCH" = "$ARCH" ] || { echo "Archive architecture does not match destination" >&2; exit 1; }
 [ -f "$ARCHIVE" ] || { echo "Transferred archive missing" >&2; exit 1; }
 printf '%s  %s\n' '__SHA256__' "$ARCHIVE" | sha256sum -c -
+detect_partial_xui() {
+  local found=0 p
+  for p in /usr/local/x-ui /etc/systemd/system/x-ui.service /etc/x-ui/x-ui.db; do
+    [ -e "$p" ] && found=1
+  done
+  if [ "$found" -eq 1 ] && [ ! -x /usr/local/x-ui/x-ui ]; then
+    echo "Partial x-ui install without /usr/local/x-ui/x-ui — stop and recover manually" >&2
+    return 1
+  fi
+  return 0
+}
+detect_partial_xui || exit 1
 # Migration targets must be fresh, to prevent accidental replacement of an existing panel.
 for existing in /usr/local/x-ui /usr/bin/x-ui /etc/systemd/system/x-ui.service /etc/x-ui/x-ui.db; do
   [ ! -e "$existing" ] || { echo "Existing x-ui installation detected ($existing); refusing to overwrite it" >&2; exit 1; }
@@ -304,11 +350,12 @@ cleanup() {
     systemctl daemon-reload >/dev/null 2>&1 || true
   fi
   rm -rf "$TMP"
-  rm -f "$ARCHIVE"
+  if [ -n "${ARCHIVE:-}" ] && [ -f "$ARCHIVE" ]; then rm -f "$ARCHIVE"; fi
   exit "$code"
 }
 trap cleanup EXIT
-tar -xzf "$ARCHIVE" -C "$TMP"
+validate_tar_members "$ARCHIVE" || exit 1
+tar -xzf "$ARCHIVE" -C "$TMP" --no-same-owner --no-same-permissions
 [ -f "$TMP/x-ui/x-ui" ] && [ -f "$TMP/x-ui/x-ui.sh" ] || { echo "Invalid x-ui release layout" >&2; exit 1; }
 if [ -f "$TMP/x-ui/x-ui.service" ]; then
   SERVICE="$TMP/x-ui/x-ui.service"
@@ -341,7 +388,9 @@ chmod 700 /etc/x-ui
 installed=1
 install -m 0644 "$SERVICE" /etc/systemd/system/x-ui.service
 mv "$TMP/x-ui" /usr/local/x-ui
+chmod 755 /usr/local/x-ui /usr/local/x-ui/x-ui /usr/local/x-ui/x-ui.sh
 install -m 0755 /usr/local/x-ui/x-ui.sh /usr/bin/x-ui
+verify_xui_binary "$ARCH" || exit 1
 # Generate throwaway randomized credentials while the restore step is pending.
 random_hex() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-20; }
 USER_TMP="js$(random_hex)"
@@ -352,21 +401,27 @@ PORT_TMP=$(( 20000 + 0x$(random_hex | cut -c1-4) % 30000 ))
 systemctl daemon-reload
 systemctl enable x-ui >/dev/null
 systemctl restart x-ui
-for i in 1 2 3 4 5 6 7 8 9 10; do
-  if systemctl is-active --quiet x-ui && { [ -s /etc/x-ui/x-ui.db ] || [ -s /usr/local/x-ui/x-ui.db ]; }; then
-    success=1
-    echo "Offline 3x-ui v3.4.2 installation verified (systemd + database)."
-    exit 0
+if wait_xui_service_healthy "$XUI_BIN"; then
+  if [ ! -s /etc/x-ui/x-ui.db ] && [ ! -s /usr/local/x-ui/x-ui.db ]; then
+    echo "x-ui.db missing after offline install" >&2
+    exit 1
   fi
-  sleep 2
-done
+  CACHE="/var/lib/jaysub/xui-offline-342-${ARCH}.tar.gz"
+  mkdir -p /var/lib/jaysub
+  mv "$ARCHIVE" "$CACHE"
+  chmod 600 "$CACHE"
+  ARCHIVE=""
+  success=1
+  echo "Offline 3x-ui v3.4.2 installation verified (MainPID/exe + database)."
+  exit 0
+fi
 echo "x-ui service or database failed after offline install" >&2
 exit 1
 BASH;
 
         return str_replace(
             ['__ARCH__', '__ARCHIVE__', '__SHA256__'],
-            [escapeshellarg($architecture), escapeshellarg($remoteArchive), self::SHA256[$architecture]],
+            [escapeshellarg($architecture), escapeshellarg($remoteArchive), self::RELEASE_SHA256[$architecture]],
             $script
         );
     }

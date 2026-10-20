@@ -11,3 +11,6 @@
 
 # Cache official binary releases ONLY on the management server.
 /storage/xui-offline/
+.phpunit.result.cache
+/composer.phar
+/phpunit.phar
