@@ -275,10 +275,21 @@ final class BackupService
         return $out;
     }
 
+    /**
+     * The filename comes from the remote 3x-ui server, whose timezone can differ
+     * from JaySub's. Its embedded wall-clock time is therefore not trustworthy.
+     * Use the saved file's Unix mtime (an absolute instant) for display, sorting,
+     * weekly retention and restore selection, all formatted in Asia/Tehran.
+     *
+     * Keep the filename as an emergency fallback only when file metadata is absent.
+     */
     public static function backupTimestamp(string $filename, int $mtimeFallback): int
     {
-        $fromName = BackupCalendar::timestampFromBackupFilename($filename);
-        return $fromName ?? $mtimeFallback;
+        if ($mtimeFallback > 0) {
+            return $mtimeFallback;
+        }
+
+        return BackupCalendar::timestampFromBackupFilename($filename) ?? 0;
     }
 
     /** @param array<string, mixed> $config */

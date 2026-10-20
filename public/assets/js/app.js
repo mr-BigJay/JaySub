@@ -1,4 +1,28 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // The shared admin clock must not depend on the browser or VPS timezone.
+  const tehranClock = document.querySelector('[data-tehran-clock]');
+  if (tehranClock && typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+    try {
+      const formatter = new Intl.DateTimeFormat('fa-IR', {
+        timeZone: 'Asia/Tehran',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      });
+      const updateTehranClock = () => {
+        const now = new Date();
+        tehranClock.textContent = formatter.format(now);
+        tehranClock.dateTime = now.toISOString();
+      };
+      updateTehranClock();
+      window.setInterval(updateTehranClock, 15000);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) updateTehranClock();
+      });
+    } catch (_) {
+      // PHP renders an Asia/Tehran timestamp as the no-JavaScript fallback.
+    }
+  }
   const bars = document.querySelectorAll('[data-progress]');
   bars.forEach((el) => {
     const pct = parseFloat(el.getAttribute('data-progress') || '0');
@@ -190,6 +214,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const sourceSelect = document.getElementById('migration-source-ssl');
     const reviewSource = document.getElementById('migration-review-source');
     const reviewTarget = document.getElementById('migration-review-target');
+    const reviewInstallMode = document.getElementById('migration-review-install-mode');
+    const offlineInstallCheckbox = document.getElementById('migration-xui-install-mode');
+    const offlineInstallModeValue = document.getElementById('migration-xui-install-mode-value');
+    const syncOfflineInstallModeField = () => {
+      if (offlineInstallModeValue) {
+        offlineInstallModeValue.value = offlineInstallCheckbox && offlineInstallCheckbox.checked ? 'offline' : 'online';
+      }
+    };
+    offlineInstallCheckbox?.addEventListener('change', syncOfflineInstallModeField);
+    syncOfflineInstallModeField();
     const sourceSummary = document.getElementById('migration-source-summary');
     const targetHost = document.getElementById('migration-target-host');
     const topBar = document.getElementById('migration-top-bar');
@@ -213,6 +247,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (reviewSource) reviewSource.textContent = selectedSourceLabel();
       const host = targetHost && targetHost.value.trim() ? targetHost.value.trim() : '—';
       if (reviewTarget) reviewTarget.textContent = host;
+      if (reviewInstallMode) {
+        reviewInstallMode.textContent = offlineInstallCheckbox && offlineInstallCheckbox.checked
+          ? 'آفلاین — فایل از سرور مدیریت JaySub'
+          : 'آنلاین (پیش‌فرض)';
+      }
     };
 
     const syncWizardFields = () => {
@@ -333,6 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setWizardStep(2);
           return;
         }
+        syncOfflineInstallModeField();
         prepareWizardSubmit();
       });
     }
