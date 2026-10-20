@@ -1514,7 +1514,7 @@ if ($uri === '/admin/migration' && $method === 'POST') {
         'target_auth_type' => ($_POST['target_auth_type'] ?? '') === 'key' ? 'key' : 'password',
         'target_secret_encrypted' => app_encryption($config)->encrypt($secret),
         'target_cert_path' => trim((string) ($_POST['target_cert_path'] ?? '/root/cert')),
-        'xui_install_mode' => ($_POST['xui_install_mode'] ?? 'online') === 'offline' ? 'offline' : 'online',
+        'xui_install_mode' => PanelMigrationService::normalizeInstallMode((string) ($_POST['xui_install_mode'] ?? 'online')),
         'steps' => PanelMigrationService::defaultSteps(),
         'log' => [],
         'created_at' => date('c'),

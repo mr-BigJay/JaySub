@@ -1,0 +1,60 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Services\MigrationPostInstallVerify;
+use App\Services\PanelMigrationService;
+use App\Services\SslMigrationTransfer;
+use PHPUnit\Framework\TestCase;
+
+final class MigrationHardeningTest extends TestCase
+{
+    public function testNormalizeInstallMode(): void
+    {
+        self::assertSame('offline', PanelMigrationService::normalizeInstallMode('offline'));
+        self::assertSame('online', PanelMigrationService::normalizeInstallMode('online'));
+        self::assertSame('online', PanelMigrationService::normalizeInstallMode(''));
+    }
+
+    public function testPostInstallVerifyRequiresRealBinaryNotOnlyCliScript(): void
+    {
+        $script = MigrationPostInstallVerify::remoteVerifyScript();
+        self::assertStringContainsString('/usr/local/x-ui/x-ui', $script);
+        self::assertStringContainsString('Only management script /usr/bin/x-ui present', $script);
+        self::assertStringContainsString('wait_xui_service_healthy', $script);
+    }
+
+    public function testOnlineInstallScriptDoesNotTreatUsrBinWrapperAsBinary(): void
+    {
+        $script = PanelMigrationService::remoteXuiInstallScript('v3.4.2');
+        self::assertStringContainsString('/usr/local/x-ui/x-ui', $script);
+        self::assertStringContainsString('grep -q ELF', $script);
+        self::assertStringContainsString('invalid compressed data', $script);
+    }
+
+    public function testCorruptTarLogSnippetIsInstallFailure(): void
+    {
+        $log = "gzip: stdin: invalid compressed data--format violated\ntar: Error is not recoverable\n";
+        self::assertTrue(PanelMigrationService::remoteOutputIndicatesXuiInstallFailure($log));
+    }
+
+    public function testPostInstallSuccessLineIsNotInstallFailure(): void
+    {
+        $out = "JaySub post-install verify: binary, systemd unit, and service OK\n";
+        self::assertFalse(PanelMigrationService::remoteOutputIndicatesXuiInstallFailure($out));
+    }
+
+    public function testSslScriptUsesGzipTestAndOpenssl(): void
+    {
+        $script = SslMigrationTransfer::remoteExtractAndVerifyScript('/root/cert', '/tmp/jaysub-certs.tar.gz', '.tar.gz');
+        self::assertStringContainsString('gzip -t', $script);
+        self::assertStringContainsString('openssl x509', $script);
+        self::assertStringContainsString('chmod 600', $script);
+    }
+
+    public function testSslZipScriptUsesUnzipTest(): void
+    {
+        $script = SslMigrationTransfer::remoteExtractAndVerifyScript('/root/cert', '/tmp/jaysub-certs.zip', '.zip');
+        self::assertStringContainsString('unzip -t', $script);
+    }
+}

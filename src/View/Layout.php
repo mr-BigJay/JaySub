@@ -1729,6 +1729,7 @@ HTML;
             . $stepNav
             . '<div class="migration-top-bar" id="migration-top-bar" hidden><div class="migration-top-bar-fill" id="migration-top-bar-fill"></div></div>'
             . '<form class="migration-form stack" method="post" action="/admin/migration" id="migration-form">' . $csrfField
+            . '<input type="hidden" name="xui_install_mode" id="migration-xui-install-mode-value" value="online">'
             . '<section class="migration-wizard-panel" data-migration-wizard-panel="1">
                 <div class="migration-wizard-card">
                 <h2 class="migration-wizard-title">۱. انتخاب سرور مبدأ</h2>
@@ -1740,7 +1741,7 @@ HTML;
                 <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
                 <div class="migration-offline-choice">
                     <label for="migration-xui-install-mode" class="migration-offline-choice-label">
-                        <input type="checkbox" name="xui_install_mode" id="migration-xui-install-mode" value="offline">
+                        <input type="checkbox" id="migration-xui-install-mode" value="offline" aria-describedby="migration-offline-hint">
                         <span>نصب آفلاین 3x-ui نسخه 3.4.2</span>
                     </label>
                     <p class="muted form-hint migration-offline-choice-hint">پیش‌فرض نصب آنلاین فعلی است. با فعال‌کردن این گزینه، JaySub فایل رسمی را از سرور مدیریت با SCP به VPS مقصد منتقل می‌کند و بدون دانلود از GitHub روی مقصد نصب می‌کند.</p>
