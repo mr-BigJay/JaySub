@@ -16,6 +16,10 @@ Existing offline cache under `storage/xui-offline/v3.4.2/` is reused; do not re-
 - Ubuntu/Debian, systemd, root SSH
 - `sqlite3`, `openssl`, `file`, `tar`, `gzip` (and `unzip` if SSL backup is zip)
 
+## Already-healthy x-ui on target (manual install)
+
+If `/usr/local/x-ui/x-ui` and `systemctl is-active x-ui` are healthy, JaySub **skips** install (no `install.sh`, no SCP overwrite). Migration continues with SSL transfer and DB restore only.
+
 ## Half-installed target recovery
 
 1. Inspect: `systemctl status x-ui`, `ls -la /usr/local/x-ui/x-ui`, `journalctl -u x-ui -n 50`

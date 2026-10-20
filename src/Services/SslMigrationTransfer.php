@@ -87,7 +87,25 @@ verify_ssl_tree() {
     esac
   done < <(find "$dir" -type f \( -name '*.crt' -o -name '*.cer' -o -name '*.pem' -o -name '*.key' \) -print0 2>/dev/null)
   [ "$valid_cert" -gt 0 ] || { echo "No valid X.509 certificate found under $dir" >&2; return 1; }
-  echo "SSL verify: ${valid_cert} certificate(s), ${key_count} private key file(s) under $dir"
+  local matched=0 certf keyf cm km
+  while IFS= read -r -d '' certf; do
+    openssl x509 -in "$certf" -noout 2>/dev/null || continue
+    cm="$(openssl x509 -noout -modulus -in "$certf" 2>/dev/null | openssl md5 2>/dev/null || true)"
+    [ -n "$cm" ] || continue
+    while IFS= read -r -d '' keyf; do
+      grep -q 'PRIVATE KEY' "$keyf" 2>/dev/null || continue
+      km="$(openssl rsa -noout -modulus -in "$keyf" 2>/dev/null | openssl md5 2>/dev/null || openssl pkey -noout -modulus -in "$keyf" 2>/dev/null | openssl md5 2>/dev/null || true)"
+      if [ -n "$km" ] && [ "$cm" = "$km" ]; then
+        matched=1
+        break 2
+      fi
+    done < <(find "$dir" -type f \( -name '*.key' -o -name '*.pem' \) -print0 2>/dev/null)
+  done < <(find "$dir" -type f \( -name '*.crt' -o -name '*.cer' -o -name '*.pem' \) -print0 2>/dev/null)
+  if [ "$key_count" -gt 0 ] && [ "$matched" -ne 1 ]; then
+    echo "No matching private key for certificate under $dir" >&2
+    return 1
+  fi
+  echo "SSL verify: ${valid_cert} certificate(s), ${key_count} private key file(s), cert/key pair OK under $dir"
   return 0
 }
 verify_ssl_tree __CERT__ || exit 1
@@ -99,5 +117,71 @@ BASH;
         $verify = str_replace('__ARCHIVE__', $archEsc, $verify);
 
         return 'set -euo pipefail; mkdir -p ' . $certEsc . '; ' . $extract . $verify;
+    }
+
+    /** After DB restore: paths referenced by x-ui settings must exist and cert/key must match. */
+    public static function remoteVerifyDbCertPathsScript(string $certPath): string
+    {
+        $certEsc = escapeshellarg($certPath);
+
+        $script = <<<'BASH'
+set -euo pipefail
+command -v sqlite3 >/dev/null 2>&1 || { echo "sqlite3 required to verify panel cert paths in DB" >&2; exit 1; }
+command -v openssl >/dev/null 2>&1 || { echo "openssl required to verify cert/key pairs" >&2; exit 1; }
+DB=/etc/x-ui/x-ui.db
+CERT_ROOT=__CERT__
+[ -f "$DB" ] || { echo "x-ui.db missing for SSL path verification" >&2; exit 1; }
+[ -d "$CERT_ROOT" ] || { echo "Certificate directory missing: $CERT_ROOT" >&2; exit 1; }
+resolve_path() {
+  local p=$1
+  [ -n "$p" ] || return 1
+  case "$p" in
+    /*) printf '%s\n' "$p" ;;
+    *) printf '%s\n' "$CERT_ROOT/$p" ;;
+  esac
+}
+verify_pair_files() {
+  local cert=$1 key=$2 label=$3
+  [ -f "$cert" ] || { echo "Panel $label cert missing at $cert (from DB)" >&2; return 1; }
+  [ -f "$key" ] || { echo "Panel $label key missing at $key (from DB)" >&2; return 1; }
+  openssl x509 -in "$cert" -noout 2>/dev/null || { echo "Invalid certificate at $cert" >&2; return 1; }
+  grep -q 'PRIVATE KEY' "$key" 2>/dev/null || { echo "Invalid private key at $key" >&2; return 1; }
+  local cm km
+  cm="$(openssl x509 -noout -modulus -in "$cert" | openssl md5)"
+  km="$(openssl rsa -noout -modulus -in "$key" 2>/dev/null | openssl md5 || openssl pkey -noout -modulus -in "$key" | openssl md5)"
+  [ "$cm" = "$km" ] || { echo "Certificate and private key mismatch for $label ($cert)" >&2; return 1; }
+  echo "DB SSL paths OK for $label: $cert"
+  return 0
+}
+checked=0
+for keys in "webCertFile webKeyFile web" "subCertFile subKeyFile subscription"; do
+  set -- $keys
+  ck="$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='$1' LIMIT 1;" 2>/dev/null || true)"
+  kk="$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='$2' LIMIT 1;" 2>/dev/null || true)"
+  if [ -n "$ck" ] || [ -n "$kk" ]; then
+    cp="$(resolve_path "$ck")" || true
+    kp="$(resolve_path "$kk")" || true
+    verify_pair_files "$cp" "$kp" "$3" || exit 1
+    checked=1
+  fi
+done
+if [ "$checked" -eq 0 ]; then
+  while IFS='|' read -r k v; do
+    case "$k" in
+      *Cert*|*cert*|*Key*|*key*)
+        if [ -n "$v" ] && [ "${v#/}" != "$v" ]; then
+          [ -f "$v" ] || { echo "DB references missing SSL file: $v (key $k)" >&2; exit 1; }
+          checked=1
+        fi
+        ;;
+    esac
+  done < <(sqlite3 -separator '|' "$DB" "SELECT key, value FROM settings WHERE value LIKE '/%';" 2>/dev/null || true)
+fi
+[ "$checked" -ge 1 ] || echo "Note: no panel cert paths in DB settings; filesystem SSL tree was verified at transfer"
+echo "JaySub DB SSL path verification complete"
+exit 0
+BASH;
+
+        return str_replace('__CERT__', $certEsc, $script);
     }
 }

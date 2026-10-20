@@ -26,7 +26,8 @@ final class OnlineXuiInstallerTest extends TestCase
         self::assertStringContainsString('fetch_install_script', $script);
         self::assertStringContainsString('detect_partial_xui', $script);
         self::assertStringContainsString('/usr/local/x-ui/x-ui', $script);
-        self::assertStringNotContainsString('xui_binary_ready', $script);
+        self::assertStringContainsString('Checksum verified', $script);
+        self::assertStringContainsString('Checksum mismatch', $script);
     }
 
     public function testPanelMigrationDelegatesToOnlineInstaller(): void

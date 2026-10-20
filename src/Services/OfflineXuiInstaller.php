@@ -14,7 +14,7 @@ final class OfflineXuiInstaller
     public const VERSION = 'v3.4.2';
 
     /** SHA-256 digests published by the official v3.4.2 GitHub release. */
-    private const SHA256 = [
+    public const RELEASE_SHA256 = [
         'amd64' => '1086716ea4b09f87893da3d83d5957af28ab7094c3a3a374cb3b369f6c0009a6',
         'arm64' => 'f7ce1303a22fa06a0d9de101a8b831c78ce756d84319ea1ff5236ce523e8ecd0',
     ];
@@ -31,13 +31,13 @@ final class OfflineXuiInstaller
     /** @return list<string> */
     public static function architectures(): array
     {
-        return array_keys(self::SHA256);
+        return array_keys(self::RELEASE_SHA256);
     }
 
     /** @param array<string, mixed> $config */
     public static function archivePath(array $config, string $architecture): string
     {
-        if (!isset(self::SHA256[$architecture])) {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
             throw new \InvalidArgumentException('معماری سرور برای نصب آفلاین پشتیبانی نمی‌شود: ' . $architecture);
         }
         $storage = rtrim((string) ($config['paths']['storage'] ?? dirname(__DIR__, 2) . '/storage'), '/');
@@ -140,7 +140,7 @@ final class OfflineXuiInstaller
                     throw new \RuntimeException('حجم بسته دانلودشده روی JaySub نامعتبر است.');
                 }
                 $digest = hash_file('sha256', $tmp);
-                if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+                if (!is_string($digest) || !hash_equals(self::RELEASE_SHA256[$architecture], strtolower($digest))) {
                     throw new \RuntimeException('SHA-256 دانلود روی JaySub با نسخه رسمی 3x-ui v3.4.2 مطابقت ندارد.');
                 }
 
@@ -181,13 +181,13 @@ final class OfflineXuiInstaller
         }
 
         $digest = hash_file('sha256', $path);
-        if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+        if (!is_string($digest) || !hash_equals(self::RELEASE_SHA256[$architecture], strtolower($digest))) {
             throw new \RuntimeException(
                 'SHA-256 بسته نصب آفلاین با فایل رسمی 3x-ui ' . self::VERSION . ' مطابقت ندارد. نصب متوقف شد.'
             );
         }
 
-        return ['path' => $path, 'sha256' => self::SHA256[$architecture]];
+        return ['path' => $path, 'sha256' => self::RELEASE_SHA256[$architecture]];
     }
 
     /**
@@ -209,7 +209,7 @@ final class OfflineXuiInstaller
             throw new \RuntimeException('فایل آپلودشده معتبر نیست یا حجم آن خارج از محدوده بسته رسمی است.');
         }
         $digest = hash_file('sha256', $tmpName);
-        if (!is_string($digest) || !hash_equals(self::SHA256[$architecture], strtolower($digest))) {
+        if (!is_string($digest) || !hash_equals(self::RELEASE_SHA256[$architecture], strtolower($digest))) {
             throw new \RuntimeException('SHA-256 فایل آپلودشده با نسخه رسمی v3.4.2 و معماری انتخاب‌شده مطابقت ندارد.');
         }
 
@@ -242,11 +242,23 @@ final class OfflineXuiInstaller
     }
 
     /**
-     * Canonical SCP destination path on the target VPS (must match {@see remoteInstallScript}).
+     * SCP destination on the target VPS, independent of migration job IDs (PR #15).
+     */
+    public static function remoteArchivePath(string $architecture): string
+    {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
+            throw new \InvalidArgumentException('Unsupported x-ui architecture');
+        }
+
+        return '/tmp/jaysub-xui-' . bin2hex(random_bytes(16)) . '-' . $architecture . '.tar.gz';
+    }
+
+    /**
+     * @deprecated Prefer {@see remoteArchivePath()}. Kept for tests with fixed transfer ids.
      */
     public static function remotePackagePath(string $transferId, string $architecture): string
     {
-        if (!isset(self::SHA256[$architecture])) {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
             throw new \InvalidArgumentException('Unsupported x-ui architecture');
         }
         $id = strtolower(preg_replace('/[^a-f0-9]/', '', $transferId) ?? '');
@@ -255,6 +267,15 @@ final class OfflineXuiInstaller
         }
 
         return '/tmp/jaysub-xui-' . $id . '-' . $architecture . '.tar.gz';
+    }
+
+    public static function releaseSha256(string $architecture): string
+    {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
+            throw new \InvalidArgumentException('Unsupported x-ui architecture');
+        }
+
+        return self::RELEASE_SHA256[$architecture];
     }
 
     public static function isValidRemotePackagePath(string $path): bool
@@ -271,7 +292,7 @@ final class OfflineXuiInstaller
      */
     public static function remoteInstallScript(string $architecture, string $remoteArchive): string
     {
-        if (!isset(self::SHA256[$architecture])) {
+        if (!isset(self::RELEASE_SHA256[$architecture])) {
             throw new \InvalidArgumentException('Unsupported x-ui architecture');
         }
         if (!self::isValidRemotePackagePath($remoteArchive)) {
@@ -399,7 +420,7 @@ BASH;
 
         return str_replace(
             ['__ARCH__', '__ARCHIVE__', '__SHA256__'],
-            [escapeshellarg($architecture), escapeshellarg($remoteArchive), self::SHA256[$architecture]],
+            [escapeshellarg($architecture), escapeshellarg($remoteArchive), self::RELEASE_SHA256[$architecture]],
             $script
         );
     }

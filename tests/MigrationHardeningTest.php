@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Services\MigrationPostInstallVerify;
+use App\Services\OfflineXuiInstaller;
 use App\Services\PanelMigrationService;
 use App\Services\SslMigrationTransfer;
 use PHPUnit\Framework\TestCase;
@@ -51,6 +52,21 @@ final class MigrationHardeningTest extends TestCase
         self::assertStringContainsString('gzip -t', $script);
         self::assertStringContainsString('openssl x509', $script);
         self::assertStringContainsString('chmod 600', $script);
+        self::assertStringContainsString('cert/key pair OK', $script);
+    }
+
+    public function testDbSslVerifyChecksPanelPaths(): void
+    {
+        $script = SslMigrationTransfer::remoteVerifyDbCertPathsScript('/root/cert');
+        self::assertStringContainsString('webCertFile', $script);
+        self::assertStringContainsString('Certificate and private key mismatch', $script);
+    }
+
+    public function testOnlineInstallRequiresChecksumVerifiedInLog(): void
+    {
+        $script = \App\Services\OnlineXuiInstaller::remoteInstallScript();
+        self::assertStringContainsString('Checksum verified', $script);
+        self::assertStringContainsString(OfflineXuiInstaller::releaseSha256('amd64'), $script);
     }
 
     public function testSslZipScriptUsesUnzipTest(): void

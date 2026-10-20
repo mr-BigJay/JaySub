@@ -81,9 +81,33 @@ final class PanelMigrationService
         $job['xui_install_mode'] = $mode;
         self::log($job, 'روش نصب 3x-ui (از Job): ' . ($mode === 'offline' ? 'آفلاین' : 'آنلاین'));
         self::touch($job, $config);
-        if ($mode === 'offline') {
+
+        $probeCmd = 'bash -lc ' . escapeshellarg(MigrationExistingInstallProbe::remoteProbeScript());
+        $probe = self::runRemoteChecked($job, $target, $encryption, $probeCmd, 120, $config, 'بررسی نصب موجود x-ui');
+        self::logRemoteOutput($job, $probe);
+        $probeOut = self::remoteCombinedOutput($probe);
+        if (!$probe['ok']) {
+            if (MigrationExistingInstallProbe::outputIndicatesPartial($probeOut)) {
+                throw new \RuntimeException(
+                    'نصب ناقص x-ui روی مقصد — JaySub چیزی را حذف یا بازنویسی نمی‌کند. راهنما: docs/MIGRATION-RECOVERY.md'
+                );
+            }
+
+            throw new \RuntimeException(
+                'x-ui روی مقصد ناسالم است — نصب/بازنویسی خودکار انجام نمی‌شود. وضعیت سرویس و باینری را بررسی کنید.'
+            );
+        }
+        $skipInstall = MigrationExistingInstallProbe::outputIndicatesHealthyExisting($probeOut);
+        if ($skipInstall) {
+            self::log($job, 'نصب رد شد: x-ui سالم از قبل روی مقصد است (بدون حذف، بازنویسی یا اجرای install.sh).');
+            self::touch($job, $config);
+        } elseif ($mode === 'offline') {
             self::log($job, 'نصب آفلاین v3.4.2؛ بسته از cache JaySub (بدون GitHub روی مقصد).');
             self::touch($job, $config);
+            $pre = 'bash -lc ' . escapeshellarg(MigrationTargetPrerequisites::remoteOfflineInstallPrerequisiteScript());
+            $preFlight = self::runRemoteChecked($job, $target, $encryption, $pre, 60, $config, 'پیش‌نیاز نصب آفلاین');
+            self::logRemoteOutput($job, $preFlight);
+            self::assertRemoteShellSuccess($preFlight, 'پیش‌نیازهای Ubuntu/Debian برای نصب آفلاین');
             $archProbe = SshRemoteZip::runRemoteShell(
                 $target, $encryption, 'uname -m', 30, self::storageBase($config)
             );
@@ -95,7 +119,9 @@ final class PanelMigrationService
                 throw new \RuntimeException('نصب آفلاین فقط برای amd64 و arm64 پشتیبانی می‌شود.');
             }
             $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
-            $remoteArchive = OfflineXuiInstaller::remotePackagePath((string) ($job['id'] ?? ''), $arch);
+            $remoteArchive = OfflineXuiInstaller::remoteArchivePath($arch);
+            $job['xui_remote_archive'] = $remoteArchive;
+            self::log($job, 'مسیر SCP مقصد: ' . $remoteArchive);
             self::log($job, 'SHA-256 تأیید شد؛ SCP به مقصد...');
             self::touch($job, $config);
             $transfer = SshRemoteZip::uploadLocalFile(
@@ -113,27 +139,44 @@ final class PanelMigrationService
             $installCmd = 'bash -lc ' . escapeshellarg(
                 OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
             );
+            $install = self::runRemoteChecked(
+                $job,
+                $target,
+                $encryption,
+                $installCmd,
+                1200,
+                $config,
+                'نصب 3x-ui'
+            );
+            self::logRemoteOutput($job, $install);
+            self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
+            $installOut = self::remoteCombinedOutput($install);
+            if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
+                throw new \RuntimeException(
+                    'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
+                );
+            }
         } else {
-            self::log($job, 'نصب آنلاین: install.sh پین‌شده + آرگومان v3.4.2 (نه tag/v3.4.2/install.sh قدیمی).');
+            self::log($job, 'نصب آنلاین: install.sh پین‌شده + آرگومان v3.4.2؛ تأیید checksum بسته در لاگ upstream.');
             self::touch($job, $config);
             $installCmd = 'bash -lc ' . escapeshellarg(OnlineXuiInstaller::remoteInstallScript());
-        }
-        $install = self::runRemoteChecked(
-            $job,
-            $target,
-            $encryption,
-            $installCmd,
-            1200,
-            $config,
-            'نصب 3x-ui'
-        );
-        self::logRemoteOutput($job, $install);
-        self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
-        $installOut = self::remoteCombinedOutput($install);
-        if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
-            throw new \RuntimeException(
-                'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
+            $install = self::runRemoteChecked(
+                $job,
+                $target,
+                $encryption,
+                $installCmd,
+                1200,
+                $config,
+                'نصب 3x-ui'
             );
+            self::logRemoteOutput($job, $install);
+            self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
+            $installOut = self::remoteCombinedOutput($install);
+            if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
+                throw new \RuntimeException(
+                    'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
+                );
+            }
         }
         $verifyCmd = 'bash -lc ' . escapeshellarg(MigrationPostInstallVerify::remoteVerifyScript());
         $verify = self::runRemoteChecked($job, $target, $encryption, $verifyCmd, 300, $config, 'تأیید سلامت x-ui');
@@ -215,6 +258,10 @@ final class PanelMigrationService
         $rest = self::runRemoteChecked($job, $target, $encryption, $restoreCmd, 300, $config, 'بازگردانی DB');
         self::logRemoteOutput($job, $rest);
         self::assertRemoteShellSuccess($rest, 'بازگردانی بک‌آپ روی x-ui');
+        $dbSslCmd = 'bash -lc ' . escapeshellarg(SslMigrationTransfer::remoteVerifyDbCertPathsScript($certPath));
+        $dbSsl = self::runRemoteChecked($job, $target, $encryption, $dbSslCmd, 120, $config, 'تطابق SSL با دیتابیس');
+        self::logRemoteOutput($job, $dbSsl);
+        self::assertRemoteShellSuccess($dbSsl, 'تطابق مسیرها و جفت cert/key در دیتابیس x-ui');
         self::log($job, 'تنظیمات پنل از بک‌آپ اعمال شد — همان مسیر/کاربر پنل قبلی (DNS را به IP جدید بزنید).');
         self::finishStep($job, 'restore_backup', $config);
     }
@@ -427,6 +474,9 @@ final class PanelMigrationService
             'Official install.sh exited with error',
             'x-ui install log contains extract/binary errors',
             'x-ui panel binary missing after online install',
+            'Official release archive checksum failed during online install',
+            'Release v3.4.2 checksum not confirmed in install log',
+            'Missing prerequisites on target for offline x-ui install',
         ];
         foreach ($needles as $needle) {
             if (str_contains($output, $needle)) {

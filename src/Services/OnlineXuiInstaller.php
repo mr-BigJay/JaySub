@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Services;
 
 /**
- * Online 3x-ui install on migration targets.
+ * Online 3x-ui install on migration targets (pinned upstream install.sh + v3.4.2).
  *
- * Manual success: bash <(curl -Ls …/master/install.sh) v3.4.2
- * Tag v3.4.2/install.sh is an older script and can fail extraction while appearing to finish.
+ * Manual reference: bash <(curl -Ls …/master/install.sh) v3.4.2
+ * JaySub pins install.sh by commit/SHA and requires release checksum confirmation in the install log.
  */
 final class OnlineXuiInstaller
 {
@@ -98,6 +98,31 @@ if ! bash "$INSTALLER" __VERSION__ >>"$LOG" 2>&1; then
   echo "Official install.sh exited with error" >&2
   exit 1
 fi
+if grep -qi "Checksum mismatch" "$LOG" 2>/dev/null; then
+  tail -n 120 "$LOG" 2>/dev/null || true
+  echo "Official release archive checksum failed during online install" >&2
+  exit 1
+fi
+if ! grep -qi "Checksum verified" "$LOG" 2>/dev/null; then
+  tail -n 120 "$LOG" 2>/dev/null || true
+  echo "Release v3.4.2 checksum not confirmed in install log" >&2
+  exit 1
+fi
+case "$(uname -m)" in
+  x86_64|amd64) ARCH=amd64; EXPECT_SHA='__SHA256_AMD64__' ;;
+  aarch64|arm64|armv8|armv8l) ARCH=arm64; EXPECT_SHA='__SHA256_ARM64__' ;;
+  *) echo "Unsupported architecture" >&2; exit 1 ;;
+esac
+for candidate in "/usr/local/x-ui-linux-${ARCH}.tar.gz" "/root/x-ui-linux-${ARCH}.tar.gz" "./x-ui-linux-${ARCH}.tar.gz" "/tmp/x-ui-linux-${ARCH}.tar.gz"; do
+  if [ -f "$candidate" ]; then
+    if ! gzip -t "$candidate" 2>/dev/null; then
+      echo "Downloaded release archive failed gzip integrity test: $candidate" >&2
+      exit 1
+    fi
+    printf '%s  %s\n' "$EXPECT_SHA" "$candidate" | sha256sum -c - || exit 1
+    break
+  fi
+done
 if grep -qiE "Failed to extract|invalid compressed data|Error is not recoverable|cannot access .x-ui" "$LOG" 2>/dev/null; then
   tail -n 120 "$LOG" 2>/dev/null || true
   echo "x-ui install log contains extract/binary errors" >&2
@@ -114,6 +139,14 @@ exit 0
 BASH;
 
         $body = str_replace('__VERSION__', $ver, $body);
+        $body = str_replace(
+            ['__SHA256_AMD64__', '__SHA256_ARM64__'],
+            [
+                OfflineXuiInstaller::releaseSha256('amd64'),
+                OfflineXuiInstaller::releaseSha256('arm64'),
+            ],
+            $body
+        );
 
         return self::bashFetchPinnedInstallScript() . "\n" . $body;
     }
