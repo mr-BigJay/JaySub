@@ -35,4 +35,11 @@ final class MigrationInstallModeJobTest extends TestCase
             self::assertSame($mode, $job['xui_install_mode']);
         }
     }
+
+    public function testConfirmTargetOverwriteRequiresExplicitJobFlag(): void
+    {
+        self::assertFalse(PanelMigrationService::confirmTargetOverwrite([]));
+        self::assertFalse(PanelMigrationService::confirmTargetOverwrite(['confirm_target_overwrite' => false]));
+        self::assertTrue(PanelMigrationService::confirmTargetOverwrite(['confirm_target_overwrite' => true]));
+    }
 }

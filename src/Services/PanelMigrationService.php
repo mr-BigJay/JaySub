@@ -98,6 +98,7 @@ final class PanelMigrationService
             );
         }
         $skipInstall = MigrationExistingInstallProbe::outputIndicatesHealthyExisting($probeOut);
+        $job['target_had_healthy_xui'] = $skipInstall;
         if ($skipInstall) {
             self::log($job, 'نصب رد شد: x-ui سالم از قبل روی مقصد است (بدون حذف، بازنویسی یا اجرای install.sh).');
             self::touch($job, $config);
@@ -183,6 +184,17 @@ final class PanelMigrationService
         self::logRemoteOutput($job, $verify);
         self::assertRemoteShellSuccess($verify, 'تأیید نصب 3x-ui');
         self::finishStep($job, 'install_xui', $config);
+
+        if ($skipInstall && !self::confirmTargetOverwrite($job)) {
+            self::log(
+                $job,
+                'انتقال SSL و بازگردانی DB انجام نشد — x-ui سالم روی مقصد است و تأیید صریح بازنویسی در wizard داده نشده است.',
+            );
+            self::skipStep($job, 'ssl_copy', 'رد شد: x-ui موجود — بدون تأیید بازنویسی SSL', $config);
+            self::skipStep($job, 'restore_backup', 'رد شد: x-ui موجود — بدون تأیید بازنویسی DB', $config);
+
+            return;
+        }
 
         // 3) کپی گواهی از VPS فعلی
         self::beginStep($job, 'ssl_copy', $config);
@@ -316,6 +328,17 @@ final class PanelMigrationService
 
     /**
      * @param array<string, mixed> $job
+     * @param array<string, mixed> $config
+     */
+    private static function skipStep(array &$job, string $id, string $message, array $config): void
+    {
+        self::setStep($job, $id, 'skipped', $message);
+        self::log($job, $message);
+        self::touch($job, $config);
+    }
+
+    /**
+     * @param array<string, mixed> $job
      */
     private static function setStep(array &$job, string $id, string $status, ?string $message): void
     {
@@ -371,6 +394,12 @@ final class PanelMigrationService
     public static function normalizeInstallMode(string $mode): string
     {
         return strtolower(trim($mode)) === 'offline' ? 'offline' : 'online';
+    }
+
+    /** Explicit wizard opt-in to replace SSL files and x-ui.db on an already-healthy target. */
+    public static function confirmTargetOverwrite(array $job): bool
+    {
+        return !empty($job['confirm_target_overwrite']);
     }
 
     /**

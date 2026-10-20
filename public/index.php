@@ -1535,6 +1535,7 @@ if ($uri === '/admin/migration' && $method === 'POST') {
         'target_secret_encrypted' => app_encryption($config)->encrypt($secret),
         'target_cert_path' => trim((string) ($_POST['target_cert_path'] ?? '/root/cert')),
         'xui_install_mode' => PanelMigrationService::normalizeInstallMode((string) ($_POST['xui_install_mode'] ?? 'online')),
+        'confirm_target_overwrite' => isset($_POST['confirm_target_overwrite']) && (string) $_POST['confirm_target_overwrite'] === '1',
         'steps' => PanelMigrationService::defaultSteps(),
         'log' => [],
         'created_at' => date('c'),

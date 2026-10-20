@@ -1820,6 +1820,13 @@ HTML;
                     <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
                     <p><strong>روش نصب 3x-ui:</strong> <span id="migration-review-install-mode">آنلاین (پیش‌فرض)</span></p>
                 </div>
+                <div class="migration-field migration-overwrite-confirm">
+                    <label for="migration-confirm-overwrite" class="migration-offline-choice-label">
+                        <input type="checkbox" name="confirm_target_overwrite" id="migration-confirm-overwrite" value="1">
+                        <span>اگر روی مقصد از قبل 3x-ui سالم نصب است، بازنویسی گواهی SSL و دیتابیس x-ui با داده‌های JaySub را تأیید می‌کنم</span>
+                    </label>
+                    <p class="muted form-hint">بدون این تأیید، در صورت تشخیص x-ui سالم، فقط نصب رد می‌شود و SSL/DB روی مقصد دست‌نخورده می‌ماند.</p>
+                </div>
                 <div class="migration-wizard-actions" id="migration-start-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
                     <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>

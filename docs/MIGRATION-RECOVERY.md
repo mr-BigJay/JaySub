@@ -18,7 +18,7 @@ Existing offline cache under `storage/xui-offline/v3.4.2/` is reused; do not re-
 
 ## Already-healthy x-ui on target (manual install)
 
-If `/usr/local/x-ui/x-ui` and `systemctl is-active x-ui` are healthy, JaySub **skips** install (no `install.sh`, no SCP overwrite). Migration continues with SSL transfer and DB restore only.
+If `/usr/local/x-ui/x-ui` and `systemctl is-active x-ui` are healthy, JaySub **skips** install (no `install.sh`, no SCP overwrite). SSL transfer and DB restore run **only** when the wizard checkbox for explicit overwrite is checked; otherwise steps 3–4 are skipped and existing certs/DB stay untouched.
 
 ## Half-installed target recovery
 
