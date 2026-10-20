@@ -1743,6 +1743,7 @@ HTML;
             . $stepNav
             . '<div class="migration-top-bar" id="migration-top-bar" hidden><div class="migration-top-bar-fill" id="migration-top-bar-fill"></div></div>'
             . '<form class="migration-form stack" method="post" action="/admin/migration" id="migration-form">' . $csrfField
+            . '<input type="hidden" name="xui_install_mode" id="migration-xui-install-mode-value" value="online">'
             . '<section class="migration-wizard-panel" data-migration-wizard-panel="1">
                 <div class="migration-wizard-card">
                 <h2 class="migration-wizard-title">۱. انتخاب سرور مبدأ</h2>
@@ -1754,11 +1755,21 @@ HTML;
                 <p class="migration-summary-line muted" id="migration-source-summary" hidden></p>
                 <div class="migration-offline-choice">
                     <label for="migration-xui-install-mode" class="migration-offline-choice-label">
-                        <input type="checkbox" name="xui_install_mode" id="migration-xui-install-mode" value="offline">
+                        <input type="checkbox" id="migration-xui-install-mode" value="offline" aria-describedby="migration-offline-hint">
                         <span>نصب آفلاین 3x-ui نسخه 3.4.2</span>
                     </label>
                     <p class="muted form-hint migration-offline-choice-hint">پیش‌فرض نصب آنلاین فعلی است. با فعال‌کردن این گزینه، JaySub فایل رسمی را از سرور مدیریت با SCP به VPS مقصد منتقل می‌کند و بدون دانلود از GitHub روی مقصد نصب می‌کند.</p>
                     <p class="muted form-hint migration-offline-cache-status">وضعیت بسته روی JaySub: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
+                    <details class="migration-offline-upload" id="xui-offline-upload">
+                    <summary class="muted form-hint">آپلود دستی بسته (اختیاری — فقط اگر cache JaySub خالی است)</summary>
+                    <div class="stack migration-offline-upload-fields">
+                    <label for="migration-offline-arch">معماری</label>
+                    <select id="migration-offline-arch" name="architecture" form="migration-offline-upload-form" required><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
+                    <label for="migration-offline-file">فایل x-ui-linux-ARCH.tar.gz</label>
+                    <input id="migration-offline-file" type="file" name="xui_archive" form="migration-offline-upload-form" accept=".gz,.tgz,application/gzip" required>
+                    <button class="btn btn-secondary" type="submit" form="migration-offline-upload-form">آپلود و تأیید SHA-256</button>
+                    </div>
+                    </details>
                 </div>
                 <div class="migration-wizard-actions">
                     <button type="button" class="btn btn-primary migration-btn-next" data-migration-next>بعدی</button>
@@ -1809,6 +1820,13 @@ HTML;
                     <p><strong>مقصد:</strong> <span id="migration-review-target">—</span></p>
                     <p><strong>روش نصب 3x-ui:</strong> <span id="migration-review-install-mode">آنلاین (پیش‌فرض)</span></p>
                 </div>
+                <div class="migration-field migration-overwrite-confirm">
+                    <label for="migration-confirm-overwrite" class="migration-offline-choice-label">
+                        <input type="checkbox" name="confirm_target_overwrite" id="migration-confirm-overwrite" value="1">
+                        <span>اگر روی مقصد از قبل 3x-ui سالم نصب است، بازنویسی گواهی SSL و دیتابیس x-ui با داده‌های JaySub را تأیید می‌کنم</span>
+                    </label>
+                    <p class="muted form-hint">بدون این تأیید، در صورت تشخیص x-ui سالم، فقط نصب رد می‌شود و SSL/DB روی مقصد دست‌نخورده می‌ماند.</p>
+                </div>
                 <div class="migration-wizard-actions" id="migration-start-actions">
                     <button type="button" class="btn btn-secondary" data-migration-prev>قبلی</button>
                     <button class="btn btn-primary" type="submit" id="migration-start-btn">شروع انتقال</button>
@@ -1824,6 +1842,9 @@ HTML;
                 </div>
                 </div>
             </section>'
+            . '</form>'
+            . '<form id="migration-offline-upload-form" class="migration-offline-upload-form" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data" hidden>'
+            . $csrfField
             . '</form></div>';
     }
 }

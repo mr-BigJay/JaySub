@@ -1445,6 +1445,23 @@ if ($uri === '/admin/ssl-backup/download' && $method === 'GET') {
     exit;
 }
 
+if ($uri === '/admin/migration/offline-upload' && $method === 'POST') {
+    requireAdmin();
+    requireCsrf();
+    try {
+        $architecture = trim((string) ($_POST['architecture'] ?? ''));
+        $file = $_FILES['xui_archive'] ?? [];
+        if (!is_array($file)) {
+            throw new \RuntimeException('بسته نصب آفلاین در درخواست پیدا نشد.');
+        }
+        \App\Services\OfflineXuiInstaller::stageUpload($config, $architecture, $file);
+        Session::set('flash_admin', 'بسته 3x-ui v3.4.2 (' . $architecture . ') آپلود و SHA-256 آن تأیید شد.');
+    } catch (\Throwable $e) {
+        Session::set('flash_admin', 'خطای بسته نصب آفلاین: ' . $e->getMessage());
+    }
+    Response::redirect('/admin/migration');
+}
+
 if ($uri === '/admin/migration/status' && $method === 'GET') {
     requireAdmin();
     $jobId = trim((string) ($_GET['job'] ?? ''));
@@ -1517,7 +1534,8 @@ if ($uri === '/admin/migration' && $method === 'POST') {
         'target_auth_type' => ($_POST['target_auth_type'] ?? '') === 'key' ? 'key' : 'password',
         'target_secret_encrypted' => app_encryption($config)->encrypt($secret),
         'target_cert_path' => trim((string) ($_POST['target_cert_path'] ?? '/root/cert')),
-        'xui_install_mode' => ($_POST['xui_install_mode'] ?? 'online') === 'offline' ? 'offline' : 'online',
+        'xui_install_mode' => PanelMigrationService::normalizeInstallMode((string) ($_POST['xui_install_mode'] ?? 'online')),
+        'confirm_target_overwrite' => isset($_POST['confirm_target_overwrite']) && (string) $_POST['confirm_target_overwrite'] === '1',
         'steps' => PanelMigrationService::defaultSteps(),
         'log' => [],
         'created_at' => date('c'),
