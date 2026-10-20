@@ -78,6 +78,8 @@ final class PanelMigrationService
         // 2) نصب 3x-ui v3.4.2
         self::beginStep($job, 'install_xui', $config);
         $mode = ($job['xui_install_mode'] ?? 'online') === 'offline' ? 'offline' : 'online';
+        self::log($job, 'روش نصب 3x-ui ثبت‌شده برای این انتقال: ' . ($mode === 'offline' ? 'آفلاین (SCP)' : 'آنلاین (دانلود از GitHub)'));
+        self::touch($job, $config);
         if ($mode === 'offline') {
             self::log($job, 'آماده‌سازی نصب آفلاین v3.4.2 روی سرور مدیریت JaySub...');
             self::touch($job, $config);
@@ -128,7 +130,26 @@ final class PanelMigrationService
         }
         if (self::remoteOutputIndicatesXuiInstallFailure($out)) {
             throw new \RuntimeException(
-                'نصب 3x-ui روی سرور مقصد کامل نشد (احتمالاً قفل apt یا قطع دانلود). لاگ را ببینید و دوباره انتقال را اجر کنید.'
+                'نصب 3x-ui روی سرور مقصد کامل نشد. خطاهای نصب یا استخراج آرشیو در لاگ دیده شد؛ مرحله انتقال متوقف شد.'
+            );
+        }
+
+        // Do not restore a database onto a broken/half-installed x-ui service.
+        // Checking the management wrapper (/usr/bin/x-ui) alone is insufficient:
+        // it can remain installed even when the real /usr/local/x-ui/x-ui binary is missing.
+        self::log($job, 'بررسی صحت فایل اجرایی و پایداری سرویس x-ui قبل از انتقال SSL و دیتابیس...');
+        self::touch($job, $config);
+        $health = SshRemoteZip::runRemoteShell(
+            $target,
+            $encryption,
+            'bash -lc ' . escapeshellarg(self::remoteXuiHealthCheckScript()),
+            65,
+            self::storageBase($config),
+        );
+        if (!$health['ok']) {
+            throw new \RuntimeException(
+                'نصب 3x-ui ناقص است؛ انتقال SSL و بازگردانی دیتابیس انجام نشد: '
+                . ($health['error'] ?? $health['stderr'] ?? 'سرویس x-ui فعال نیست.')
             );
         }
         self::finishStep($job, 'install_xui', $config);
@@ -337,6 +358,36 @@ final class PanelMigrationService
         MigrationJobStore::save($config, $job);
     }
 
+    /**
+     * A read-only pre-restore health check. Verifies the executable referenced by
+     * x-ui.service exists and the service remains active across two polls.
+     */
+    public static function remoteXuiHealthCheckScript(): string
+    {
+        return <<<'BASH'
+set -euo pipefail
+BIN=/usr/local/x-ui/x-ui
+if [ ! -f "$BIN" ] || [ ! -x "$BIN" ]; then
+  echo "3x-ui executable missing or not executable: $BIN" >&2
+  exit 1
+fi
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if systemctl is-active --quiet x-ui; then
+    sleep 2
+    if systemctl is-active --quiet x-ui; then
+      echo "x-ui executable and service verified before restore"
+      exit 0
+    fi
+  fi
+  sleep 2
+done
+echo "x-ui service is not stable or running before restore" >&2
+systemctl status x-ui --no-pager >&2 || true
+journalctl -u x-ui -n 20 --no-pager >&2 || true
+exit 1
+BASH;
+    }
+
     /** Shell script run on the destination VPS to install 3x-ui (visible for tests). */
     public static function remoteXuiInstallScript(string $version = 'v3.4.2'): string
     {
@@ -354,7 +405,7 @@ final class PanelMigrationService
             . 'if [ "$w" -ge "$max" ]; then echo "apt lock held after ${max}s" >&2; return 1; fi; '
             . 'echo "Waiting for apt lock (${w}s)..." >&2; sleep 5; w=$((w+5)); done; }; '
             . 'LOG=/tmp/jaysub-xui-install.log; '
-            . 'xui_binary_ready() { [ -x /usr/local/x-ui/x-ui ] || [ -x /usr/bin/x-ui ]; }; '
+            . 'xui_binary_ready() { [ -f /usr/local/x-ui/x-ui ] && [ -x /usr/local/x-ui/x-ui ]; }; '
             . 'xui_unit_ready() { [ -f /etc/systemd/system/x-ui.service ] || systemctl cat x-ui >/dev/null 2>&1; }; '
             . 'xui_db_ready() { for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && return 0; done; return 1; }; '
             . 'xui_post_install() { systemctl daemon-reload 2>/dev/null || true; '
@@ -363,7 +414,8 @@ final class PanelMigrationService
             . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
             . 'command -v x-ui >/dev/null && x-ui start 2>/dev/null || true; sleep 6; fi; '
             . 'if [ -x /usr/local/x-ui/x-ui ]; then /usr/local/x-ui/x-ui migrate 2>/dev/null || true; fi; '
-            . 'if [ -x /usr/bin/x-ui ]; then /usr/bin/x-ui migrate 2>/dev/null || true; fi; sleep 2; }; '
+            . 'if [ -x /usr/bin/x-ui ]; then /usr/bin/x-ui migrate 2>/dev/null || true; fi; sleep 2; '
+            . 'systemctl is-active --quiet x-ui || { echo "x-ui service failed to start after online install" >&2; return 1; }; }; '
             . 'run_install() { wait_apt; rm -f "$LOG"; '
             . 'curl -fsSL ' . escapeshellarg($installSh) . ' -o ' . escapeshellarg($installer) . ' || return 1; '
             . 'bash ' . escapeshellarg($installer) . ' '
@@ -390,6 +442,8 @@ final class PanelMigrationService
 
         $needles = [
             'Failed to extract the x-ui release archive',
+            'gzip: stdin: invalid compressed data',
+            'tar: Error is not recoverable',
             'x-ui binary not found after install',
             'x-ui systemd unit missing',
             'x-ui service not running after restore',
