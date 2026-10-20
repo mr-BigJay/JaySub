@@ -48,7 +48,12 @@ final class MigrationHardeningTest extends TestCase
 
     public function testSslScriptUsesGzipTestAndOpenssl(): void
     {
-        $script = SslMigrationTransfer::remoteExtractAndVerifyScript('/root/cert', '/tmp/jaysub-certs.tar.gz', '.tar.gz');
+        $script = SslMigrationTransfer::remoteExtractAndVerifyScript(
+            '/root/cert',
+            '/tmp/jaysub-certs.tar.gz',
+            '.tar.gz',
+            'abc123def4567890abc123def4567890',
+        );
         self::assertStringContainsString('gzip -t', $script);
         self::assertStringContainsString('openssl x509', $script);
         self::assertStringContainsString('chmod 600', $script);
@@ -72,7 +77,12 @@ final class MigrationHardeningTest extends TestCase
 
     public function testSslZipScriptUsesUnzipTest(): void
     {
-        $script = SslMigrationTransfer::remoteExtractAndVerifyScript('/root/cert', '/tmp/jaysub-certs.zip', '.zip');
+        $script = SslMigrationTransfer::remoteExtractAndVerifyScript(
+            '/root/cert',
+            '/tmp/jaysub-certs.zip',
+            '.zip',
+            'abc123def4567890abc123def4567890',
+        );
         self::assertStringContainsString('unzip -t', $script);
     }
 }

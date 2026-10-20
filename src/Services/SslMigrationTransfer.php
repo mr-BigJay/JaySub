@@ -7,8 +7,12 @@ namespace App\Services;
 /** Remote SSL cert deploy + validation for migration target VPS. */
 final class SslMigrationTransfer
 {
-    public static function remoteExtractAndVerifyScript(string $certPath, string $remoteArchivePath, string $extension): string
-    {
+    public static function remoteExtractAndVerifyScript(
+        string $certPath,
+        string $remoteArchivePath,
+        string $extension,
+        string $migrationJobId,
+    ): string {
         $certEsc = escapeshellarg($certPath);
         $archEsc = escapeshellarg($remoteArchivePath);
         $ext = strtolower($extension);
@@ -52,23 +56,24 @@ BASH;
         );
 
         $keyMatch = XuiRemoteScriptLib::bashCertKeyPubkeySha256Block();
-        $rollbackDir = MigrationTargetSnapshot::ROLLBACK_DIR;
+        $manifest = MigrationTargetSnapshot::manifestPathForJob($migrationJobId);
+        $certRollback = MigrationTargetSnapshot::bashApplyCertStateFromManifest();
 
         $verify = $keyMatch . "\n" . <<<'BASH'
 
 rollback_cert_from_snapshot() {
-  local env="__ROLLBACK_DIR__/latest.env"
-  [ -f "$env" ] || return 0
+  local manifest="__MANIFEST__"
+  [ -f "$manifest" ] || return 0
+  local rb_ok=1
   # shellcheck disable=SC1090
-  . "$env"
-  if [ -n "${CERT_BAK:-}" ] && [ -f "$CERT_BAK" ] && [ -n "${CERT_DIR:-}" ]; then
-    parent=$(dirname "$CERT_DIR")
-    base=$(basename "$CERT_DIR")
-    mkdir -p "$CERT_DIR"
-    find "$CERT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
-    tar -xzf "$CERT_BAK" -C "$parent"
-    echo "Rolled back certificate tree from pre-migration snapshot" >&2
+  . "$manifest"
+__CERT_ROLLBACK__
+  if [ "$rb_ok" -ne 1 ]; then
+    echo "JaySub SSL verify rollback: FAILED (cert tree)" >&2
+    return 1
   fi
+  echo "JaySub SSL verify rollback: certificate tree restored from job snapshot" >&2
+  return 0
 }
 
 verify_ssl_tree() {
@@ -105,6 +110,7 @@ verify_ssl_tree() {
     esac
   done < <(find "$dir" -type f \( -name '*.crt' -o -name '*.cer' -o -name '*.pem' -o -name '*.key' \) -print0 2>/dev/null)
   [ "$valid_cert" -gt 0 ] || { echo "No valid X.509 certificate found under $dir" >&2; return 1; }
+  [ "$key_count" -gt 0 ] || { echo "No private key file found under $dir" >&2; return 1; }
   local matched=0 certf keyf
   while IFS= read -r -d '' certf; do
     openssl x509 -in "$certf" -noout 2>/dev/null || continue
@@ -133,9 +139,10 @@ BASH;
 
         $verify = str_replace('__CERT__', $certEsc, $verify);
         $verify = str_replace('__ARCHIVE__', $archEsc, $verify);
-        $verify = str_replace('__ROLLBACK_DIR__', $rollbackDir, $verify);
+        $verify = str_replace('__MANIFEST__', $manifest, $verify);
+        $verify = str_replace('__CERT_ROLLBACK__', $certRollback, $verify);
 
-        return 'set -euo pipefail; mkdir -p ' . $certEsc . '; ' . $extract . $verify;
+        return 'set -euo pipefail; umask 077; mkdir -p ' . $certEsc . '; ' . $extract . $verify;
     }
 
     /** After DB restore: paths referenced by x-ui settings must exist and cert/key must match. */

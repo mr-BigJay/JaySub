@@ -10,7 +10,12 @@ final class SslCertKeyMatchTest extends TestCase
 {
     public function testSslTreeScriptUsesPubkeySha256(): void
     {
-        $script = SslMigrationTransfer::remoteExtractAndVerifyScript('/root/cert', '/tmp/jaysub-certs.zip', '.zip');
+        $script = SslMigrationTransfer::remoteExtractAndVerifyScript(
+            '/root/cert',
+            '/tmp/jaysub-certs.zip',
+            '.zip',
+            'abc123def4567890abc123def4567890',
+        );
         self::assertStringContainsString('verify_cert_key_match', $script);
         self::assertStringContainsString('pubout -outform DER', $script);
         self::assertStringNotContainsString('noout -modulus', $script);
