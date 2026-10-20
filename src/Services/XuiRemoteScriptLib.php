@@ -262,4 +262,30 @@ sqlite_quick_check() {
 }
 BASH;
     }
+
+    /** Remove live DB file and SQLite WAL/SHM/journal sidecars before replacing the database. */
+    public static function bashSwapLiveSqliteDatabaseBlock(): string
+    {
+        return <<<'BASH'
+jaysub_remove_sqlite_sidecars() {
+  local db=$1
+  rm -f "${db}" "${db}-wal" "${db}-shm" "${db}-journal" 2>/dev/null || true
+}
+
+jaysub_install_sqlite_db_from_backup() {
+  local src=$1
+  local db=${2:-/etc/x-ui/x-ui.db}
+  local dir
+  dir=$(dirname "$db")
+  mkdir -p "$dir"
+  chmod 700 "$dir" 2>/dev/null || true
+  jaysub_remove_sqlite_sidecars "$db"
+  install -m 600 "$src" "${db}.tmp"
+  sqlite_quick_check "${db}.tmp" || return 1
+  mv -f "${db}.tmp" "$db"
+  chown root:root "$db" 2>/dev/null || true
+  return 0
+}
+BASH;
+    }
 }

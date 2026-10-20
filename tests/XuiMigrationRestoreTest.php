@@ -35,6 +35,21 @@ final class XuiMigrationRestoreTest extends TestCase
         self::assertStringContainsString('PRAGMA quick_check', $script);
         self::assertStringNotContainsString('pgrep -f', $script);
         self::assertStringNotContainsString('rm -rf /usr/local/x-ui', $script);
+        self::assertStringContainsString('jaysub_install_sqlite_db_from_backup', $script);
+        self::assertStringContainsString('jaysub_remove_sqlite_sidecars', $script);
+    }
+
+    public function testInternalRollbackTrapStopsServiceAndVerifiesHealth(): void
+    {
+        $script = XuiMigrationRestore::remoteRestoreScript(
+            XuiMigrationRestore::remoteBackupPath('backup.db'),
+        );
+        self::assertStringContainsString('JaySub restore internal rollback: DB swap or quick_check failed', $script);
+        self::assertStringContainsString('JaySub restore internal rollback: x-ui health check failed', $script);
+        self::assertMatchesRegularExpression(
+            '/rollback\(\)[\s\S]*systemctl stop x-ui[\s\S]*jaysub_install_sqlite_db_from_backup/',
+            $script,
+        );
     }
 
     public function testRestoreScriptRejectsMalformedRemotePath(): void

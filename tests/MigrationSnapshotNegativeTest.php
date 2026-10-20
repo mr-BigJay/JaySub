@@ -34,6 +34,29 @@ final class MigrationSnapshotNegativeTest extends TestCase
         self::assertStringContainsString('rollback: FAILED', $script);
     }
 
+    public function testRollbackFailureWhenRestartOrHealthCheckFails(): void
+    {
+        $script = MigrationTargetSnapshot::remoteRollbackSnapshotScript(self::JOB);
+        self::assertStringContainsString('x-ui restart failed', $script);
+        self::assertStringContainsString('health check failed after restore', $script);
+        self::assertMatchesRegularExpression(
+            '/health check failed[\s\S]*rollback: FAILED job=/',
+            $script,
+        );
+        self::assertStringNotContainsString('WARNING x-ui restart failed', $script);
+    }
+
+    public function testRollbackStopsServiceBeforeDatabaseSwap(): void
+    {
+        $script = MigrationTargetSnapshot::remoteRollbackSnapshotScript(self::JOB);
+        self::assertMatchesRegularExpression(
+            '/systemctl stop x-ui[\s\S]*jaysub_install_sqlite_db_from_backup/',
+            $script,
+        );
+        self::assertStringContainsString('-wal', $script);
+        self::assertStringContainsString('-shm', $script);
+    }
+
     public function testCreateSnapshotRequiresSqliteBackupNotPlainCopy(): void
     {
         $script = MigrationTargetSnapshot::remoteCreateSnapshotScript('/root/cert', self::JOB);
@@ -54,8 +77,9 @@ final class MigrationSnapshotNegativeTest extends TestCase
         $create = MigrationTargetSnapshot::remoteCreateSnapshotScript('/root/cert', self::JOB);
         $rollback = MigrationTargetSnapshot::remoteRollbackSnapshotScript(self::JOB);
         self::assertMatchesRegularExpression('/umask 077[\s\S]*chmod 700/', $create);
-        self::assertStringStartsWith('set -euo pipefail', $rollback);
+        self::assertStringContainsString('set -euo pipefail', $rollback);
         self::assertStringContainsString('umask 077', $rollback);
+        self::assertStringContainsString('chmod 700 "$dir"', $rollback);
     }
 
     public function testSslRollbackWhenCertDirDidNotExistBeforeMigration(): void

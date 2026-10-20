@@ -28,6 +28,29 @@ final class MigrationTargetSnapshotTest extends TestCase
         self::assertStringContainsString($manifest, $rollback);
         self::assertStringContainsString('JaySub migration rollback: SUCCESS', $rollback);
         self::assertStringNotContainsString('latest.env', $rollback);
+        self::assertStringContainsString('systemctl stop x-ui', $rollback);
+        self::assertStringContainsString('jaysub_install_sqlite_db_from_backup', $rollback);
+        self::assertStringContainsString('jaysub_remove_sqlite_sidecars', $rollback);
+        self::assertStringContainsString('PRAGMA quick_check', $rollback);
+        self::assertStringContainsString('wait_xui_service_healthy', $rollback);
+        self::assertStringContainsString('health check failed after restore', $rollback);
+    }
+
+    public function testGeneratedRollbackScriptPassesSyntaxCheck(): void
+    {
+        if (!is_executable('/bin/bash')) {
+            self::markTestSkipped('Bash is unavailable');
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'jaysub-snap-rb-');
+        self::assertIsString($path);
+        try {
+            file_put_contents($path, MigrationTargetSnapshot::remoteRollbackSnapshotScript(self::JOB_A));
+            exec('bash -n ' . escapeshellarg($path) . ' 2>&1', $out, $code);
+            self::assertSame(0, $code, implode("\n", $out));
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function testConcurrentJobsGetIsolatedSnapshotPaths(): void

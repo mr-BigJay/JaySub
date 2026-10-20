@@ -94,24 +94,29 @@ BASH;
         $manifest = self::manifestPathForJob($jid);
         $certRollback = self::bashApplyCertStateFromManifest();
 
-        return <<<BASH
+        $lib = XuiRemoteScriptLib::bashSqliteQuickCheckBlock() . "\n"
+            . XuiRemoteScriptLib::bashSwapLiveSqliteDatabaseBlock() . "\n"
+            . XuiRemoteScriptLib::bashWaitServiceHealthyBlock(15, 2);
+
+        $body = <<<BASH
 set -euo pipefail
 umask 077
+XUI_BIN=/usr/local/x-ui/x-ui
 JOB_ID='{$jid}'
 MANIFEST='{$manifest}'
+DB=/etc/x-ui/x-ui.db
 [ -f "\$MANIFEST" ] || { echo "JaySub migration rollback: FAILED job=\$JOB_ID (no manifest at \$MANIFEST)" >&2; exit 1; }
 # shellcheck disable=SC1090
 . "\$MANIFEST"
 rb_ok=1
 if [ -n "\${DB_BAK:-}" ] && [ -f "\$DB_BAK" ]; then
-  mkdir -p /etc/x-ui
-  if ! cp -a "\$DB_BAK" /etc/x-ui/x-ui.db; then
+  systemctl stop x-ui 2>/dev/null || true
+  sleep 2
+  if ! jaysub_install_sqlite_db_from_backup "\$DB_BAK" "\$DB"; then
     rb_ok=0
-    echo "JaySub migration rollback: DB restore failed" >&2
-  else
-    chmod 600 /etc/x-ui/x-ui.db 2>/dev/null || true
+    echo "JaySub migration rollback: DB restore or quick_check failed" >&2
   fi
-elif [ -f /etc/x-ui/x-ui.db ] && [ -z "\${DB_BAK:-}" ]; then
+elif [ -f "\$DB" ] && [ -z "\${DB_BAK:-}" ]; then
   :
 fi
 {$certRollback}
@@ -121,11 +126,24 @@ if [ "\$rb_ok" -ne 1 ]; then
 fi
 systemctl daemon-reload 2>/dev/null || true
 if ! systemctl restart x-ui 2>/dev/null; then
-  echo "JaySub migration rollback: WARNING x-ui restart failed after restore (job=\$JOB_ID)" >&2
+  rb_ok=0
+  echo "JaySub migration rollback: x-ui restart failed (job=\$JOB_ID)" >&2
+fi
+if [ "\$rb_ok" -eq 1 ]; then
+  if ! wait_xui_service_healthy "\$XUI_BIN"; then
+    rb_ok=0
+    echo "JaySub migration rollback: x-ui health check failed after restore (job=\$JOB_ID)" >&2
+  fi
+fi
+if [ "\$rb_ok" -ne 1 ]; then
+  echo "JaySub migration rollback: FAILED job=\$JOB_ID" >&2
+  exit 1
 fi
 echo "JaySub migration rollback: SUCCESS job=\$JOB_ID manifest=\$MANIFEST"
 exit 0
 BASH;
+
+        return $lib . "\n" . $body;
     }
 
     /** Restore cert dir from snapshot metadata (shared by full rollback and SSL verify failure). */

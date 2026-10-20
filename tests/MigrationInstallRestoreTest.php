@@ -45,7 +45,7 @@ final class MigrationInstallRestoreTest extends TestCase
             XuiMigrationRestore::remoteBackupPath('panel.db')
         );
         self::assertStringContainsString('had_db=0', $script);
-        self::assertStringContainsString('rm -f "$DB"', $script);
+        self::assertStringContainsString('jaysub_remove_sqlite_sidecars "$DB"', $script);
     }
 
     public function testOfflineInstallScriptUsesStrictTarValidation(): void

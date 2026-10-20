@@ -426,7 +426,11 @@ final class PanelMigrationService
         $rb = self::runRemoteChecked($job, $target, $encryption, $cmd, 180, $config, 'بازگردانی snapshot مقصد');
         self::logRemoteOutput($job, $rb);
         $out = self::remoteCombinedOutput($rb);
-        if (($rb['ok'] ?? false) && str_contains($out, 'JaySub migration rollback: SUCCESS')) {
+        $remoteSuccess = ($rb['ok'] ?? false)
+            && str_contains($out, 'JaySub migration rollback: SUCCESS')
+            && !str_contains($out, 'JaySub migration rollback: FAILED')
+            && !str_contains($out, 'health check failed');
+        if ($remoteSuccess) {
             $job['target_snapshot_status'] = 'rolled_back';
             self::log($job, 'JaySub migration recovery: rollback SUCCESS (snapshot job=' . $jobIdForSnapshot . ').');
         } else {

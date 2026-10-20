@@ -48,7 +48,8 @@ final class XuiMigrationRestore
             . XuiRemoteScriptLib::bashRepairBinaryBlock() . "\n"
             . XuiRemoteScriptLib::bashValidateTarArchiveBlock() . "\n"
             . XuiRemoteScriptLib::bashWaitServiceHealthyBlock(15, 2) . "\n"
-            . XuiRemoteScriptLib::bashSqliteQuickCheckBlock();
+            . XuiRemoteScriptLib::bashSqliteQuickCheckBlock() . "\n"
+            . XuiRemoteScriptLib::bashSwapLiveSqliteDatabaseBlock();
 
         $script = $lib . <<<'BASH'
 
@@ -89,14 +90,24 @@ BACKUP_DIR="$(mktemp -d /tmp/jaysub-restore-backup.XXXXXXXX)"
 rollback() {
   code=$?
   if [ "$code" -ne 0 ] && [ -d "$BACKUP_DIR" ]; then
+    systemctl stop x-ui 2>/dev/null || true
+    sleep 2
     if [ -f "$BACKUP_DIR/x-ui.db.bak" ]; then
-      cp -a "$BACKUP_DIR/x-ui.db.bak" "$DB" 2>/dev/null || true
-      chmod 600 "$DB" 2>/dev/null || true
+      if ! jaysub_install_sqlite_db_from_backup "$BACKUP_DIR/x-ui.db.bak" "$DB"; then
+        echo "JaySub restore internal rollback: DB swap or quick_check failed" >&2
+        code=1
+      fi
     elif [ "$had_db" -eq 0 ]; then
-      rm -f "$DB" 2>/dev/null || true
+      jaysub_remove_sqlite_sidecars "$DB"
     fi
     systemctl daemon-reload 2>/dev/null || true
-    systemctl restart x-ui 2>/dev/null || true
+    if ! systemctl restart x-ui 2>/dev/null; then
+      echo "JaySub restore internal rollback: x-ui restart failed" >&2
+      code=1
+    elif ! wait_xui_service_healthy "$XUI_BIN"; then
+      echo "JaySub restore internal rollback: x-ui health check failed" >&2
+      code=1
+    fi
   fi
   rm -rf "$BACKUP_DIR"
   rm -f "$RESTORE"
@@ -110,10 +121,10 @@ sleep 2
 if [ "$had_db" -eq 1 ]; then
   cp -a "$DB" "$BACKUP_DIR/x-ui.db.bak"
 fi
-install -m 600 "$RESTORE" "$DB.tmp"
-sqlite_quick_check "$DB.tmp" || { echo "Restored file failed SQLite quick_check before install" >&2; exit 1; }
-mv -f "$DB.tmp" "$DB"
-chown root:root "$DB" 2>/dev/null || true
+if ! jaysub_install_sqlite_db_from_backup "$RESTORE" "$DB"; then
+  echo "Restored file failed SQLite install or quick_check" >&2
+  exit 1
+fi
 if ! verify_xui_binary "$ARCH"; then
   echo "Post-restore: binary check failed — restore must not replace executable; likely pre-existing install fault" >&2
   exit 1
