@@ -104,11 +104,19 @@ final class PanelMigrationService
             if (!$transfer['ok']) {
                 throw new \RuntimeException('انتقال بسته آفلاین: ' . ($transfer['error'] ?? 'ناموفق'));
             }
+            $shaCheck = 'bash -lc ' . escapeshellarg(
+                'printf \'%s  %s\\n\' ' . escapeshellarg($archive['sha256']) . ' ' . escapeshellarg($remoteArchive)
+                . ' | sha256sum -c -'
+            );
+            $shaRemote = self::runRemoteChecked($job, $target, $encryption, $shaCheck, 60, $config, 'تأیید SHA-256 بسته روی مقصد');
+            self::assertRemoteShellSuccess($shaRemote, 'تأیید SHA-256 بسته آفلاین روی مقصد');
             $installCmd = 'bash -lc ' . escapeshellarg(
                 OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
             );
         } else {
-            $installCmd = 'bash -lc ' . escapeshellarg(self::remoteXuiInstallScript('v3.4.2'));
+            self::log($job, 'نصب آنلاین: install.sh پین‌شده + آرگومان v3.4.2 (نه tag/v3.4.2/install.sh قدیمی).');
+            self::touch($job, $config);
+            $installCmd = 'bash -lc ' . escapeshellarg(OnlineXuiInstaller::remoteInstallScript());
         }
         $install = self::runRemoteChecked(
             $job,
@@ -300,50 +308,17 @@ final class PanelMigrationService
         MigrationJobStore::save($config, $job);
     }
 
-    /** Shell script run on the destination VPS to install 3x-ui (visible for tests). */
+    /**
+     * @deprecated Use {@see OnlineXuiInstaller::remoteInstallScript()} — kept for tests comparing legacy URL.
+     */
     public static function remoteXuiInstallScript(string $version = 'v3.4.2'): string
     {
         $ver = preg_replace('/[^a-zA-Z0-9._-]/', '', $version) ?: 'v3.4.2';
-        $installSh = 'https://raw.githubusercontent.com/mhsanaei/3x-ui/' . $ver . '/install.sh';
+        if ($ver !== OnlineXuiInstaller::TARGET_VERSION) {
+            throw new \InvalidArgumentException('JaySub migration only supports ' . OnlineXuiInstaller::TARGET_VERSION);
+        }
 
-        $installer = '/tmp/jaysub-xui-installer.sh';
-
-        return 'set -euo pipefail; '
-            . 'export DEBIAN_FRONTEND=noninteractive XUI_NONINTERACTIVE=1 XUI_DB_TYPE=sqlite XUI_SSL_MODE=none XUI_ENABLE_FAIL2BAN=false; '
-            . 'wait_apt() { local max=600 w=0; '
-            . 'while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 '
-            . '|| fuser /var/lib/apt/lists/lock >/dev/null 2>&1 '
-            . '|| pgrep -x apt-get >/dev/null 2>&1 || pgrep -x apt >/dev/null 2>&1; do '
-            . 'if [ "$w" -ge "$max" ]; then echo "apt lock held after ${max}s" >&2; return 1; fi; '
-            . 'echo "Waiting for apt lock (${w}s)..." >&2; sleep 5; w=$((w+5)); done; }; '
-            . 'LOG=/tmp/jaysub-xui-install.log; '
-            . 'xui_binary_ready() { [ -x /usr/local/x-ui/x-ui ] && file /usr/local/x-ui/x-ui 2>/dev/null | grep -q ELF; }; '
-            . 'xui_unit_ready() { [ -f /etc/systemd/system/x-ui.service ] || systemctl cat x-ui >/dev/null 2>&1; }; '
-            . 'xui_db_ready() { for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do [ -f "$c" ] && return 0; done; return 1; }; '
-            . 'xui_post_install() { systemctl daemon-reload 2>/dev/null || true; '
-            . 'systemctl enable x-ui 2>/dev/null || true; '
-            . 'systemctl restart x-ui 2>/dev/null || true; '
-            . 'if ! systemctl is-active --quiet x-ui 2>/dev/null; then '
-            . 'command -v x-ui >/dev/null && x-ui start 2>/dev/null || true; sleep 6; fi; '
-            . 'if [ -x /usr/local/x-ui/x-ui ]; then /usr/local/x-ui/x-ui migrate 2>/dev/null || true; fi; '
-            . 'if [ -x /usr/bin/x-ui ]; then /usr/bin/x-ui migrate 2>/dev/null || true; fi; sleep 2; }; '
-            . 'run_install() { wait_apt; rm -f "$LOG"; '
-            . 'curl -fsSL ' . escapeshellarg($installSh) . ' -o ' . escapeshellarg($installer) . ' || return 1; '
-            . 'bash ' . escapeshellarg($installer) . ' '
-            . escapeshellarg($ver) . ' >>"$LOG" 2>&1; }; '
-            . 'attempt=1; while [ "$attempt" -le 2 ]; do '
-            . 'if run_install && xui_binary_ready && xui_unit_ready; then xui_post_install; '
-            . 'if xui_binary_ready && xui_unit_ready && systemctl is-active --quiet x-ui 2>/dev/null; then '
-            . 'tail -n 180 "$LOG" 2>/dev/null || true; '
-            . 'xui_db_ready || echo "Note: x-ui.db will be created from JaySub backup on restore step." >&2; exit 0; fi; fi; '
-            . 'if [ "$attempt" -eq 2 ]; then break; fi; '
-            . 'echo "Retrying x-ui install (attempt 2/2)..." >&2; sleep 15; attempt=2; '
-            . 'done; '
-            . 'tail -n 180 "$LOG" 2>/dev/null || true; '
-            . 'if grep -qiE "Failed to extract|invalid compressed data|Error is not recoverable|cannot access .x-ui" "$LOG" 2>/dev/null; then '
-            . 'echo "x-ui install failed (archive extract). See log above." >&2; exit 1; fi; '
-            . 'if ! xui_binary_ready; then echo "x-ui binary not found after install" >&2; exit 1; fi; '
-            . 'echo "x-ui systemd unit missing — install incomplete (see log)" >&2; exit 1';
+        return OnlineXuiInstaller::remoteInstallScript();
     }
 
     public static function normalizeInstallMode(string $mode): string
@@ -447,6 +422,11 @@ final class PanelMigrationService
             'cannot access \'x-ui\'',
             'Only management script /usr/bin/x-ui present',
             'x-ui service health check failed after install',
+            'Partial x-ui install without /usr/local/x-ui/x-ui',
+            'Could not download verified install.sh',
+            'Official install.sh exited with error',
+            'x-ui install log contains extract/binary errors',
+            'x-ui panel binary missing after online install',
         ];
         foreach ($needles as $needle) {
             if (str_contains($output, $needle)) {

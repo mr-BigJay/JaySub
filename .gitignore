@@ -8,5 +8,7 @@
 /storage/ssl-ssh/
 /storage/xui-offline/
 .phpunit.result.cache
+/composer.phar
+/phpunit.phar
 /logs/*.log
 !.gitkeep

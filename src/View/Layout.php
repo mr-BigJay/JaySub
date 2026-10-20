@@ -1748,13 +1748,13 @@ HTML;
                     <p class="muted form-hint migration-offline-cache-status">وضعیت بسته روی JaySub: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
                     <details class="migration-offline-upload" id="xui-offline-upload">
                     <summary class="muted form-hint">آپلود دستی بسته (اختیاری — فقط اگر cache JaySub خالی است)</summary>
-                    <form class="stack" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data">' . $csrfField . '
-                    <label>معماری</label>
-                    <select name="architecture" required><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
-                    <label>فایل x-ui-linux-ARCH.tar.gz</label>
-                    <input type="file" name="xui_archive" accept=".gz,.tgz,application/gzip" required>
-                    <button class="btn btn-secondary" type="submit">آپلود و تأیید SHA-256</button>
-                    </form>
+                    <div class="stack migration-offline-upload-fields">
+                    <label for="migration-offline-arch">معماری</label>
+                    <select id="migration-offline-arch" name="architecture" form="migration-offline-upload-form" required><option value="amd64">amd64</option><option value="arm64">arm64</option></select>
+                    <label for="migration-offline-file">فایل x-ui-linux-ARCH.tar.gz</label>
+                    <input id="migration-offline-file" type="file" name="xui_archive" form="migration-offline-upload-form" accept=".gz,.tgz,application/gzip" required>
+                    <button class="btn btn-secondary" type="submit" form="migration-offline-upload-form">آپلود و تأیید SHA-256</button>
+                    </div>
                     </details>
                 </div>
                 <div class="migration-wizard-actions">
@@ -1821,6 +1821,9 @@ HTML;
                 </div>
                 </div>
             </section>'
+            . '</form>'
+            . '<form id="migration-offline-upload-form" class="migration-offline-upload-form" action="/admin/migration/offline-upload" method="post" enctype="multipart/form-data" hidden>'
+            . $csrfField
             . '</form></div>';
     }
 }

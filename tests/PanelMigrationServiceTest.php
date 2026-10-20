@@ -13,10 +13,9 @@ final class PanelMigrationServiceTest extends TestCase
         self::assertStringContainsString('wait_apt', $script);
         self::assertStringContainsString('jaysub-xui-install.log', $script);
         self::assertStringContainsString('XUI_DB_TYPE=sqlite', $script);
-        self::assertStringContainsString('/v3.4.2/install.sh', $script);
-        self::assertStringContainsString('xui_binary_ready', $script);
         self::assertStringContainsString('jaysub-xui-installer.sh', $script);
-        self::assertStringContainsString('xui_unit_ready', $script);
+        self::assertStringContainsString('fetch_install_script', $script);
+        self::assertStringNotContainsString('/v3.4.2/install.sh', $script);
         self::assertStringNotContainsString('| tail -n', $script);
         self::assertStringNotContainsString('/master/install.sh', $script);
     }

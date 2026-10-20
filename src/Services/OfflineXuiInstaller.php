@@ -298,6 +298,18 @@ esac
 [ "$ACTUAL_ARCH" = "$ARCH" ] || { echo "Archive architecture does not match destination" >&2; exit 1; }
 [ -f "$ARCHIVE" ] || { echo "Transferred archive missing" >&2; exit 1; }
 printf '%s  %s\n' '__SHA256__' "$ARCHIVE" | sha256sum -c -
+detect_partial_xui() {
+  local found=0 p
+  for p in /usr/local/x-ui /etc/systemd/system/x-ui.service /etc/x-ui/x-ui.db; do
+    [ -e "$p" ] && found=1
+  done
+  if [ "$found" -eq 1 ] && [ ! -x /usr/local/x-ui/x-ui ]; then
+    echo "Partial x-ui install without /usr/local/x-ui/x-ui — stop and recover manually" >&2
+    return 1
+  fi
+  return 0
+}
+detect_partial_xui || exit 1
 # Migration targets must be fresh, to prevent accidental replacement of an existing panel.
 for existing in /usr/local/x-ui /usr/bin/x-ui /etc/systemd/system/x-ui.service /etc/x-ui/x-ui.db; do
   [ ! -e "$existing" ] || { echo "Existing x-ui installation detected ($existing); refusing to overwrite it" >&2; exit 1; }

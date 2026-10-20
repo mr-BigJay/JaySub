@@ -11,7 +11,8 @@ final class MigrationPostInstallVerify
     {
         $lib = XuiRemoteScriptLib::bashPrerequisitesBlock() . "\n"
             . XuiRemoteScriptLib::bashVerifyBinaryBlock() . "\n"
-            . XuiRemoteScriptLib::bashWaitServiceHealthyBlock(15, 2);
+            . XuiRemoteScriptLib::bashWaitServiceHealthyBlock(15, 2) . "\n"
+            . XuiRemoteScriptLib::bashSqliteQuickCheckBlock();
 
         return $lib . <<<'BASH'
 
@@ -27,11 +28,19 @@ if [ -x /usr/bin/x-ui ] && [ ! -x /usr/local/x-ui/x-ui ]; then
   exit 1
 fi
 verify_xui_binary "$ARCH" || exit 1
+[ -f "/usr/local/x-ui/bin/xray-linux-$ARCH" ] || { echo "Xray binary missing from install" >&2; exit 1; }
+systemctl restart x-ui
 if ! wait_xui_service_healthy "$XUI_BIN"; then
   echo "x-ui service health check failed after install" >&2
   exit 1
 fi
-echo "JaySub post-install verify: binary, systemd unit, and service OK"
+DB=""
+for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db; do
+  [ -f "$c" ] && DB="$c" && break
+done
+[ -n "$DB" ] || { echo "x-ui.db missing after install" >&2; exit 1; }
+sqlite_quick_check "$DB" || exit 1
+echo "JaySub post-install verify: binary, systemd, service, and database OK"
 exit 0
 BASH;
     }

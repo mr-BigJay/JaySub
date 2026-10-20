@@ -9,9 +9,11 @@ ok() { echo "[ok] $1"; pass=$((pass + 1)); }
 bad() { echo "[FAIL] $1" >&2; fail=$((fail + 1)); }
 
 INSTALL=$("$PHP" -r "require '$ROOT/vendor/autoload.php'; echo App\\Services\\OfflineXuiInstaller::remoteInstallScript('amd64', '/tmp/jaysub-xui-' . str_repeat('f', 32) . '-amd64.tar.gz');")
+ONLINE=$("$PHP" -r "require '$ROOT/vendor/autoload.php'; echo App\\Services\\OnlineXuiInstaller::remoteInstallScript();")
 RESTORE=$("$PHP" -r "require '$ROOT/vendor/autoload.php'; echo App\\Services\\XuiMigrationRestore::remoteRestoreScript('/tmp/jaysub-restore-fixture.db');")
 
 if bash -n <<<"$INSTALL"; then ok 'offline install bash -n'; else bad 'offline install bash -n'; fi
+if bash -n <<<"$ONLINE"; then ok 'online install bash -n'; else bad 'online install bash -n'; fi
 if bash -n <<<"$RESTORE"; then ok 'restore bash -n'; else bad 'restore bash -n'; fi
 
 TMP="$(mktemp -d)"

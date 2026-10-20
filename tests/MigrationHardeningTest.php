@@ -28,8 +28,9 @@ final class MigrationHardeningTest extends TestCase
     {
         $script = PanelMigrationService::remoteXuiInstallScript('v3.4.2');
         self::assertStringContainsString('/usr/local/x-ui/x-ui', $script);
-        self::assertStringContainsString('grep -q ELF', $script);
         self::assertStringContainsString('invalid compressed data', $script);
+        self::assertStringContainsString('fetch_install_script', $script);
+        self::assertStringNotContainsString('/v3.4.2/install.sh', $script);
     }
 
     public function testCorruptTarLogSnippetIsInstallFailure(): void
@@ -40,7 +41,7 @@ final class MigrationHardeningTest extends TestCase
 
     public function testPostInstallSuccessLineIsNotInstallFailure(): void
     {
-        $out = "JaySub post-install verify: binary, systemd unit, and service OK\n";
+        $out = "JaySub post-install verify: binary, systemd, service, and database OK\n";
         self::assertFalse(PanelMigrationService::remoteOutputIndicatesXuiInstallFailure($out));
     }
 
