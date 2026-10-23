@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 final class PanelRoutingParseXrayTest extends TestCase
 {
-    public function testParsesObjAsNestedArray(): void
+    public function testParsesXraySettingAsJsonString(): void
     {
         $xrayInner = json_encode([
             'routing' => ['rules' => [['type' => 'field', 'domain' => 'a.com', 'outboundTag' => 'direct']]],
@@ -27,6 +27,30 @@ final class PanelRoutingParseXrayTest extends TestCase
         self::assertCount(1, $parsed['rules']);
         self::assertSame(['in-443'], $parsed['inboundTags']);
         self::assertSame('https://www.google.com/generate_204', $parsed['outboundTestUrl']);
+    }
+
+    public function testParsesXraySettingAsJsonObject(): void
+    {
+        $xrayConfig = [
+            'routing' => ['rules' => [['type' => 'field', 'outboundTag' => 'direct']]],
+            'outbounds' => [['tag' => 'direct']],
+        ];
+        $api = [
+            'success' => true,
+            'obj' => [
+                'xraySetting' => $xrayConfig,
+                'inboundTags' => '["inbound-1"]',
+                'outboundTestUrl' => 'https://example.com/generate_204',
+            ],
+        ];
+        $parsed = PanelRoutingService::parseXrayResponse($api);
+        self::assertNull($parsed['error']);
+        self::assertCount(1, $parsed['rules']);
+        self::assertSame('direct', $parsed['rules'][0]['outboundTag'] ?? null);
+        self::assertSame(['inbound-1'], $parsed['inboundTags']);
+        $decodedRaw = json_decode($parsed['xraySettingRaw'], true);
+        self::assertIsArray($decodedRaw);
+        self::assertSame('direct', $decodedRaw['routing']['rules'][0]['outboundTag'] ?? null);
     }
 
     public function testParsesObjAsJsonStringV342(): void

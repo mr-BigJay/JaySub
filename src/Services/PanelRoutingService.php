@@ -205,7 +205,7 @@ final class PanelRoutingService
             ];
         }
 
-        if (!array_key_exists('xraySetting', $obj) || !is_string($obj['xraySetting'])) {
+        if (!array_key_exists('xraySetting', $obj)) {
             return [
                 'config' => [],
                 'rules' => [],
@@ -215,17 +215,46 @@ final class PanelRoutingService
                 'error' => 'xraySetting در پاسخ پنل یافت نشد',
             ];
         }
-        $raw = $obj['xraySetting'];
 
-        $parsed = XrayRoutingRules::parseConfig($raw);
-        if (isset($parsed['error'])) {
+        $xrayField = $obj['xraySetting'];
+        $config = [];
+        $raw = '';
+        if (is_string($xrayField)) {
+            $raw = $xrayField;
+            $parsed = XrayRoutingRules::parseConfig($raw);
+            if (isset($parsed['error'])) {
+                return [
+                    'config' => [],
+                    'rules' => [],
+                    'xraySettingRaw' => $raw,
+                    'inboundTags' => [],
+                    'outboundTestUrl' => null,
+                    'error' => $parsed['error'],
+                ];
+            }
+            $config = $parsed['config'];
+        } elseif (is_array($xrayField)) {
+            $config = $xrayField;
+            try {
+                $raw = XrayRoutingRules::encodeConfig($config);
+            } catch (\Throwable $e) {
+                return [
+                    'config' => [],
+                    'rules' => [],
+                    'xraySettingRaw' => '',
+                    'inboundTags' => [],
+                    'outboundTestUrl' => null,
+                    'error' => 'سریال‌سازی xraySetting object ناموفق بود',
+                ];
+            }
+        } else {
             return [
                 'config' => [],
                 'rules' => [],
-                'xraySettingRaw' => $raw,
+                'xraySettingRaw' => '',
                 'inboundTags' => [],
                 'outboundTestUrl' => null,
-                'error' => $parsed['error'],
+                'error' => 'xraySetting در پاسخ پنل یافت نشد',
             ];
         }
 
@@ -247,8 +276,8 @@ final class PanelRoutingService
             : null;
 
         return [
-            'config' => $parsed['config'],
-            'rules' => XrayRoutingRules::rulesFromConfig($parsed['config']),
+            'config' => $config,
+            'rules' => XrayRoutingRules::rulesFromConfig($config),
             'xraySettingRaw' => $raw,
             'inboundTags' => $inboundTags,
             'outboundTestUrl' => $testUrl,
