@@ -2306,3 +2306,76 @@ body.modal-open { overflow: hidden; }
   margin: 0;
   font-size: 0.72rem;
 }
+
+/* Routing management */
+.routing-page .routing-intro { margin-top: 0; }
+.routing-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 960px) {
+  .routing-grid { grid-template-columns: 1fr; }
+}
+.routing-panels-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.routing-panel-list { max-height: 420px; overflow-y: auto; }
+.routing-panel-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.routing-panel-item:last-child { border-bottom: none; }
+.routing-panel-item.is-active { background: var(--accent-soft); border-radius: var(--radius-sm); padding-inline: 0.35rem; }
+.routing-panel-meta { flex: 1; min-width: 0; }
+.routing-panel-meta strong { display: block; font-size: 0.9rem; }
+.routing-status {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  margin-top: 0.2rem;
+}
+.routing-status.ok { background: rgba(34, 197, 94, 0.15); color: var(--success); }
+.routing-status.err { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+.routing-status.unknown { background: var(--surface-2); color: var(--muted); }
+.routing-rules-wrap { margin-top: 0.75rem; }
+.routing-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.routing-rules-table td, .routing-rules-table th { font-size: 0.82rem; }
+.routing-rule-actions { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.routing-bulk-results { margin-top: 1rem; }
+.routing-bulk-row {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.routing-bulk-row.success { color: var(--success); }
+.routing-bulk-row.failed { color: var(--danger); }
+.routing-bulk-row.skipped { color: var(--warning); }
+.routing-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 1rem;
+  max-width: 520px;
+  width: calc(100% - 2rem);
+}
+.routing-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}

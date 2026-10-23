@@ -16,6 +16,7 @@ final class Layout
         'dashboard' => 'داشبورد',
         'users' => 'کاربران',
         'panels' => 'پنل‌های XUI',
+        'routing' => 'مسیریابی',
         'services' => 'سرویس‌ها',
         'reports' => 'گزارش مصرف',
         'notifications' => 'اعلان‌ها',
@@ -49,6 +50,7 @@ final class Layout
             'dashboard' => '/admin/dashboard',
             'users' => '/admin/customers',
             'panels' => '/admin/panels',
+            'routing' => '/admin/routing',
             'services' => '/admin/services',
             'reports' => '/admin/reports',
             'notifications' => '/admin/notifications',
@@ -1686,6 +1688,7 @@ HTML;
             'dashboard' => '▣',
             'users' => '👤',
             'panels' => '⬡',
+            'routing' => '↯',
             'services' => '◈',
             'reports' => '📊',
             'notifications' => '🔔',
@@ -1696,6 +1699,85 @@ HTML;
             'settings' => '⚙',
             default => '•',
         };
+    }
+
+    public static function adminRoutingPage(string $csrfToken): string
+    {
+        $csrf = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
+
+        return <<<HTML
+<div class="routing-page" dir="rtl" data-csrf="{$csrf}">
+  <p class="muted routing-intro">مدیریت <code>routing.rules</code> پنل‌های 3x-ui — قوانین API/آمار محافظت می‌شوند؛ قبل از ذخیره بک‌آپ خودکار گرفته می‌شود.</p>
+  <div class="routing-grid">
+    <section class="card routing-panels-card">
+      <div class="routing-panels-head">
+        <h2 class="card-title">پنل‌ها</h2>
+        <label class="routing-select-all"><input type="checkbox" id="routing-select-all" /> انتخاب همه</label>
+      </div>
+      <div id="routing-panel-list" class="routing-panel-list muted">در حال بارگذاری…</div>
+    </section>
+    <section class="card routing-editor-card">
+      <h2 class="card-title">قوانین پنل انتخاب‌شده</h2>
+      <div id="routing-editor-status" class="muted">یک پنل را برای ویرایش انتخاب کنید.</div>
+      <div id="routing-rules-wrap" class="routing-rules-wrap" hidden>
+        <div class="routing-toolbar">
+          <button type="button" class="btn btn-primary btn small" id="routing-add-rule">+ قانون</button>
+          <button type="button" class="btn btn-secondary btn small" id="routing-save-rules">ذخیره در 3x-ui</button>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>نوع</th><th>دامنه</th><th>IP</th><th>Inbound</th><th>مقصد</th><th></th></tr></thead>
+            <tbody id="routing-rules-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+  <section class="card routing-bulk-card">
+    <h2 class="card-title">مدیریت گروهی</h2>
+    <div class="routing-bulk-form stack">
+      <label>عملیات
+        <select id="routing-bulk-op" class="input">
+          <option value="add">افزودن قانون</option>
+          <option value="remove">حذف قانون (با معیار)</option>
+          <option value="move">تغییر اولویت</option>
+        </select>
+      </label>
+      <div class="routing-bulk-fields grid-2">
+        <label>دامنه <input type="text" id="routing-bulk-domain" class="input" placeholder="example.com" /></label>
+        <label>IP <input type="text" id="routing-bulk-ip" class="input" placeholder="geoip:private" /></label>
+        <label>Inbound Tag <input type="text" id="routing-bulk-inbound" class="input" /></label>
+        <label>Outbound Tag <input type="text" id="routing-bulk-outbound" class="input" /></label>
+        <label>Balancer Tag <input type="text" id="routing-bulk-balancer" class="input" /></label>
+        <label id="routing-bulk-direction-wrap" hidden>جهت
+          <select id="routing-bulk-direction" class="input"><option value="up">بالا</option><option value="down">پایین</option></select>
+        </label>
+      </div>
+      <div class="routing-bulk-actions">
+        <button type="button" class="btn btn-secondary" id="routing-bulk-preview">پیش‌نمایش</button>
+        <button type="button" class="btn btn-primary" id="routing-bulk-apply">اعمال روی پنل‌های انتخاب‌شده</button>
+      </div>
+    </div>
+    <div id="routing-bulk-results" class="routing-bulk-results" hidden></div>
+  </section>
+  <dialog id="routing-rule-dialog" class="routing-dialog">
+    <form method="dialog" class="stack" id="routing-rule-form">
+      <h3 class="card-title">قانون مسیریابی</h3>
+      <input type="hidden" id="routing-rule-index" value="" />
+      <label>نوع <input class="input" id="routing-rule-type" value="field" /></label>
+      <label>دامنه (با کاما) <input class="input" id="routing-rule-domain" /></label>
+      <label>IP (با کاما) <input class="input" id="routing-rule-ip" /></label>
+      <label>Inbound (با کاما) <input class="input" id="routing-rule-inbound" /></label>
+      <label>Outbound Tag <input class="input" id="routing-rule-outbound" /></label>
+      <label>Balancer Tag <input class="input" id="routing-rule-balancer" /></label>
+      <div class="routing-dialog-actions">
+        <button type="submit" class="btn btn-primary" value="save">ذخیره در لیست</button>
+        <button type="button" class="btn btn-secondary" data-close-routing-dialog>انصراف</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+HTML;
     }
 
     /**

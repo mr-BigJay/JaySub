@@ -32,6 +32,27 @@ final class XuiClient
         return $this->request('GET', '/panel/api/inbounds/list');
     }
 
+    /** POST /panel/api/xray/ — full template + inbound tags (3x-ui v3.4.2). */
+    public function fetchXrayTemplate(): array
+    {
+        return $this->request('POST', '/panel/api/xray/', []);
+    }
+
+    /**
+     * POST /panel/api/xray/update — form-urlencoded xraySetting JSON string.
+     *
+     * @return array{ok: bool, data?: mixed, error?: string, http_code?: int}
+     */
+    public function updateXrayTemplate(string $xraySettingJson, ?string $outboundTestUrl = null): array
+    {
+        $fields = ['xraySetting' => $xraySettingJson];
+        if ($outboundTestUrl !== null && $outboundTestUrl !== '') {
+            $fields['outboundTestUrl'] = $outboundTestUrl;
+        }
+
+        return $this->requestForm('POST', '/panel/api/xray/update', $fields);
+    }
+
     /** @return array{ok: bool, data?: mixed, error?: string} */
     public function getClient(string $email): array
     {
@@ -201,6 +222,61 @@ final class XuiClient
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, string> $fields
+     * @return array{ok: bool, data?: mixed, error?: string, http_code?: int}
+     */
+    private function requestForm(string $method, string $path, array $fields): array
+    {
+        $url = rtrim($this->baseUrl, '/') . $path;
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init failed'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $this->timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $this->apiToken,
+                'X-Requested-With: XMLHttpRequest',
+                'Content-Type: application/x-www-form-urlencoded',
+            ],
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_POSTFIELDS => http_build_query($fields),
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false) {
+            return ['ok' => false, 'error' => $curlError ?: 'Request failed', 'http_code' => $httpCode];
+        }
+
+        $decoded = json_decode($response, true);
+        if (!is_array($decoded)) {
+            return [
+                'ok' => false,
+                'error' => $this->describeNonJsonResponse($httpCode, (string) $response),
+                'http_code' => $httpCode,
+            ];
+        }
+
+        if ($httpCode >= 400 || ($decoded['success'] ?? true) === false) {
+            $msg = is_string($decoded['msg'] ?? null) ? $decoded['msg'] : 'API error';
+
+            return ['ok' => false, 'error' => $msg, 'data' => $decoded, 'http_code' => $httpCode];
+        }
+
+        return ['ok' => true, 'data' => $decoded, 'http_code' => $httpCode];
     }
 
     /**
