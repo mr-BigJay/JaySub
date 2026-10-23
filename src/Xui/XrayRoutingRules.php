@@ -271,7 +271,7 @@ final class XrayRoutingRules
     {
         $copy = $rule;
         unset($copy['_jaySubIndex']);
-        $json = json_encode(self::normalizeForFingerprint($copy), JSON_UNESCAPED_UNICODE | JSON_SORT_KEYS);
+        $json = json_encode(self::normalizeForFingerprint($copy), JSON_UNESCAPED_UNICODE);
 
         return hash('sha256', $json !== false ? $json : '');
     }

@@ -180,6 +180,20 @@ final class PanelRoutingService
     public static function parseXrayResponse(array $apiData): array
     {
         $obj = $apiData['obj'] ?? null;
+        if (is_string($obj)) {
+            $decodedObj = json_decode($obj, true);
+            if (!is_array($decodedObj)) {
+                return [
+                    'config' => [],
+                    'rules' => [],
+                    'xraySettingRaw' => '',
+                    'inboundTags' => [],
+                    'outboundTestUrl' => null,
+                    'error' => 'obj پاسخ Xray JSON نامعتبر است',
+                ];
+            }
+            $obj = $decodedObj;
+        }
         if (!is_array($obj)) {
             return [
                 'config' => [],
@@ -191,8 +205,7 @@ final class PanelRoutingService
             ];
         }
 
-        $raw = $obj['xraySetting'] ?? '';
-        if (!is_string($raw)) {
+        if (!array_key_exists('xraySetting', $obj) || !is_string($obj['xraySetting'])) {
             return [
                 'config' => [],
                 'rules' => [],
@@ -202,6 +215,7 @@ final class PanelRoutingService
                 'error' => 'xraySetting در پاسخ پنل یافت نشد',
             ];
         }
+        $raw = $obj['xraySetting'];
 
         $parsed = XrayRoutingRules::parseConfig($raw);
         if (isset($parsed['error'])) {
