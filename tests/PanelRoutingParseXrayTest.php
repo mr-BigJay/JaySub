@@ -24,6 +24,7 @@ final class PanelRoutingParseXrayTest extends TestCase
         $parsed = PanelRoutingService::parseXrayResponse($api);
         self::assertNull($parsed['error']);
         self::assertSame($xrayInner, $parsed['xraySettingRaw']);
+        self::assertTrue($parsed['xraySettingPersistable']);
         self::assertCount(1, $parsed['rules']);
         self::assertSame(['in-443'], $parsed['inboundTags']);
         self::assertSame('https://www.google.com/generate_204', $parsed['outboundTestUrl']);
@@ -48,9 +49,8 @@ final class PanelRoutingParseXrayTest extends TestCase
         self::assertCount(1, $parsed['rules']);
         self::assertSame('direct', $parsed['rules'][0]['outboundTag'] ?? null);
         self::assertSame(['inbound-1'], $parsed['inboundTags']);
-        $decodedRaw = json_decode($parsed['xraySettingRaw'], true);
-        self::assertIsArray($decodedRaw);
-        self::assertSame('direct', $decodedRaw['routing']['rules'][0]['outboundTag'] ?? null);
+        self::assertFalse($parsed['xraySettingPersistable']);
+        self::assertSame('', $parsed['xraySettingRaw']);
     }
 
     public function testParsesObjAsJsonStringV342(): void

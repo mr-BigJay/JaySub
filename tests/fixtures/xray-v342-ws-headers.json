@@ -1,0 +1,40 @@
+{
+  "log": {},
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": ["api"],
+        "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "domain": ["example.com"],
+        "outboundTag": "direct"
+      }
+    ]
+  },
+  "inbounds": [],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    },
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": []
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": {
+          "path": "/",
+          "headers": {}
+        }
+      }
+    }
+  ]
+}

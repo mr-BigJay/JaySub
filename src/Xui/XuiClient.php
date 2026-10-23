@@ -53,6 +53,12 @@ final class XuiClient
         return $this->requestForm('POST', '/panel/api/xray/update', $fields);
     }
 
+    /** GET /panel/api/xray/getXrayResult — recent Xray process output (startup errors). */
+    public function getXrayResult(): array
+    {
+        return $this->request('GET', '/panel/api/xray/getXrayResult');
+    }
+
     /** @return array{ok: bool, data?: mixed, error?: string} */
     public function getClient(string $email): array
     {

@@ -16,12 +16,13 @@ final class XrayRoutingRules
         if ($raw === '') {
             return ['config' => [], 'error' => 'قالب Xray خالی است'];
         }
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
+        try {
+            $root = XraySettingJson::decodeRoot($raw);
+        } catch (\Throwable) {
             return ['config' => [], 'error' => 'JSON قالب Xray نامعتبر است'];
         }
 
-        return ['config' => $decoded];
+        return ['config' => XraySettingJson::configArrayForValidation($root)];
     }
 
     /**
