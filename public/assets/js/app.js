@@ -490,6 +490,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const editorStatus = document.getElementById('routing-editor-status');
     const rulesWrap = document.getElementById('routing-rules-wrap');
     const rulesBody = document.getElementById('routing-rules-body');
+    const rulesCardsEl = document.getElementById('routing-rules-cards');
+    const rulesActionRoot = document.getElementById('routing-rules-wrap');
     const bulkOp = document.getElementById('routing-bulk-op');
     const bulkDirectionWrap = document.getElementById('routing-bulk-direction-wrap');
     const bulkResults = document.getElementById('routing-bulk-results');
@@ -524,11 +526,14 @@ document.addEventListener('DOMContentLoaded', () => {
         row.className = 'routing-panel-item' + (p.id === activePanelId ? ' is-active' : '');
         const err = p.last_error ? `<span class="muted">${p.last_error}</span>` : '';
         row.innerHTML =
+          `<label class="routing-panel-check" aria-label="انتخاب پنل">` +
           `<input type="checkbox" class="routing-panel-cb" data-id="${p.id}" ${p._checked ? 'checked' : ''} />` +
-          `<div class="routing-panel-meta"><strong>${p.name}</strong>` +
-          `<span class="muted">${p.customer_name || ''}</span>` +
+          `</label>` +
+          `<div class="routing-panel-meta"><strong class="routing-panel-name">${p.name}</strong>` +
+          `<span class="routing-panel-customer muted">${p.customer_name || ''}</span>` +
           `<span class="routing-status ${statusClass(p)}">${p.connection_status || 'unknown'}</span>${err}</div>`;
         row.querySelector('.routing-panel-meta')?.addEventListener('click', () => loadPanelRules(p.id));
+        row.querySelector('.routing-panel-cb')?.addEventListener('click', (ev) => ev.stopPropagation());
         row.querySelector('.routing-panel-cb')?.addEventListener('change', (ev) => {
           p._checked = ev.target.checked;
         });
@@ -536,50 +541,92 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
+    const ruleActionButtons = (idx) =>
+      `<button type="button" class="btn btn-ghost btn small routing-action-btn" data-move="up" data-idx="${idx}" aria-label="بالا">↑</button>` +
+      `<button type="button" class="btn btn-ghost btn small routing-action-btn" data-move="down" data-idx="${idx}" aria-label="پایین">↓</button>` +
+      `<button type="button" class="btn btn-ghost btn small routing-action-btn" data-edit="${idx}">ویرایش</button>` +
+      `<button type="button" class="btn btn-ghost btn small routing-action-btn" data-del="${idx}">حذف</button>`;
+
+    const ruleDisplay = (rule) => {
+      const domain = Array.isArray(rule.domain) ? rule.domain.join(', ') : rule.domain || '—';
+      const ip = Array.isArray(rule.ip) ? rule.ip.join(', ') : rule.ip || '—';
+      const inbound = Array.isArray(rule.inboundTag) ? rule.inboundTag.join(', ') : rule.inboundTag || '—';
+      const dest = rule.balancerTag || rule.outboundTag || '—';
+      const type = rule.type || 'field';
+      return { domain, ip, inbound, dest, type };
+    };
+
+    const handleRuleAction = (btn) => {
+      const idx = parseInt(btn.getAttribute('data-idx') || btn.getAttribute('data-edit') || btn.getAttribute('data-del') || '0', 10);
+      if (btn.hasAttribute('data-move')) {
+        const dir = btn.getAttribute('data-move');
+        if (dir === 'up' && idx > 0) {
+          const tmp = editableRules[idx - 1];
+          editableRules[idx - 1] = editableRules[idx];
+          editableRules[idx] = tmp;
+        }
+        if (dir === 'down' && idx < editableRules.length - 1) {
+          const tmp = editableRules[idx + 1];
+          editableRules[idx + 1] = editableRules[idx];
+          editableRules[idx] = tmp;
+        }
+        renderRulesTable();
+        return;
+      }
+      if (btn.hasAttribute('data-edit')) {
+        openRuleDialog(idx);
+        return;
+      }
+      if (btn.hasAttribute('data-del')) {
+        editableRules.splice(idx, 1);
+        renderRulesTable();
+      }
+    };
+
+    if (rulesActionRoot && !rulesActionRoot.dataset.routingActionsBound) {
+      rulesActionRoot.dataset.routingActionsBound = '1';
+      rulesActionRoot.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-move],[data-edit],[data-del]');
+        if (!btn || !rulesActionRoot.contains(btn)) return;
+        ev.preventDefault();
+        handleRuleAction(btn);
+      });
+    }
+
     const renderRulesTable = () => {
-      if (!rulesBody) return;
-      rulesBody.innerHTML = '';
+      if (rulesBody) rulesBody.innerHTML = '';
+      if (rulesCardsEl) {
+        rulesCardsEl.innerHTML = '';
+        rulesCardsEl.hidden = editableRules.length === 0;
+      }
       editableRules.forEach((rule, idx) => {
-        const tr = document.createElement('tr');
-        const domain = Array.isArray(rule.domain) ? rule.domain.join(', ') : (rule.domain || '—');
-        const ip = Array.isArray(rule.ip) ? rule.ip.join(', ') : (rule.ip || '—');
-        const inbound = Array.isArray(rule.inboundTag) ? rule.inboundTag.join(', ') : (rule.inboundTag || '—');
-        const dest = rule.balancerTag || rule.outboundTag || '—';
-        tr.innerHTML =
-          `<td>${idx + 1}</td><td>${rule.type || 'field'}</td><td>${domain}</td><td>${ip}</td>` +
-          `<td>${inbound}</td><td>${dest}</td>` +
-          `<td class="routing-rule-actions">` +
-          `<button type="button" class="btn btn-ghost btn small" data-move="up" data-idx="${idx}">↑</button>` +
-          `<button type="button" class="btn btn-ghost btn small" data-move="down" data-idx="${idx}">↓</button>` +
-          `<button type="button" class="btn btn-ghost btn small" data-edit="${idx}">ویرایش</button>` +
-          `<button type="button" class="btn btn-ghost btn small" data-del="${idx}">حذف</button></td>`;
-        rulesBody.appendChild(tr);
-      });
-      rulesBody.querySelectorAll('[data-move]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-idx') || '0', 10);
-          const dir = btn.getAttribute('data-move');
-          if (dir === 'up' && idx > 0) {
-            const tmp = editableRules[idx - 1];
-            editableRules[idx - 1] = editableRules[idx];
-            editableRules[idx] = tmp;
-          }
-          if (dir === 'down' && idx < editableRules.length - 1) {
-            const tmp = editableRules[idx + 1];
-            editableRules[idx + 1] = editableRules[idx];
-            editableRules[idx] = tmp;
-          }
-          renderRulesTable();
-        });
-      });
-      rulesBody.querySelectorAll('[data-edit]').forEach((btn) => {
-        btn.addEventListener('click', () => openRuleDialog(parseInt(btn.getAttribute('data-edit') || '0', 10)));
-      });
-      rulesBody.querySelectorAll('[data-del]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          editableRules.splice(parseInt(btn.getAttribute('data-del') || '0', 10), 1);
-          renderRulesTable();
-        });
+        const { domain, ip, inbound, dest, type } = ruleDisplay(rule);
+        const priority = idx + 1;
+        if (rulesBody) {
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            `<td>${priority}</td><td>${type}</td><td>${domain}</td><td>${ip}</td>` +
+            `<td>${inbound}</td><td>${dest}</td>` +
+            `<td class="routing-rule-actions">${ruleActionButtons(idx)}</td>`;
+          rulesBody.appendChild(tr);
+        }
+        if (rulesCardsEl) {
+          const card = document.createElement('article');
+          card.className = 'routing-rule-card';
+          card.innerHTML =
+            `<header class="routing-rule-card-head">` +
+            `<span class="routing-rule-priority">اولویت ${priority}</span>` +
+            `<span class="routing-rule-type muted">${type}</span>` +
+            `</header>` +
+            `<dl class="routing-rule-dl">` +
+            `<div><dt>دامنه</dt><dd>${domain}</dd></div>` +
+            `<div><dt>IP</dt><dd>${ip}</dd></div>` +
+            `<div><dt>Inbound</dt><dd>${inbound}</dd></div>` +
+            `<div><dt>مقصد</dt><dd>${dest}</dd></div>` +
+            `</dl>` +
+            `<div class="routing-rule-actions routing-rule-card-actions">${ruleActionButtons(idx)}</div>`;
+          rulesCardsEl.appendChild(card);
+        }
       });
     };
 

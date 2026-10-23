@@ -1721,15 +1721,16 @@ HTML;
       <div id="routing-editor-status" class="muted">یک پنل را برای ویرایش انتخاب کنید.</div>
       <div id="routing-rules-wrap" class="routing-rules-wrap" hidden>
         <div class="routing-toolbar">
-          <button type="button" class="btn btn-primary btn small" id="routing-add-rule">+ قانون</button>
-          <button type="button" class="btn btn-secondary btn small" id="routing-save-rules">ذخیره در 3x-ui</button>
+          <button type="button" class="btn btn-primary btn small routing-toolbar-btn" id="routing-add-rule">+ قانون</button>
+          <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="routing-save-rules">ذخیره در 3x-ui</button>
         </div>
-        <div class="table-scroll">
+        <div class="routing-rules-desktop table-scroll">
           <table class="data-table routing-rules-table">
             <thead><tr><th>#</th><th>نوع</th><th>دامنه</th><th>IP</th><th>Inbound</th><th>مقصد</th><th></th></tr></thead>
             <tbody id="routing-rules-body"></tbody>
           </table>
         </div>
+        <div id="routing-rules-cards" class="routing-rules-mobile" hidden></div>
       </div>
     </section>
   </div>
