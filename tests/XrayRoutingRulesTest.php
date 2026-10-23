@@ -45,4 +45,31 @@ final class XrayRoutingRulesTest extends TestCase
         $rule = ['outboundTag' => 'warp', 'domain' => 'google.com'];
         self::assertTrue(XrayRoutingRules::ruleMatchesSelector(['outboundTag' => 'warp'], $rule));
     }
+
+    public function testInboundValidationUsesApiInboundTags(): void
+    {
+        $config = ['outbounds' => [['tag' => 'direct']], 'routing' => ['balancers' => []], 'inbounds' => []];
+        $rules = [
+            ['type' => 'field', 'inboundTag' => ['in-443-tcp'], 'outboundTag' => 'direct'],
+        ];
+        $errors = XrayRoutingRules::validateRulesForConfig($config, $rules, ['in-443-tcp']);
+        self::assertSame([], $errors);
+    }
+
+    public function testUnchangedPriorRuleSkipsInboundRevalidation(): void
+    {
+        $prior = ['type' => 'field', 'inboundTag' => ['legacy-inbound'], 'outboundTag' => 'direct'];
+        $config = ['outbounds' => [['tag' => 'direct']], 'routing' => ['balancers' => []], 'inbounds' => []];
+        $merged = [['inboundTag' => ['api'], 'outboundTag' => 'api'], $prior];
+        $errors = XrayRoutingRules::validateRulesForConfig($config, $merged, [], [$prior]);
+        self::assertSame([], $errors);
+    }
+
+    public function testNewRuleWithUnknownInboundFails(): void
+    {
+        $config = ['outbounds' => [['tag' => 'direct']], 'routing' => ['balancers' => []], 'inbounds' => []];
+        $rules = [['type' => 'field', 'inboundTag' => ['does-not-exist'], 'outboundTag' => 'direct']];
+        $errors = XrayRoutingRules::validateRulesForConfig($config, $rules, ['in-443-tcp']);
+        self::assertNotEmpty($errors);
+    }
 }

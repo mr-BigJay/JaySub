@@ -130,7 +130,12 @@ final class PanelRoutingService
         }
 
         $newConfig = XrayRoutingRules::configWithRules($parsed['config'], $merged);
-        $validation = XrayRoutingRules::validateRulesForConfig($newConfig, $merged);
+        $validation = XrayRoutingRules::validateRulesForConfig(
+            $newConfig,
+            $merged,
+            $parsed['inboundTags'],
+            $split['editable'],
+        );
         if ($validation !== []) {
             return ['ok' => false, 'error' => implode('؛ ', $validation)];
         }

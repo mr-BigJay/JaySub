@@ -140,14 +140,30 @@ final class XrayRoutingRules
     /**
      * @param array<string, mixed> $config
      * @param list<array<string, mixed>> $rules
+     * @param list<string> $apiInboundTags 3x-ui v3.4.2 `inboundTags` from POST /panel/api/xray/
+     * @param list<array<string, mixed>> $priorEditableRules unchanged editable rules from panel before save
      * @return list<string>
      */
-    public static function validateRulesForConfig(array $config, array $rules): array
-    {
+    public static function validateRulesForConfig(
+        array $config,
+        array $rules,
+        array $apiInboundTags = [],
+        array $priorEditableRules = [],
+    ): array {
         $errors = [];
         $outTags = self::outboundTagsFromConfig($config);
         $balancerTags = self::balancerTagsFromConfig($config);
-        $inboundTags = self::inboundTagsFromConfig($config);
+        $inboundTags = array_values(array_unique(array_merge(
+            self::inboundTagsFromConfig($config),
+            self::normalizeInboundTagList($apiInboundTags),
+        )));
+
+        $unchangedPrior = [];
+        foreach ($priorEditableRules as $prior) {
+            if (is_array($prior)) {
+                $unchangedPrior[self::fingerprint($prior)] = true;
+            }
+        }
 
         foreach ($rules as $i => $rule) {
             $idx = $i + 1;
@@ -165,6 +181,10 @@ final class XrayRoutingRules
             if ($bal !== '' && !in_array($bal, $balancerTags, true)) {
                 $errors[] = "قانون {$idx}: balancerTag «{$bal}» در این پنل وجود ندارد";
             }
+            $skipInbound = isset($unchangedPrior[self::fingerprint($rule)]);
+            if ($skipInbound) {
+                continue;
+            }
             foreach (self::stringList($rule['inboundTag'] ?? null) as $tag) {
                 if ($inboundTags !== [] && !in_array($tag, $inboundTags, true)) {
                     $errors[] = "قانون {$idx}: inboundTag «{$tag}» در این پنل یافت نشد";
@@ -173,6 +193,19 @@ final class XrayRoutingRules
         }
 
         return $errors;
+    }
+
+    /** @param list<string> $tags @return list<string> */
+    public static function normalizeInboundTagList(array $tags): array
+    {
+        $out = [];
+        foreach ($tags as $tag) {
+            if (is_string($tag) && $tag !== '') {
+                $out[] = $tag;
+            }
+        }
+
+        return $out;
     }
 
     /**
