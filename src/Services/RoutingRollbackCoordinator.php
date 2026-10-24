@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Services\PanelRoutingService;
 use App\Xui\XrayPanelClientInterface;
 use App\Xui\XraySettingJson;
 
@@ -67,17 +66,7 @@ final class RoutingRollbackCoordinator
 
     public static function fetchPersistableRaw(XrayPanelClientInterface $client): ?string
     {
-        $xray = $client->fetchXrayTemplate();
-        if (!($xray['ok'] ?? false)) {
-            return null;
-        }
-        $parsed = PanelRoutingService::parseXrayResponse(is_array($xray['data'] ?? null) ? $xray['data'] : []);
-        if ($parsed['error'] !== null || !($parsed['xraySettingPersistable'] ?? false)) {
-            return null;
-        }
-        $raw = (string) ($parsed['xraySettingRaw'] ?? '');
-
-        return $raw !== '' ? $raw : null;
+        return RoutingSaveWorkflow::fetchPersistableRaw($client);
     }
 
     public static function configDrifted(string $originalRaw, ?string $currentRaw): bool

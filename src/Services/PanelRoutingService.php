@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Core\Encryption;
 use App\Xui\XrayRoutingRules;
 use App\Xui\XraySettingJson;
+use App\Xui\XrayTemplateParser;
 use App\Xui\XuiClient;
 
 final class PanelRoutingService
@@ -63,7 +64,7 @@ final class PanelRoutingService
             ];
         }
 
-        $parsed = self::parseXrayResponse($xray['data'] ?? []);
+        $parsed = self::parseXrayFetch($xray);
         if ($parsed['error'] !== null) {
             return [
                 'ok' => false,
@@ -120,15 +121,12 @@ final class PanelRoutingService
             return ['ok' => false, 'error' => (string) ($xray['error'] ?? 'خواندن Xray ناموفق')];
         }
 
-        $parsed = self::parseXrayResponse($xray['data'] ?? []);
+        $parsed = self::parseXrayFetch($xray);
         if ($parsed['error'] !== null) {
             return ['ok' => false, 'error' => $parsed['error']];
         }
         if (!($parsed['xraySettingPersistable'] ?? false)) {
-            return [
-                'ok' => false,
-                'error' => 'ذخیره فقط وقتی مجاز است که xraySetting از API به‌صورت رشته JSON خام برگردد (بدون re-encode).',
-            ];
+            return ['ok' => false, 'error' => 'xraySetting از پنل قابل ذخیرهٔ type-safe نیست'];
         }
 
         $originalRaw = (string) ($parsed['xraySettingRaw'] ?? '');
@@ -155,88 +153,32 @@ final class PanelRoutingService
         }
 
         try {
+            $newRaw = self::rulesListUnchanged($parsed['rules'], $merged)
+                ? $originalRaw
+                : XraySettingJson::replaceRoutingRules($originalRaw, $merged);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+
+        if ($newRaw === $originalRaw) {
+            return ['ok' => true, 'msg' => 'تغییری در قوانین نبود — ذخیره انجام نشد'];
+        }
+
+        try {
             $backupFile = RoutingBackupService::backupPanelSettings($panelId, $originalRaw, $config);
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'بک‌آپ قبل از ذخیره ناموفق: ' . $e->getMessage()];
         }
 
-        try {
-            $newRaw = self::rulesListUnchanged($parsed['rules'], $merged)
-                ? $originalRaw
-                : XraySettingJson::replaceRoutingRules($originalRaw, $merged);
-        } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => $e->getMessage(), 'backup_file' => $backupFile];
-        }
-
-        if (XraySettingJson::containsForbiddenEmptyArrayConversion($originalRaw, $newRaw)) {
-            return [
-                'ok' => false,
-                'error' => 'تبدیل ممنوع object خالی ({}) به array ([]) در xraySetting تشخیص داده شد',
-                'backup_file' => $backupFile,
-            ];
-        }
-
-        $update = $client->updateXrayTemplate($newRaw, $parsed['outboundTestUrl']);
-        $updateOk = (bool) ($update['ok'] ?? false);
-        $health = XrayHealthVerifier::verify($client);
-        $currentRaw = RoutingRollbackCoordinator::fetchPersistableRaw($client);
-        $drifted = RoutingRollbackCoordinator::configDrifted($originalRaw, $currentRaw);
-        $healthOk = (bool) ($health['ok'] ?? false);
-
-        $needsRollback = $drifted || !$healthOk;
-        if (!$updateOk && !$needsRollback) {
-            return [
-                'ok' => false,
-                'error' => (string) ($update['error'] ?? 'ذخیره در 3x-ui ناموفق'),
-                'backup_file' => $backupFile,
-            ];
-        }
-
-        if ($needsRollback || !$updateOk) {
-            $reason = !$updateOk
-                ? (string) ($update['error'] ?? 'ذخیره در 3x-ui ناموفق')
-                : ($health['error'] ?? 'health check failed');
-            if ($drifted) {
-                $reason .= '؛ تغییر ناخواسته در xraySetting تشخیص داده شد';
-            }
-
-            $restore = RoutingRollbackCoordinator::restoreOriginalAndVerify(
-                $client,
-                $originalRaw,
-                $parsed['outboundTestUrl'],
-            );
-            AuditLogService::log('admin', $adminId, 'routing_save_rollback', 'vpn_panel', $panelId, [
-                'reason' => $reason,
-                'restore' => $restore,
-                'backup_file' => $backupFile,
-            ]);
-
-            if (!($restore['ok'] ?? false)) {
-                return [
-                    'ok' => false,
-                    'critical' => true,
-                    'error' => 'بحرانی: بازگردانی تأیید نشد — '
-                        . ($restore['error'] ?? 'rollback failed')
-                        . ' — از بک‌آپ raw استفاده کنید',
-                    'backup_file' => $backupFile,
-                    'rolled_back' => false,
-                ];
-            }
-
-            return [
-                'ok' => false,
-                'error' => 'ذخیره ناموفق — تنظیمات قبلی بازگردانده و Xray running تأیید شد (' . $reason . ')',
-                'backup_file' => $backupFile,
-                'rolled_back' => true,
-            ];
-        }
-
-        AuditLogService::log('admin', $adminId, 'routing_rules_saved', 'vpn_panel', $panelId, [
-            'backup_file' => $backupFile,
-            'rule_count' => count($merged),
-        ]);
-
-        return ['ok' => true, 'msg' => 'قوانین مسیریابی ذخیره شد', 'backup_file' => $backupFile];
+        return RoutingSaveWorkflow::persistAfterBackup(
+            $client,
+            $originalRaw,
+            $newRaw,
+            $parsed['outboundTestUrl'],
+            $backupFile,
+            $panelId,
+            $adminId,
+        );
     }
 
     /**
@@ -286,83 +228,28 @@ final class PanelRoutingService
      */
     public static function parseXrayResponse(array $apiData): array
     {
-        $empty = [
-            'config' => [],
-            'rules' => [],
-            'xraySettingRaw' => '',
-            'xraySettingPersistable' => false,
-            'inboundTags' => [],
-            'outboundTestUrl' => null,
-            'error' => null,
-        ];
+        return XrayTemplateParser::parseFromDecodedArray($apiData);
+    }
 
-        $obj = $apiData['obj'] ?? null;
-        if (is_string($obj)) {
-            $decodedObj = json_decode($obj, true);
-            if (!is_array($decodedObj)) {
-                return array_merge($empty, ['error' => 'obj پاسخ Xray JSON نامعتبر است']);
-            }
-            $obj = $decodedObj;
-        }
-        if (!is_array($obj)) {
-            return array_merge($empty, ['error' => 'پاسخ Xray از پنل ناقص است']);
-        }
-
-        if (!array_key_exists('xraySetting', $obj)) {
-            return array_merge($empty, ['error' => 'xraySetting در پاسخ پنل یافت نشد']);
-        }
-
-        $xrayField = $obj['xraySetting'];
-        $config = [];
-        $raw = '';
-        $persistable = false;
-
-        if (is_string($xrayField)) {
-            $raw = $xrayField;
-            try {
-                $root = XraySettingJson::decodeRoot($raw);
-            } catch (\Throwable) {
-                return array_merge($empty, [
-                    'xraySettingRaw' => $raw,
-                    'error' => 'JSON قالب Xray نامعتبر است',
-                ]);
-            }
-            $config = XraySettingJson::configArrayForValidation($root);
-            $rules = XraySettingJson::rulesFromRoot($root);
-            $persistable = true;
-        } elseif (is_array($xrayField)) {
-            $config = $xrayField;
-            $rules = XrayRoutingRules::rulesFromConfig($config);
-            $persistable = false;
-        } else {
-            return array_merge($empty, ['error' => 'xraySetting در پاسخ پنل یافت نشد']);
-        }
-
-        $inboundRaw = $obj['inboundTags'] ?? '[]';
-        $inboundTags = [];
-        if (is_string($inboundRaw)) {
-            $decoded = json_decode($inboundRaw, true);
-            if (is_array($decoded)) {
-                foreach ($decoded as $t) {
-                    if (is_string($t)) {
-                        $inboundTags[] = $t;
-                    }
-                }
-            }
-        }
-
-        $testUrl = isset($obj['outboundTestUrl']) && is_string($obj['outboundTestUrl'])
-            ? $obj['outboundTestUrl']
-            : null;
-
-        return [
-            'config' => $config,
-            'rules' => $rules ?? XrayRoutingRules::rulesFromConfig($config),
-            'xraySettingRaw' => $raw,
-            'xraySettingPersistable' => $persistable,
-            'inboundTags' => $inboundTags,
-            'outboundTestUrl' => $testUrl,
-            'error' => null,
-        ];
+    /**
+     * @param array<string, mixed> $fetchResult
+     * @return array{
+     *   config: array<string, mixed>,
+     *   rules: list<array<string, mixed>>,
+     *   xraySettingRaw: string,
+     *   xraySettingPersistable: bool,
+     *   inboundTags: list<string>,
+     *   outboundTestUrl: ?string,
+     *   error: ?string
+     * }
+     */
+    private static function parseXrayFetch(array $fetchResult): array
+    {
+        return XrayTemplateParser::parseFromFetchPayload(
+            is_array($fetchResult['data'] ?? null) ? $fetchResult['data'] : [],
+            isset($fetchResult['data_object']) && $fetchResult['data_object'] instanceof \stdClass
+                ? $fetchResult['data_object']
+                : null,
+        );
     }
 }

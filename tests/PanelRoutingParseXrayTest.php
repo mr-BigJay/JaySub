@@ -32,25 +32,14 @@ final class PanelRoutingParseXrayTest extends TestCase
 
     public function testParsesXraySettingAsJsonObject(): void
     {
-        $xrayConfig = [
-            'routing' => ['rules' => [['type' => 'field', 'outboundTag' => 'direct']]],
-            'outbounds' => [['tag' => 'direct']],
-        ];
-        $api = [
-            'success' => true,
-            'obj' => [
-                'xraySetting' => $xrayConfig,
-                'inboundTags' => '["inbound-1"]',
-                'outboundTestUrl' => 'https://example.com/generate_204',
-            ],
-        ];
-        $parsed = PanelRoutingService::parseXrayResponse($api);
+        $body = '{"success":true,"obj":{"xraySetting":{"routing":{"rules":[{"type":"field","outboundTag":"direct"}]},"outbounds":[{"tag":"direct","settings":{}}]},"inboundTags":"[\"inbound-1\"]","outboundTestUrl":"https://example.com/generate_204"}}';
+        $parsed = \App\Xui\XrayTemplateParser::parseFromApiJsonString($body);
         self::assertNull($parsed['error']);
         self::assertCount(1, $parsed['rules']);
         self::assertSame('direct', $parsed['rules'][0]['outboundTag'] ?? null);
         self::assertSame(['inbound-1'], $parsed['inboundTags']);
-        self::assertFalse($parsed['xraySettingPersistable']);
-        self::assertSame('', $parsed['xraySettingRaw']);
+        self::assertTrue($parsed['xraySettingPersistable']);
+        self::assertStringContainsString('"settings":{}', $parsed['xraySettingRaw']);
     }
 
     public function testParsesObjAsJsonStringV342(): void
