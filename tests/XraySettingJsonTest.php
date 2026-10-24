@@ -27,6 +27,9 @@ final class XraySettingJsonTest extends TestCase
         $updated = XraySettingJson::replaceRoutingRules($raw, $rules);
         self::assertStringContainsString('"headers":{}', $updated);
         self::assertStringNotContainsString('"headers":[]', $updated);
+        self::assertStringContainsString('"attrs":{}', $updated);
+        self::assertStringContainsString('"sources":[]', $updated);
+        self::assertStringNotContainsString('"attrs":[]', $updated);
     }
 
     public function testNoOpRulesReplaceKeepsRawIdentical(): void

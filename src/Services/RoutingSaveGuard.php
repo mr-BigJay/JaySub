@@ -7,8 +7,8 @@ namespace App\Services;
 /** Gate routing persistence until regression-safe JSON path is active. */
 final class RoutingSaveGuard
 {
-    /** Set true only when XraySettingJson regression tests pass in CI/local PHPUnit. */
-    public const PERSIST_ENABLED = true;
+    /** Enable only after separate operational sign-off (default fail-closed). */
+    public const PERSIST_ENABLED = false;
 
     public static function assertPersistAllowed(): void
     {

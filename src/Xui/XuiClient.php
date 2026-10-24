@@ -8,7 +8,7 @@ namespace App\Xui;
  * HTTP client for MHSanaei/3x-ui panel API (OpenAPI: /panel/api/*).
  * Auth: Authorization: Bearer <api token>
  */
-final class XuiClient
+final class XuiClient implements XrayPanelClientInterface
 {
     public function __construct(
         private readonly string $baseUrl,

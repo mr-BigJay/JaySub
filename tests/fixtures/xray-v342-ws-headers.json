@@ -11,7 +11,9 @@
       {
         "type": "field",
         "domain": ["example.com"],
-        "outboundTag": "direct"
+        "outboundTag": "direct",
+        "attrs": {},
+        "sources": []
       }
     ]
   },

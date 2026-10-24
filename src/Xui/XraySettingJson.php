@@ -72,15 +72,7 @@ final class XraySettingJson
             $root->routing = new \stdClass();
         }
 
-        $rulesJson = json_encode($mergedRules, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($rulesJson === false) {
-            throw new \RuntimeException('سریال‌سازی routing.rules ناموفق بود');
-        }
-        $rulesTree = json_decode($rulesJson, false);
-        if (!is_array($rulesTree)) {
-            throw new \RuntimeException('routing.rules باید آرایه باشد');
-        }
-        $root->routing->rules = $rulesTree;
+        $root->routing->rules = self::buildRulesTreePreservingNodes($root, $mergedRules);
 
         $encoded = json_encode($root, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($encoded === false) {
@@ -108,6 +100,21 @@ final class XraySettingJson
         self::stripRoutingRules($after);
 
         return self::compareStructure($before, $after, '');
+    }
+
+    public static function configsStructurallyEqual(string $a, string $b): bool
+    {
+        if ($a === $b) {
+            return true;
+        }
+        try {
+            $oa = self::decodeRoot($a);
+            $ob = self::decodeRoot($b);
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return self::compareStructure($oa, $ob, '') === null;
     }
 
     public static function containsForbiddenEmptyArrayConversion(string $originalRaw, string $newRaw): bool
@@ -180,6 +187,79 @@ final class XraySettingJson
         }
 
         return null;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $mergedRules
+     * @return list<mixed>
+     */
+    private static function buildRulesTreePreservingNodes(object $root, array $mergedRules): array
+    {
+        $originalNodes = self::rulesNodesFromRoot($root);
+        $originalArrays = [];
+        foreach ($originalNodes as $node) {
+            if (is_object($node)) {
+                $originalArrays[] = self::objectToArray($node);
+            } elseif (is_array($node)) {
+                $originalArrays[] = $node;
+            } else {
+                $originalArrays[] = [];
+            }
+        }
+
+        $used = [];
+        $tree = [];
+        foreach ($mergedRules as $merged) {
+            $fp = XrayRoutingRules::fingerprint($merged);
+            $node = null;
+            foreach ($originalArrays as $idx => $arr) {
+                if (isset($used[$idx])) {
+                    continue;
+                }
+                if (XrayRoutingRules::fingerprint($arr) === $fp) {
+                    $used[$idx] = true;
+                    $node = self::deepCloneRuleNode($originalNodes[$idx]);
+                    break;
+                }
+            }
+            if ($node === null) {
+                $rulesJson = json_encode($merged, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if ($rulesJson === false) {
+                    throw new \RuntimeException('سریال‌سازی rule جدید ناموفق بود');
+                }
+                $decoded = json_decode($rulesJson, false);
+                if (!is_object($decoded) && !is_array($decoded)) {
+                    throw new \RuntimeException('rule جدید JSON نامعتبر است');
+                }
+                $node = $decoded;
+            }
+            $tree[] = $node;
+        }
+
+        return $tree;
+    }
+
+    /** @return list<mixed> */
+    private static function rulesNodesFromRoot(object $root): array
+    {
+        if (!isset($root->routing) || !is_object($root->routing)) {
+            return [];
+        }
+        if (!isset($root->routing->rules) || !is_array($root->routing->rules)) {
+            return [];
+        }
+
+        return $root->routing->rules;
+    }
+
+    private static function deepCloneRuleNode(mixed $node): mixed
+    {
+        $json = json_encode($node, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            throw new \RuntimeException('clone rule node ناموفق بود');
+        }
+
+        return json_decode($json, false);
     }
 
     /**

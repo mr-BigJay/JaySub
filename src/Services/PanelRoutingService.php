@@ -98,7 +98,7 @@ final class PanelRoutingService
     /**
      * @param list<array<string, mixed>> $editableRules
      * @param array<string, mixed> $config
-     * @return array{ok: bool, error?: string, backup_file?: string, msg?: string, rolled_back?: bool}
+     * @return array{ok: bool, error?: string, backup_file?: string, msg?: string, rolled_back?: bool, critical?: bool}
      */
     public static function saveEditableRules(
         int $panelId,
@@ -177,7 +177,14 @@ final class PanelRoutingService
         }
 
         $update = $client->updateXrayTemplate($newRaw, $parsed['outboundTestUrl']);
-        if (!($update['ok'] ?? false)) {
+        $updateOk = (bool) ($update['ok'] ?? false);
+        $health = XrayHealthVerifier::verify($client);
+        $currentRaw = RoutingRollbackCoordinator::fetchPersistableRaw($client);
+        $drifted = RoutingRollbackCoordinator::configDrifted($originalRaw, $currentRaw);
+        $healthOk = (bool) ($health['ok'] ?? false);
+
+        $needsRollback = $drifted || !$healthOk;
+        if (!$updateOk && !$needsRollback) {
             return [
                 'ok' => false,
                 'error' => (string) ($update['error'] ?? 'ذخیره در 3x-ui ناموفق'),
@@ -185,23 +192,42 @@ final class PanelRoutingService
             ];
         }
 
-        $health = self::verifyXrayHealthy($client);
-        if (!($health['ok'] ?? false)) {
-            $rollback = $client->updateXrayTemplate($originalRaw, $parsed['outboundTestUrl']);
-            $rbOk = (bool) ($rollback['ok'] ?? false);
+        if ($needsRollback || !$updateOk) {
+            $reason = !$updateOk
+                ? (string) ($update['error'] ?? 'ذخیره در 3x-ui ناموفق')
+                : ($health['error'] ?? 'health check failed');
+            if ($drifted) {
+                $reason .= '؛ تغییر ناخواسته در xraySetting تشخیص داده شد';
+            }
+
+            $restore = RoutingRollbackCoordinator::restoreOriginalAndVerify(
+                $client,
+                $originalRaw,
+                $parsed['outboundTestUrl'],
+            );
             AuditLogService::log('admin', $adminId, 'routing_save_rollback', 'vpn_panel', $panelId, [
-                'reason' => $health['error'] ?? 'health check failed',
-                'rollback_ok' => $rbOk,
+                'reason' => $reason,
+                'restore' => $restore,
                 'backup_file' => $backupFile,
             ]);
 
+            if (!($restore['ok'] ?? false)) {
+                return [
+                    'ok' => false,
+                    'critical' => true,
+                    'error' => 'بحرانی: بازگردانی تأیید نشد — '
+                        . ($restore['error'] ?? 'rollback failed')
+                        . ' — از بک‌آپ raw استفاده کنید',
+                    'backup_file' => $backupFile,
+                    'rolled_back' => false,
+                ];
+            }
+
             return [
                 'ok' => false,
-                'error' => 'Xray پس از ذخیره سالم نیست — '
-                    . ($health['error'] ?? 'health check failed')
-                    . ($rbOk ? ' (تنظیمات قبلی بازگردانده شد)' : ' (بازگردانی خودکار ناموفق — از بک‌آپ raw استفاده کنید)'),
+                'error' => 'ذخیره ناموفق — تنظیمات قبلی بازگردانده و Xray running تأیید شد (' . $reason . ')',
                 'backup_file' => $backupFile,
-                'rolled_back' => $rbOk,
+                'rolled_back' => true,
             ];
         }
 
@@ -223,29 +249,6 @@ final class PanelRoutingService
             $encryption->decrypt((string) $panel['api_token_encrypted']),
             45,
         );
-    }
-
-    /** @return array{ok: bool, error?: string} */
-    private static function verifyXrayHealthy(XuiClient $client): array
-    {
-        $status = $client->getServerStatus();
-        if (!($status['ok'] ?? false)) {
-            return ['ok' => false, 'error' => (string) ($status['error'] ?? 'server/status ناموفق')];
-        }
-
-        $xr = $client->getXrayResult();
-        $blob = '';
-        if (isset($xr['data']) && is_array($xr['data'])) {
-            $blob = (string) json_encode($xr['data'], JSON_UNESCAPED_UNICODE);
-            if (isset($xr['data']['msg']) && is_string($xr['data']['msg'])) {
-                $blob .= $xr['data']['msg'];
-            }
-        }
-        if (stripos($blob, 'cannot unmarshal') !== false) {
-            return ['ok' => false, 'error' => 'خروجی Xray شامل خطای cannot unmarshal است'];
-        }
-
-        return ['ok' => true];
     }
 
     /**
