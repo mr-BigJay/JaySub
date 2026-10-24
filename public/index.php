@@ -35,6 +35,8 @@ use App\Services\SslServerService;
 use App\Services\MigrationJobStore;
 use App\Services\PanelMigrationService;
 use App\Services\DashboardService;
+use App\Services\PanelRoutingService;
+use App\Services\BulkRoutingService;
 use App\View\Layout;
 
 /** @param array<string, mixed> $config */
@@ -195,6 +197,21 @@ function requireCsrf(): void
         $body = Layout::card('<div class="alert alert-error">توکن امنیتی نامعتبر است.</div>');
         Response::html(Layout::admin('خطا', 'dashboard', $body), 403);
     }
+}
+
+/** @return array<string, mixed> */
+function requireCsrfJson(): array
+{
+    $raw = file_get_contents('php://input');
+    $data = json_decode(is_string($raw) && $raw !== '' ? $raw : '{}', true);
+    if (!is_array($data)) {
+        Response::json(['ok' => false, 'error' => 'JSON نامعتبر'], 400);
+    }
+    if (!Csrf::validate(isset($data['_csrf']) && is_string($data['_csrf']) ? $data['_csrf'] : null)) {
+        Response::json(['ok' => false, 'error' => 'csrf'], 403);
+    }
+
+    return $data;
 }
 
 function adminPage(string $title, string $activeNav, string $content, string $headerActionHtml = ''): void
@@ -1569,6 +1586,95 @@ if ($uri === '/api/customer/dashboard' && $method === 'GET') {
         'quota_bytes' => (int) $sub['quota_bytes'],
         'percent' => Format::percent($total, (int) $sub['quota_bytes']),
     ]);
+}
+
+if ($uri === '/admin/routing' && $method === 'GET') {
+    requireAdmin();
+    adminPage('مسیریابی', 'routing', Layout::adminRoutingPage(Csrf::token()));
+}
+
+if ($uri === '/admin/routing/api/panels' && $method === 'GET') {
+    requireAdmin();
+    Response::json([
+        'ok' => true,
+        'panels' => PanelRoutingService::listPanelsSummary($config),
+    ]);
+}
+
+if (preg_match('#^/admin/routing/api/panel/(\d+)/rules$#', $uri, $m) && $method === 'GET') {
+    requireAdmin();
+    $pid = (int) $m[1];
+    $encryption = app_encryption($config);
+    $state = PanelRoutingService::fetchPanelRouting($pid, $encryption, $config);
+    Response::json($state, ($state['ok'] ?? false) ? 200 : 502);
+}
+
+if (preg_match('#^/admin/routing/api/panel/(\d+)/rules$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    $pid = (int) $m[1];
+    $payload = requireCsrfJson();
+    $rules = $payload['rules'] ?? [];
+    if (!is_array($rules)) {
+        Response::json(['ok' => false, 'error' => 'rules باید آرایه باشد'], 400);
+    }
+    $editable = [];
+    foreach ($rules as $item) {
+        if (is_array($item)) {
+            $editable[] = $item;
+        }
+    }
+    $encryption = app_encryption($config);
+    $result = PanelRoutingService::saveEditableRules(
+        $pid,
+        $editable,
+        $encryption,
+        $config,
+        AuthService::adminId(),
+    );
+    Response::json($result, ($result['ok'] ?? false) ? 200 : 502);
+}
+
+if ($uri === '/admin/routing/api/bulk/preview' && $method === 'POST') {
+    requireAdmin();
+    $payload = requireCsrfJson();
+    $panelIds = $payload['panel_ids'] ?? [];
+    if (!is_array($panelIds) || $panelIds === []) {
+        Response::json(['ok' => false, 'error' => 'حداقل یک پنل انتخاب کنید'], 400);
+    }
+    $operation = (string) ($payload['operation'] ?? '');
+    $encryption = app_encryption($config);
+    $preview = BulkRoutingService::preview(
+        $operation,
+        $panelIds,
+        $encryption,
+        $config,
+        is_array($payload['rule'] ?? null) ? $payload['rule'] : null,
+        is_array($payload['match'] ?? null) ? $payload['match'] : null,
+        isset($payload['direction']) ? (string) $payload['direction'] : null,
+    );
+    Response::json(['ok' => true] + $preview);
+}
+
+if ($uri === '/admin/routing/api/bulk/apply' && $method === 'POST') {
+    requireAdmin();
+    $payload = requireCsrfJson();
+    $panelIds = $payload['panel_ids'] ?? [];
+    if (!is_array($panelIds) || $panelIds === []) {
+        Response::json(['ok' => false, 'error' => 'حداقل یک پنل انتخاب کنید'], 400);
+    }
+    $operation = (string) ($payload['operation'] ?? '');
+    $encryption = app_encryption($config);
+    $applied = BulkRoutingService::apply(
+        $operation,
+        $panelIds,
+        $encryption,
+        $config,
+        AuthService::adminId(),
+        is_array($payload['rule'] ?? null) ? $payload['rule'] : null,
+        is_array($payload['match'] ?? null) ? $payload['match'] : null,
+        isset($payload['direction']) ? (string) $payload['direction'] : null,
+    );
+    Response::json(['ok' => true] + $applied);
 }
 
 if ($uri === '/' && $method === 'GET') {
