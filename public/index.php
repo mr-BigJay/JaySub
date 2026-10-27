@@ -37,6 +37,8 @@ use App\Services\PanelMigrationService;
 use App\Services\DashboardService;
 use App\Services\PanelRoutingService;
 use App\Services\BulkRoutingService;
+use App\Services\PanelOutboundService;
+use App\Services\BulkOutboundService;
 use App\View\Layout;
 
 /** @param array<string, mixed> $config */
@@ -1673,6 +1675,84 @@ if ($uri === '/admin/routing/api/bulk/apply' && $method === 'POST') {
         is_array($payload['rule'] ?? null) ? $payload['rule'] : null,
         is_array($payload['match'] ?? null) ? $payload['match'] : null,
         isset($payload['direction']) ? (string) $payload['direction'] : null,
+    );
+    Response::json(['ok' => true] + $applied);
+}
+
+if ($uri === '/admin/outbounds' && $method === 'GET') {
+    requireAdmin();
+    adminPage('اوتباند', 'outbounds', Layout::adminOutboundsPage(Csrf::token()));
+}
+
+if ($uri === '/admin/outbounds/api/panels' && $method === 'GET') {
+    requireAdmin();
+    Response::json([
+        'ok' => true,
+        'panels' => PanelRoutingService::listPanelsSummary($config),
+        'persist_enabled' => \App\Services\OutboundSaveGuard::PERSIST_ENABLED,
+    ]);
+}
+
+if (preg_match('#^/admin/outbounds/api/panel/(\d+)/outbounds$#', $uri, $m) && $method === 'GET') {
+    requireAdmin();
+    $pid = (int) $m[1];
+    $encryption = app_encryption($config);
+    $state = PanelOutboundService::fetchPanelOutbounds($pid, $encryption, $config);
+    Response::json($state, ($state['ok'] ?? false) ? 200 : 502);
+}
+
+if (preg_match('#^/admin/outbounds/api/panel/(\d+)/outbounds$#', $uri, $m) && $method === 'POST') {
+    requireAdmin();
+    $pid = (int) $m[1];
+    $payload = requireCsrfJson();
+    try {
+        $outbound = PanelOutboundService::parseOutboundJsonInput($payload['outbound'] ?? null);
+    } catch (\InvalidArgumentException $e) {
+        Response::json(['ok' => false, 'error' => $e->getMessage()], 400);
+        exit;
+    }
+    $encryption = app_encryption($config);
+    $result = PanelOutboundService::addOutbound(
+        $pid,
+        $outbound,
+        $encryption,
+        $config,
+        AuthService::adminId(),
+    );
+    Response::json($result, ($result['ok'] ?? false) ? 200 : 502);
+}
+
+if ($uri === '/admin/outbounds/api/bulk/preview' && $method === 'POST') {
+    requireAdmin();
+    $payload = requireCsrfJson();
+    $sourceId = (int) ($payload['source_panel_id'] ?? 0);
+    $tag = (string) ($payload['source_tag'] ?? '');
+    $panelIds = $payload['panel_ids'] ?? [];
+    if ($sourceId <= 0 || $tag === '' || !is_array($panelIds) || $panelIds === []) {
+        Response::json(['ok' => false, 'error' => 'source_panel_id، source_tag و panel_ids الزامی است'], 400);
+    }
+    $encryption = app_encryption($config);
+    $preview = BulkOutboundService::previewCopy($sourceId, $panelIds, $tag, $encryption, $config);
+    Response::json(['ok' => true] + $preview);
+}
+
+if ($uri === '/admin/outbounds/api/bulk/apply' && $method === 'POST') {
+    requireAdmin();
+    $payload = requireCsrfJson();
+    $sourceId = (int) ($payload['source_panel_id'] ?? 0);
+    $tag = (string) ($payload['source_tag'] ?? '');
+    $panelIds = $payload['panel_ids'] ?? [];
+    if ($sourceId <= 0 || $tag === '' || !is_array($panelIds) || $panelIds === []) {
+        Response::json(['ok' => false, 'error' => 'source_panel_id، source_tag و panel_ids الزامی است'], 400);
+    }
+    $encryption = app_encryption($config);
+    $applied = BulkOutboundService::applyCopy(
+        $sourceId,
+        $panelIds,
+        $tag,
+        $encryption,
+        $config,
+        AuthService::adminId(),
     );
     Response::json(['ok' => true] + $applied);
 }

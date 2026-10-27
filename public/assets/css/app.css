@@ -2307,8 +2307,9 @@ body.modal-open { overflow: hidden; }
   font-size: 0.72rem;
 }
 
-/* Routing management */
-.routing-page {
+/* Routing / Outbound management */
+.routing-page,
+.outbound-page {
   overflow-x: clip;
   max-width: 100%;
 }
