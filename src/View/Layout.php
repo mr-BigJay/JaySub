@@ -1811,13 +1811,22 @@ HTML;
           <button type="button" class="btn btn-primary btn small routing-toolbar-btn" id="outbound-add-btn">+ افزودن JSON</button>
           <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="outbound-save-one">ذخیره در 3x-ui</button>
         </div>
+        <h3 class="card-title routing-subtitle">قالب (xraySetting)</h3>
         <div class="table-scroll">
           <table class="data-table routing-rules-table">
-            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>نوع</th><th>وضعیت</th><th></th></tr></thead>
-            <tbody id="outbound-table-body"></tbody>
+            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>وضعیت</th></tr></thead>
+            <tbody id="outbound-template-body"></tbody>
           </table>
         </div>
-        <div id="outbound-cards" class="routing-rules-mobile"></div>
+        <div id="outbound-template-cards" class="routing-rules-mobile"></div>
+        <h3 class="card-title routing-subtitle">اشتراک (API)</h3>
+        <div class="table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>نوع</th></tr></thead>
+            <tbody id="outbound-subscription-body"></tbody>
+          </table>
+        </div>
+        <div id="outbound-subscription-cards" class="routing-rules-mobile"></div>
       </div>
     </section>
   </div>

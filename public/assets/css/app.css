@@ -2314,6 +2314,7 @@ body.modal-open { overflow: hidden; }
   max-width: 100%;
 }
 .routing-page .routing-intro { margin-top: 0; word-break: break-word; }
+.outbound-page .routing-subtitle { font-size: 0.95rem; margin: 0.75rem 0 0.35rem; }
 .routing-grid {
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;

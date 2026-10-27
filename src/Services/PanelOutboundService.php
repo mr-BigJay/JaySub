@@ -45,14 +45,11 @@ final class PanelOutboundService
         }
 
         $root = XraySettingJson::decodeRoot($parsed['xraySettingRaw']);
-        $subTags = $parsed['subscriptionOutboundTags'] ?? [];
-        $subObs = $parsed['subscriptionOutbounds'] ?? [];
-        $template = XrayOutbounds::summarizeTemplateRoot($root, $subTags);
-        $subscription = XrayOutbounds::summarizeSubscriptionApiOutbounds(
-            is_array($subObs) ? $subObs : [],
-            is_array($subTags) ? $subTags : [],
-            count($template) + 1,
-        );
+        $subTags = is_array($parsed['subscriptionOutboundTags'] ?? null) ? $parsed['subscriptionOutboundTags'] : [];
+        $subObs = is_array($parsed['subscriptionOutbounds'] ?? null) ? $parsed['subscriptionOutbounds'] : [];
+        $lists = XrayOutbounds::buildUiOutboundLists($root, $subObs, $subTags);
+        $template = $lists['template'];
+        $subscription = $lists['subscription'];
         $summaries = array_merge($template, $subscription);
 
         return [
@@ -79,7 +76,7 @@ final class PanelOutboundService
     ): array {
         OutboundSaveGuard::assertPersistAllowed();
 
-        $err = OutboundJsonTree::validateNew($outbound);
+        $err = OutboundJsonTree::validateStructure($outbound);
         if ($err !== null) {
             return ['ok' => false, 'error' => $err];
         }
@@ -96,7 +93,12 @@ final class PanelOutboundService
         }
 
         $tag = OutboundJsonTree::tag($outbound);
-        $conflict = self::classifyTagOnConfig($snapshot['raw'], $tag, $outbound);
+        $conflict = self::classifyTagOnConfig(
+            $snapshot['raw'],
+            $tag,
+            $outbound,
+            $snapshot['subscriptionOutboundTags'],
+        );
         if ($conflict === 'exists') {
             return ['ok' => true, 'skipped' => true, 'status' => 'already_exists', 'msg' => 'Tag از قبل وجود دارد'];
         }
@@ -127,11 +129,21 @@ final class PanelOutboundService
         );
     }
 
-    /** @return 'ready'|'exists'|'conflict'|'invalid' */
-    public static function classifyTagOnConfig(string $raw, string $tag, object $outbound): string
-    {
+    /**
+     * @param list<string> $subscriptionOutboundTags
+     * @return 'ready'|'exists'|'conflict'|'invalid'
+     */
+    public static function classifyTagOnConfig(
+        string $raw,
+        string $tag,
+        object $outbound,
+        array $subscriptionOutboundTags = [],
+    ): string {
         if ($tag === '' || XrayOutbounds::isProtectedTag($tag)) {
             return 'invalid';
+        }
+        if (in_array($tag, $subscriptionOutboundTags, true)) {
+            return 'conflict';
         }
         try {
             $root = XraySettingJson::decodeRoot($raw);
@@ -152,7 +164,13 @@ final class PanelOutboundService
         return 'ready';
     }
 
-    /** @return array{raw: string, outboundTestUrl: ?string}|null */
+    /**
+     * @return array{
+     *   raw: string,
+     *   outboundTestUrl: ?string,
+     *   subscriptionOutboundTags: list<string>
+     * }|null
+     */
     public static function fetchPersistableSnapshot(XuiClient $client): ?array
     {
         $xray = $client->fetchXrayTemplate();
@@ -167,8 +185,13 @@ final class PanelOutboundService
         if ($raw === '') {
             return null;
         }
+        $subTags = is_array($parsed['subscriptionOutboundTags'] ?? null) ? $parsed['subscriptionOutboundTags'] : [];
 
-        return ['raw' => $raw, 'outboundTestUrl' => $parsed['outboundTestUrl']];
+        return [
+            'raw' => $raw,
+            'outboundTestUrl' => $parsed['outboundTestUrl'],
+            'subscriptionOutboundTags' => $subTags,
+        ];
     }
 
     public static function loadTemplateOutboundNode(string $raw, string $tag): ?object
@@ -212,6 +235,12 @@ final class PanelOutboundService
             throw new \InvalidArgumentException('outbound_json الزامی است');
         }
 
-        return OutboundJsonTree::decodeOutboundString($outboundJson);
+        $node = OutboundJsonTree::decodeOutboundString($outboundJson);
+        $structure = OutboundJsonTree::validateStructure($node);
+        if ($structure !== null) {
+            throw new \InvalidArgumentException($structure);
+        }
+
+        return $node;
     }
 }

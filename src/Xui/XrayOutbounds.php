@@ -11,23 +11,53 @@ final class XrayOutbounds
     public const PROTECTED_TAGS = ['direct', 'block', 'api'];
 
     /**
-     * @param list<string> $subscriptionTagsFromApi tags from obj.subscriptionOutboundTags
+     * Template outbounds from xraySetting only (excludes tags owned by subscriptionOutboundTags).
+     *
+     * @param list<string> $subscriptionTagsFromApi
      * @return list<array<string, mixed>>
      */
-    public static function summarizeTemplateRoot(
-        object $root,
-        array $subscriptionTagsFromApi = [],
-    ): array {
+    public static function summarizeTemplateRoot(object $root, array $subscriptionTagsFromApi = []): array
+    {
         $subs = array_fill_keys($subscriptionTagsFromApi, true);
         $summaries = [];
         $prio = 1;
         foreach (OutboundJsonTree::templateNodesFromRoot($root) as $node) {
             $tag = OutboundJsonTree::tag($node);
-            $kind = isset($subs[$tag]) ? 'subscription' : 'template';
-            $summaries[] = self::summarizeNode($node, $prio++, $kind);
+            if ($tag !== '' && isset($subs[$tag])) {
+                continue;
+            }
+            $summaries[] = self::summarizeNode($node, $prio++, 'template');
         }
 
         return $summaries;
+    }
+
+    /**
+     * @param list<object> $subscriptionOutboundsFromApi
+     * @param list<string> $subscriptionTagsFromApi
+     * @return array{template: list<array<string, mixed>>, subscription: list<array<string, mixed>>}
+     */
+    public static function buildUiOutboundLists(
+        object $root,
+        array $subscriptionOutboundsFromApi,
+        array $subscriptionTagsFromApi,
+    ): array {
+        $template = self::summarizeTemplateRoot($root, $subscriptionTagsFromApi);
+        $templateTags = [];
+        foreach ($template as $row) {
+            $templateTags[(string) ($row['tag'] ?? '')] = true;
+        }
+        $subscription = self::summarizeSubscriptionApiOutbounds(
+            $subscriptionOutboundsFromApi,
+            $subscriptionTagsFromApi,
+            count($template) + 1,
+        );
+        $subscription = array_values(array_filter(
+            $subscription,
+            static fn (array $row): bool => !isset($templateTags[(string) ($row['tag'] ?? '')]),
+        ));
+
+        return ['template' => $template, 'subscription' => $subscription];
     }
 
     /**

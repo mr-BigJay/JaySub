@@ -72,6 +72,48 @@ final class OutboundJsonTree
         return null;
     }
 
+    /** Structural checks before persisting (wsSettings.headers must be object of strings). */
+    public static function validateStructure(object $node): ?string
+    {
+        $basic = self::validateNew($node);
+        if ($basic !== null) {
+            return $basic;
+        }
+
+        return self::validateWsHeaders($node);
+    }
+
+    private static function validateWsHeaders(object $node): ?string
+    {
+        if (!isset($node->streamSettings) || !is_object($node->streamSettings)) {
+            return null;
+        }
+        $ss = $node->streamSettings;
+        if (!isset($ss->wsSettings) || !is_object($ss->wsSettings)) {
+            return null;
+        }
+        if (!property_exists($ss->wsSettings, 'headers')) {
+            return null;
+        }
+        $headers = $ss->wsSettings->headers;
+        if (is_array($headers)) {
+            return 'streamSettings.wsSettings.headers باید JSON object باشد، نه array';
+        }
+        if (!is_object($headers)) {
+            return 'streamSettings.wsSettings.headers باید JSON object باشد';
+        }
+        foreach (get_object_vars($headers) as $key => $value) {
+            if (!is_string($key)) {
+                return 'کلیدهای headers باید رشته باشند';
+            }
+            if (!is_string($value)) {
+                return 'مقادیر headers باید رشته باشند';
+            }
+        }
+
+        return null;
+    }
+
     /** @return list<object> */
     public static function templateNodesFromRoot(object $root): array
     {

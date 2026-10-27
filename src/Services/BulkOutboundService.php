@@ -43,7 +43,7 @@ final class BulkOutboundService
         object $outbound,
         Encryption $encryption,
     ): array {
-        $err = OutboundJsonTree::validateNew($outbound);
+        $err = OutboundJsonTree::validateStructure($outbound);
         if ($err !== null) {
             return ['panels' => [[
                 'panel_id' => 0,
@@ -96,7 +96,7 @@ final class BulkOutboundService
     ): array {
         OutboundSaveGuard::assertPersistAllowed();
 
-        $err = OutboundJsonTree::validateNew($outbound);
+        $err = OutboundJsonTree::validateStructure($outbound);
         if ($err !== null) {
             return ['results' => [[
                 'panel_id' => 0,
@@ -201,7 +201,12 @@ final class BulkOutboundService
         }
 
         $tag = OutboundJsonTree::tag($outbound);
-        $class = PanelOutboundService::classifyTagOnConfig($snapshot['raw'], $tag, $outbound);
+        $class = PanelOutboundService::classifyTagOnConfig(
+            $snapshot['raw'],
+            $tag,
+            $outbound,
+            $snapshot['subscriptionOutboundTags'],
+        );
         $statusMap = [
             'ready' => ['status' => 'ready', 'message' => 'آماده افزودن'],
             'exists' => ['status' => 'already_exists', 'message' => 'Already Exists'],

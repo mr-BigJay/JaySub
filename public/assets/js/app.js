@@ -814,13 +814,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectAllEl = document.getElementById('outbound-select-all');
     const editorStatus = document.getElementById('outbound-editor-status');
     const listWrap = document.getElementById('outbound-list-wrap');
-    const tableBody = document.getElementById('outbound-table-body');
-    const cardsEl = document.getElementById('outbound-cards');
+    const templateBody = document.getElementById('outbound-template-body');
+    const templateCards = document.getElementById('outbound-template-cards');
+    const subscriptionBody = document.getElementById('outbound-subscription-body');
+    const subscriptionCards = document.getElementById('outbound-subscription-cards');
     const bulkResults = document.getElementById('outbound-bulk-results');
     const jsonDialog = document.getElementById('outbound-json-dialog');
     let panels = [];
     let activePanelId = 0;
     let pendingOutboundJson = '';
+    let persistEnabled = false;
+
+    const appendTextCell = (tr, text) => {
+      const td = document.createElement('td');
+      td.textContent = text == null ? '' : String(text);
+      tr.appendChild(td);
+    };
+
+    const renderBulkRows = (rows, container) => {
+      if (!container) return;
+      container.hidden = false;
+      container.replaceChildren();
+      rows.forEach((r) => {
+        const div = document.createElement('div');
+        div.className = 'routing-bulk-row ' + String(r.status || '').replace(/[^\w-]/g, '');
+        const line = document.createElement('span');
+        line.textContent = `#${r.panel_id} ${r.panel_name || ''} — ${r.status || ''}: ${r.message || ''}`;
+        div.appendChild(line);
+        container.appendChild(div);
+      });
+    };
+
+    const syncPersistUi = () => {
+      ['outbound-save-one', 'outbound-bulk-apply', 'outbound-bulk-json-apply'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = !persistEnabled;
+        el.title = persistEnabled ? '' : 'ذخیره در backend غیرفعال است';
+      });
+    };
 
     const fetchJson = (url, options = {}) =>
       fetch(url, { credentials: 'same-origin', ...options }).then((r) => r.json());
@@ -840,40 +872,70 @@ document.addEventListener('DOMContentLoaded', () => {
         panelListEl.textContent = 'پنلی ثبت نشده است.';
         return;
       }
-      panelListEl.innerHTML = '';
+      panelListEl.replaceChildren();
       panels.forEach((p) => {
         const row = document.createElement('div');
         row.className = 'routing-panel-item' + (p.id === activePanelId ? ' is-active' : '');
-        row.innerHTML =
-          `<label class="routing-panel-check"><input type="checkbox" class="routing-panel-cb" data-id="${p.id}" ${p._checked ? 'checked' : ''} /></label>` +
-          `<div class="routing-panel-meta"><strong>${p.name}</strong> <span class="routing-status ${statusClass(p)}">${p.connection_status || 'unknown'}</span></div>`;
-        row.querySelector('.routing-panel-meta')?.addEventListener('click', () => loadOutbounds(p.id));
-        row.querySelector('.routing-panel-cb')?.addEventListener('click', (ev) => ev.stopPropagation());
-        row.querySelector('.routing-panel-cb')?.addEventListener('change', (ev) => {
+        const label = document.createElement('label');
+        label.className = 'routing-panel-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'routing-panel-cb';
+        cb.checked = !!p._checked;
+        label.appendChild(cb);
+        const meta = document.createElement('div');
+        meta.className = 'routing-panel-meta';
+        const strong = document.createElement('strong');
+        strong.className = 'routing-panel-name';
+        strong.textContent = p.name || '';
+        const st = document.createElement('span');
+        st.className = 'routing-status ' + statusClass(p);
+        st.textContent = p.connection_status || 'unknown';
+        meta.appendChild(strong);
+        meta.appendChild(st);
+        row.appendChild(label);
+        row.appendChild(meta);
+        meta.addEventListener('click', () => loadOutbounds(p.id));
+        cb.addEventListener('click', (ev) => ev.stopPropagation());
+        cb.addEventListener('change', (ev) => {
           p._checked = ev.target.checked;
         });
         panelListEl.appendChild(row);
       });
     };
 
-    const renderOutbounds = (rows) => {
-      if (tableBody) tableBody.innerHTML = '';
-      if (cardsEl) cardsEl.innerHTML = '';
+    const fillOutboundTable = (tbody, cardsEl, rows, showKind) => {
+      if (tbody) tbody.replaceChildren();
+      if (cardsEl) cardsEl.replaceChildren();
       rows.forEach((ob) => {
-        const kind = ob.kind === 'subscription' ? 'اشتراک' : 'قالب';
         const prot = ob.protected ? 'محافظت‌شده' : 'عادی';
-        if (tableBody) {
+        const kind = ob.kind === 'subscription' ? 'اشتراک' : 'قالب';
+        if (tbody) {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${ob.priority}</td><td>${ob.tag}</td><td>${ob.protocol}</td><td>${kind}</td><td>${prot}</td><td></td>`;
-          tableBody.appendChild(tr);
+          appendTextCell(tr, ob.priority);
+          appendTextCell(tr, ob.tag);
+          appendTextCell(tr, ob.protocol);
+          if (showKind) appendTextCell(tr, kind);
+          else appendTextCell(tr, prot);
+          tbody.appendChild(tr);
         }
         if (cardsEl) {
           const card = document.createElement('article');
           card.className = 'routing-rule-card';
-          card.innerHTML = `<strong>${ob.tag}</strong> — ${ob.protocol} (${kind})`;
+          const title = document.createElement('strong');
+          title.textContent = ob.tag || '';
+          card.appendChild(title);
+          const detail = document.createElement('span');
+          detail.textContent = ` — ${ob.protocol || ''} (${showKind ? kind : prot})`;
+          card.appendChild(detail);
           cardsEl.appendChild(card);
         }
       });
+    };
+
+    const renderOutbounds = (data) => {
+      fillOutboundTable(templateBody, templateCards, data.template_outbounds || [], false);
+      fillOutboundTable(subscriptionBody, subscriptionCards, data.subscription_outbounds || [], true);
     };
 
     const loadOutbounds = (panelId) => {
@@ -887,10 +949,12 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         if (editorStatus) {
-          editorStatus.textContent = `اتصال: ${data.connection_ok ? 'OK' : 'خطا'} — ${(data.outbounds || []).length} outbound`;
+          const tc = (data.template_outbounds || []).length;
+          const sc = (data.subscription_outbounds || []).length;
+          editorStatus.textContent = `اتصال: ${data.connection_ok ? 'OK' : 'خطا'} — ${tc} قالب، ${sc} اشتراک`;
         }
         if (listWrap) listWrap.hidden = false;
-        renderOutbounds(data.outbounds || []);
+        renderOutbounds(data);
       });
     };
 
@@ -936,13 +1000,7 @@ document.addEventListener('DOMContentLoaded', () => {
       panel_ids: selectedPanelIds(),
     });
 
-    const renderBulk = (rows) => {
-      if (!bulkResults) return;
-      bulkResults.hidden = false;
-      bulkResults.innerHTML = rows
-        .map((r) => `<div class="routing-bulk-row ${r.status}">#${r.panel_id} ${r.panel_name || ''} — ${r.status}: ${r.message || ''}</div>`)
-        .join('');
-    };
+    const renderBulk = (rows) => renderBulkRows(rows, bulkResults);
 
     document.getElementById('outbound-bulk-preview')?.addEventListener('click', () => {
       const body = bulkBody();
@@ -974,13 +1032,7 @@ document.addEventListener('DOMContentLoaded', () => {
       renderPanelList();
     });
 
-    const renderBulkJson = (rows, el) => {
-      if (!el) return;
-      el.hidden = false;
-      el.innerHTML = rows
-        .map((r) => `<div class="routing-bulk-row ${r.status}">#${r.panel_id} ${r.panel_name || ''} — ${r.status}: ${r.message || ''}</div>`)
-        .join('');
-    };
+    const renderBulkJson = (rows, el) => renderBulkRows(rows, el);
 
     document.getElementById('outbound-bulk-json-preview')?.addEventListener('click', () => {
       const outbound_json = (document.getElementById('outbound-bulk-json')?.value || '').trim();
@@ -1007,9 +1059,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }).then((res) => renderBulkJson(res.results || [], document.getElementById('outbound-bulk-json-results')));
     });
 
+    syncPersistUi();
+
     fetchJson('/admin/outbounds/api/panels')
       .then((res) => {
         panels = (res.panels || []).map((p) => ({ ...p, _checked: false }));
+        persistEnabled = !!res.persist_enabled;
+        syncPersistUi();
         renderPanelList();
       })
       .catch(() => {

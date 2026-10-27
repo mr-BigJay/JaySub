@@ -22,13 +22,14 @@ final class XrayOutboundsTest extends TestCase
         self::assertSame('••••••••', $red['settings']['password']);
     }
 
-    public function testSubscriptionKindFromApiTagsNotPrefix(): void
+    public function testSubscriptionTagExcludedFromTemplateList(): void
     {
         $body = '{"success":true,"obj":{"xraySetting":{"outbounds":[{"tag":"my-proxy","protocol":"vless"}]},"subscriptionOutboundTags":["my-proxy"],"subscriptionOutbounds":[]}}';
         $parsed = XrayTemplateParser::parseFromApiJsonString($body);
         $root = XraySettingJson::decodeRoot($parsed['xraySettingRaw']);
-        $template = XrayOutbounds::summarizeTemplateRoot($root, $parsed['subscriptionOutboundTags']);
-        self::assertSame('subscription', $template[0]['kind']);
+        $lists = XrayOutbounds::buildUiOutboundLists($root, $parsed['subscriptionOutbounds'], $parsed['subscriptionOutboundTags']);
+        self::assertSame([], $lists['template']);
+        self::assertCount(1, $lists['subscription']);
     }
 
     public function testSubscriptionOutboundsFromApiField(): void
