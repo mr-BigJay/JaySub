@@ -130,6 +130,8 @@ final class XrayTemplateParser
         $testUrl = isset($obj->outboundTestUrl) && is_string($obj->outboundTestUrl)
             ? $obj->outboundTestUrl
             : null;
+        $subscriptionTags = self::parseStringListField($obj->subscriptionOutboundTags ?? null);
+        $subscriptionOutbounds = self::parseObjectListField($obj->subscriptionOutbounds ?? null);
 
         return [
             'config' => XraySettingJson::configArrayForValidation($root),
@@ -138,8 +140,50 @@ final class XrayTemplateParser
             'xraySettingPersistable' => true,
             'inboundTags' => $inboundTags,
             'outboundTestUrl' => $testUrl,
+            'subscriptionOutboundTags' => $subscriptionTags,
+            'subscriptionOutbounds' => $subscriptionOutbounds,
             'error' => null,
         ];
+    }
+
+    /** @return list<string> */
+    private static function parseStringListField(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $item) {
+            if (is_string($item) && $item !== '') {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return list<object> */
+    private static function parseObjectListField(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, false);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $item) {
+            if (is_object($item)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
     }
 
     /** @return list<string> */
@@ -183,6 +227,8 @@ final class XrayTemplateParser
             'xraySettingPersistable' => false,
             'inboundTags' => [],
             'outboundTestUrl' => null,
+            'subscriptionOutboundTags' => [],
+            'subscriptionOutbounds' => [],
             'error' => null,
         ];
     }

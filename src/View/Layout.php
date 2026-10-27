@@ -6,6 +6,7 @@ namespace App\View;
 
 use App\Core\Csrf;
 use App\Core\Format;
+use App\Services\OutboundSaveGuard;
 
 final class Layout
 {
@@ -17,6 +18,7 @@ final class Layout
         'users' => 'کاربران',
         'panels' => 'پنل‌های XUI',
         'routing' => 'مسیریابی',
+        'outbounds' => 'اوتباند',
         'services' => 'سرویس‌ها',
         'reports' => 'گزارش مصرف',
         'notifications' => 'اعلان‌ها',
@@ -51,6 +53,7 @@ final class Layout
             'users' => '/admin/customers',
             'panels' => '/admin/panels',
             'routing' => '/admin/routing',
+            'outbounds' => '/admin/outbounds',
             'services' => '/admin/services',
             'reports' => '/admin/reports',
             'notifications' => '/admin/notifications',
@@ -1689,6 +1692,7 @@ HTML;
             'users' => '👤',
             'panels' => '⬡',
             'routing' => '↯',
+            'outbounds' => '⎋',
             'services' => '◈',
             'reports' => '📊',
             'notifications' => '🔔',
@@ -1774,6 +1778,91 @@ HTML;
       <div class="routing-dialog-actions">
         <button type="submit" class="btn btn-primary" value="save">ذخیره در لیست</button>
         <button type="button" class="btn btn-secondary" data-close-routing-dialog>انصراف</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+HTML;
+    }
+
+    public static function adminOutboundsPage(string $csrfToken): string
+    {
+        $csrf = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
+        $persistHint = OutboundSaveGuard::PERSIST_ENABLED
+            ? 'ذخیره در Backend فعال است.'
+            : 'ذخیره در Backend غیرفعال است — فقط مشاهده و پیش‌نمایش.';
+
+        return <<<HTML
+<div class="outbound-page" dir="rtl" data-csrf="{$csrf}">
+  <p class="muted routing-intro">مدیریت <code>xraySetting.outbounds</code> پنل‌های 3x-ui — {$persistHint}</p>
+  <div class="routing-grid">
+    <section class="card routing-panels-card">
+      <div class="routing-panels-head">
+        <h2 class="card-title">پنل‌ها</h2>
+        <label class="routing-select-all"><input type="checkbox" id="outbound-select-all" /> انتخاب همه</label>
+      </div>
+      <div id="outbound-panel-list" class="routing-panel-list muted">در حال بارگذاری…</div>
+    </section>
+    <section class="card routing-editor-card">
+      <h2 class="card-title">Outboundهای پنل</h2>
+      <div id="outbound-editor-status" class="muted">یک پنل را انتخاب کنید.</div>
+      <div id="outbound-list-wrap" class="routing-rules-wrap" hidden>
+        <div class="routing-toolbar">
+          <button type="button" class="btn btn-primary btn small routing-toolbar-btn" id="outbound-add-btn">+ افزودن JSON</button>
+          <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="outbound-save-one">ذخیره در 3x-ui</button>
+        </div>
+        <h3 class="card-title routing-subtitle">قالب (xraySetting)</h3>
+        <div class="table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>وضعیت</th></tr></thead>
+            <tbody id="outbound-template-body"></tbody>
+          </table>
+        </div>
+        <div id="outbound-template-cards" class="routing-rules-mobile"></div>
+        <h3 class="card-title routing-subtitle">اشتراک (API)</h3>
+        <div class="table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>نوع</th></tr></thead>
+            <tbody id="outbound-subscription-body"></tbody>
+          </table>
+        </div>
+        <div id="outbound-subscription-cards" class="routing-rules-mobile"></div>
+      </div>
+    </section>
+  </div>
+  <section class="card routing-bulk-card">
+    <h2 class="card-title">کپی گروهی از پنل مبدأ</h2>
+    <div class="routing-bulk-form stack">
+      <label>Tag در پنل مبدأ <input type="text" id="outbound-copy-tag" class="input" placeholder="proxy-de" /></label>
+      <div class="routing-bulk-actions">
+        <button type="button" class="btn btn-secondary" id="outbound-bulk-preview">پیش‌نمایش</button>
+        <button type="button" class="btn btn-primary" id="outbound-bulk-apply">اعمال روی پنل‌های انتخاب‌شده</button>
+      </div>
+    </div>
+    <div id="outbound-bulk-results" class="routing-bulk-results" hidden></div>
+  </section>
+  <section class="card routing-bulk-card">
+    <h2 class="card-title">اعمال JSON جدید روی پنل‌های انتخاب‌شده</h2>
+    <div class="routing-bulk-form stack">
+      <label>Outbound JSON (type-safe)
+        <textarea id="outbound-bulk-json" class="input" rows="8" dir="ltr" placeholder='{"tag":"new-proxy","protocol":"vless","settings":{},"streamSettings":{"wsSettings":{"headers":{}}}}'></textarea>
+      </label>
+      <div class="routing-bulk-actions">
+        <button type="button" class="btn btn-secondary" id="outbound-bulk-json-preview">پیش‌نمایش</button>
+        <button type="button" class="btn btn-primary" id="outbound-bulk-json-apply">اعمال</button>
+      </div>
+    </div>
+    <div id="outbound-bulk-json-results" class="routing-bulk-results" hidden></div>
+  </section>
+  <dialog id="outbound-json-dialog" class="routing-dialog">
+    <form method="dialog" class="stack" id="outbound-json-form">
+      <h3 class="card-title">Outbound جدید (JSON)</h3>
+      <label>JSON Xray
+        <textarea id="outbound-json-input" class="input" rows="10" dir="ltr" placeholder='{"tag":"my-out","protocol":"vless",...}'></textarea>
+      </label>
+      <div class="routing-dialog-actions">
+        <button type="submit" class="btn btn-primary" value="save">افزودن به لیست محلی</button>
+        <button type="button" class="btn btn-secondary" data-close-outbound-dialog>انصراف</button>
       </div>
     </form>
   </dialog>

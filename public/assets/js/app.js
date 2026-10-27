@@ -806,4 +806,270 @@ document.addEventListener('DOMContentLoaded', () => {
         if (panelListEl) panelListEl.textContent = 'بارگذاری پنل‌ها ناموفق بود.';
       });
   }
+
+  const outboundPage = document.querySelector('.outbound-page');
+  if (outboundPage) {
+    const csrf = outboundPage.getAttribute('data-csrf') || '';
+    const panelListEl = document.getElementById('outbound-panel-list');
+    const selectAllEl = document.getElementById('outbound-select-all');
+    const editorStatus = document.getElementById('outbound-editor-status');
+    const listWrap = document.getElementById('outbound-list-wrap');
+    const templateBody = document.getElementById('outbound-template-body');
+    const templateCards = document.getElementById('outbound-template-cards');
+    const subscriptionBody = document.getElementById('outbound-subscription-body');
+    const subscriptionCards = document.getElementById('outbound-subscription-cards');
+    const bulkResults = document.getElementById('outbound-bulk-results');
+    const jsonDialog = document.getElementById('outbound-json-dialog');
+    let panels = [];
+    let activePanelId = 0;
+    let pendingOutboundJson = '';
+    let persistEnabled = false;
+
+    const appendTextCell = (tr, text) => {
+      const td = document.createElement('td');
+      td.textContent = text == null ? '' : String(text);
+      tr.appendChild(td);
+    };
+
+    const renderBulkRows = (rows, container) => {
+      if (!container) return;
+      container.hidden = false;
+      container.replaceChildren();
+      rows.forEach((r) => {
+        const div = document.createElement('div');
+        div.className = 'routing-bulk-row ' + String(r.status || '').replace(/[^\w-]/g, '');
+        const line = document.createElement('span');
+        line.textContent = `#${r.panel_id} ${r.panel_name || ''} — ${r.status || ''}: ${r.message || ''}`;
+        div.appendChild(line);
+        container.appendChild(div);
+      });
+    };
+
+    const syncPersistUi = () => {
+      ['outbound-save-one', 'outbound-bulk-apply', 'outbound-bulk-json-apply'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = !persistEnabled;
+        el.title = persistEnabled ? '' : 'ذخیره در backend غیرفعال است';
+      });
+    };
+
+    const fetchJson = (url, options = {}) =>
+      fetch(url, { credentials: 'same-origin', ...options }).then((r) => r.json());
+
+    const statusClass = (p) => {
+      const st = (p.connection_status || '').toLowerCase();
+      if (st === 'ok' || st === 'connected') return 'ok';
+      if (st === 'error' || st === 'failed') return 'err';
+      return 'unknown';
+    };
+
+    const selectedPanelIds = () => panels.filter((p) => p._checked).map((p) => p.id);
+
+    const renderPanelList = () => {
+      if (!panelListEl) return;
+      if (!panels.length) {
+        panelListEl.textContent = 'پنلی ثبت نشده است.';
+        return;
+      }
+      panelListEl.replaceChildren();
+      panels.forEach((p) => {
+        const row = document.createElement('div');
+        row.className = 'routing-panel-item' + (p.id === activePanelId ? ' is-active' : '');
+        const label = document.createElement('label');
+        label.className = 'routing-panel-check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'routing-panel-cb';
+        cb.checked = !!p._checked;
+        label.appendChild(cb);
+        const meta = document.createElement('div');
+        meta.className = 'routing-panel-meta';
+        const strong = document.createElement('strong');
+        strong.className = 'routing-panel-name';
+        strong.textContent = p.name || '';
+        const st = document.createElement('span');
+        st.className = 'routing-status ' + statusClass(p);
+        st.textContent = p.connection_status || 'unknown';
+        meta.appendChild(strong);
+        meta.appendChild(st);
+        row.appendChild(label);
+        row.appendChild(meta);
+        meta.addEventListener('click', () => loadOutbounds(p.id));
+        cb.addEventListener('click', (ev) => ev.stopPropagation());
+        cb.addEventListener('change', (ev) => {
+          p._checked = ev.target.checked;
+        });
+        panelListEl.appendChild(row);
+      });
+    };
+
+    const fillOutboundTable = (tbody, cardsEl, rows, showKind) => {
+      if (tbody) tbody.replaceChildren();
+      if (cardsEl) cardsEl.replaceChildren();
+      rows.forEach((ob) => {
+        const prot = ob.protected ? 'محافظت‌شده' : 'عادی';
+        const kind = ob.kind === 'subscription' ? 'اشتراک' : 'قالب';
+        if (tbody) {
+          const tr = document.createElement('tr');
+          appendTextCell(tr, ob.priority);
+          appendTextCell(tr, ob.tag);
+          appendTextCell(tr, ob.protocol);
+          if (showKind) appendTextCell(tr, kind);
+          else appendTextCell(tr, prot);
+          tbody.appendChild(tr);
+        }
+        if (cardsEl) {
+          const card = document.createElement('article');
+          card.className = 'routing-rule-card';
+          const title = document.createElement('strong');
+          title.textContent = ob.tag || '';
+          card.appendChild(title);
+          const detail = document.createElement('span');
+          detail.textContent = ` — ${ob.protocol || ''} (${showKind ? kind : prot})`;
+          card.appendChild(detail);
+          cardsEl.appendChild(card);
+        }
+      });
+    };
+
+    const renderOutbounds = (data) => {
+      fillOutboundTable(templateBody, templateCards, data.template_outbounds || [], false);
+      fillOutboundTable(subscriptionBody, subscriptionCards, data.subscription_outbounds || [], true);
+    };
+
+    const loadOutbounds = (panelId) => {
+      activePanelId = panelId;
+      renderPanelList();
+      if (editorStatus) editorStatus.textContent = 'در حال دریافت…';
+      if (listWrap) listWrap.hidden = true;
+      fetchJson('/admin/outbounds/api/panel/' + panelId + '/outbounds').then((data) => {
+        if (!data.ok) {
+          if (editorStatus) editorStatus.textContent = data.error || 'خطا';
+          return;
+        }
+        if (editorStatus) {
+          const tc = (data.template_outbounds || []).length;
+          const sc = (data.subscription_outbounds || []).length;
+          editorStatus.textContent = `اتصال: ${data.connection_ok ? 'OK' : 'خطا'} — ${tc} قالب، ${sc} اشتراک`;
+        }
+        if (listWrap) listWrap.hidden = false;
+        renderOutbounds(data);
+      });
+    };
+
+    document.getElementById('outbound-add-btn')?.addEventListener('click', () => jsonDialog?.showModal());
+    document.getElementById('outbound-json-form')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const raw = document.getElementById('outbound-json-input')?.value || '';
+      try {
+        JSON.parse(raw);
+        pendingOutboundJson = raw;
+        jsonDialog?.close();
+        if (editorStatus) editorStatus.textContent = 'Outbound آماده ذخیره (محلی) — دکمه ذخیره را بزنید';
+      } catch {
+        alert('JSON نامعتبر');
+      }
+    });
+    document.querySelectorAll('[data-close-outbound-dialog]').forEach((el) => {
+      el.addEventListener('click', () => jsonDialog?.close());
+    });
+
+    document.getElementById('outbound-save-one')?.addEventListener('click', () => {
+      if (!activePanelId || !pendingOutboundJson) {
+        alert('پنل و JSON outbound را مشخص کنید');
+        return;
+      }
+      fetchJson('/admin/outbounds/api/panel/' + activePanelId + '/outbounds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _csrf: csrf, outbound_json: pendingOutboundJson }),
+      }).then((res) => {
+        if (editorStatus) editorStatus.textContent = res.ok ? res.msg || 'ذخیره شد' : res.error || 'ذخیره ناموفق';
+        if (res.ok) {
+          pendingOutboundJson = '';
+          loadOutbounds(activePanelId);
+        }
+      });
+    });
+
+    const bulkBody = () => ({
+      _csrf: csrf,
+      source_panel_id: activePanelId,
+      source_tag: (document.getElementById('outbound-copy-tag')?.value || '').trim(),
+      panel_ids: selectedPanelIds(),
+    });
+
+    const renderBulk = (rows) => renderBulkRows(rows, bulkResults);
+
+    document.getElementById('outbound-bulk-preview')?.addEventListener('click', () => {
+      const body = bulkBody();
+      if (!body.source_panel_id || !body.source_tag || !body.panel_ids.length) {
+        alert('پنل مبدأ، Tag و حداقل یک پنل مقصد را انتخاب کنید');
+        return;
+      }
+      fetchJson('/admin/outbounds/api/bulk/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((res) => renderBulk(res.panels || []));
+    });
+
+    document.getElementById('outbound-bulk-apply')?.addEventListener('click', () => {
+      const body = bulkBody();
+      if (!body.source_panel_id || !body.source_tag || !body.panel_ids.length) return;
+      fetchJson('/admin/outbounds/api/bulk/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((res) => renderBulk(res.results || []));
+    });
+
+    selectAllEl?.addEventListener('change', () => {
+      panels.forEach((p) => {
+        p._checked = !!selectAllEl.checked;
+      });
+      renderPanelList();
+    });
+
+    const renderBulkJson = (rows, el) => renderBulkRows(rows, el);
+
+    document.getElementById('outbound-bulk-json-preview')?.addEventListener('click', () => {
+      const outbound_json = (document.getElementById('outbound-bulk-json')?.value || '').trim();
+      const panel_ids = selectedPanelIds();
+      if (!outbound_json || !panel_ids.length) {
+        alert('JSON و حداقل یک پنل لازم است');
+        return;
+      }
+      fetchJson('/admin/outbounds/api/bulk/preview-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _csrf: csrf, outbound_json, panel_ids }),
+      }).then((res) => renderBulkJson(res.panels || [], document.getElementById('outbound-bulk-json-results')));
+    });
+
+    document.getElementById('outbound-bulk-json-apply')?.addEventListener('click', () => {
+      const outbound_json = (document.getElementById('outbound-bulk-json')?.value || '').trim();
+      const panel_ids = selectedPanelIds();
+      if (!outbound_json || !panel_ids.length) return;
+      fetchJson('/admin/outbounds/api/bulk/apply-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _csrf: csrf, outbound_json, panel_ids }),
+      }).then((res) => renderBulkJson(res.results || [], document.getElementById('outbound-bulk-json-results')));
+    });
+
+    syncPersistUi();
+
+    fetchJson('/admin/outbounds/api/panels')
+      .then((res) => {
+        panels = (res.panels || []).map((p) => ({ ...p, _checked: false }));
+        persistEnabled = !!res.persist_enabled;
+        syncPersistUi();
+        renderPanelList();
+      })
+      .catch(() => {
+        if (panelListEl) panelListEl.textContent = 'بارگذاری پنل‌ها ناموفق بود.';
+      });
+  }
 });
