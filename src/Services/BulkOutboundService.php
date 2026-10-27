@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Encryption;
+use App\Xui\OutboundJsonTree;
 use App\Xui\XrayOutbounds;
-use App\Xui\XraySettingJson;
-use App\Xui\XraySettingOutboundJson;
 
 final class BulkOutboundService
 {
@@ -23,7 +22,6 @@ final class BulkOutboundService
         Encryption $encryption,
         array $config,
     ): array {
-        $sourceTag = trim($sourceTag);
         $outbound = self::loadSourceOutbound($sourcePanelId, $sourceTag, $encryption);
         if ($outbound === null) {
             return ['panels' => [[
@@ -33,12 +31,28 @@ final class BulkOutboundService
             ]]];
         }
 
-        $rows = [];
-        foreach (self::normalizePanelIds($targetPanelIds) as $pid) {
-            $rows[] = self::previewRow($pid, $outbound, $encryption);
+        return ['panels' => self::previewRows($targetPanelIds, $outbound, $encryption)];
+    }
+
+    /**
+     * @param list<int|string> $targetPanelIds
+     * @return array{panels: list<array<string, mixed>>}
+     */
+    public static function previewApplyJson(
+        array $targetPanelIds,
+        object $outbound,
+        Encryption $encryption,
+    ): array {
+        $err = OutboundJsonTree::validateNew($outbound);
+        if ($err !== null) {
+            return ['panels' => [[
+                'panel_id' => 0,
+                'status' => 'invalid',
+                'message' => $err,
+            ]]];
         }
 
-        return ['panels' => $rows];
+        return ['panels' => self::previewRows($targetPanelIds, $outbound, $encryption)];
     }
 
     /**
@@ -65,15 +79,57 @@ final class BulkOutboundService
             ]]];
         }
 
+        return self::applyToPanels($targetPanelIds, $outbound, $encryption, $config, $adminId);
+    }
+
+    /**
+     * @param list<int|string> $targetPanelIds
+     * @param array<string, mixed> $config
+     * @return array{results: list<array<string, mixed>>, stopped?: bool}
+     */
+    public static function applyJson(
+        array $targetPanelIds,
+        object $outbound,
+        Encryption $encryption,
+        array $config,
+        ?int $adminId = null,
+    ): array {
+        OutboundSaveGuard::assertPersistAllowed();
+
+        $err = OutboundJsonTree::validateNew($outbound);
+        if ($err !== null) {
+            return ['results' => [[
+                'panel_id' => 0,
+                'status' => 'invalid',
+                'message' => $err,
+            ]]];
+        }
+
+        return self::applyToPanels($targetPanelIds, $outbound, $encryption, $config, $adminId);
+    }
+
+    /**
+     * @param list<int|string> $targetPanelIds
+     * @param array<string, mixed> $config
+     * @return array{results: list<array<string, mixed>>, stopped?: bool}
+     */
+    private static function applyToPanels(
+        array $targetPanelIds,
+        object $outbound,
+        Encryption $encryption,
+        array $config,
+        ?int $adminId,
+    ): array {
         $results = [];
         foreach (self::normalizePanelIds($targetPanelIds) as $pid) {
             $preview = self::previewRow($pid, $outbound, $encryption);
             if (($preview['status'] ?? '') !== 'ready') {
                 $results[] = $preview + ['ok' => ($preview['status'] ?? '') === 'already_exists'];
+
                 continue;
             }
 
-            $save = PanelOutboundService::addOutbound($pid, $outbound, $encryption, $config, $adminId);
+            $save = PanelOutboundService::addOutbound($pid, OutboundJsonTree::cloneNode($outbound), $encryption, $config, $adminId);
             if (!($save['ok'] ?? false) && ($save['critical'] ?? false)) {
                 $results[] = [
                     'panel_id' => $pid,
@@ -101,10 +157,21 @@ final class BulkOutboundService
     }
 
     /**
-     * @param array<string, mixed> $outbound
-     * @return array<string, mixed>
+     * @param list<int|string> $targetPanelIds
+     * @return list<array<string, mixed>>
      */
-    private static function previewRow(int $panelId, array $outbound, Encryption $encryption): array
+    private static function previewRows(array $targetPanelIds, object $outbound, Encryption $encryption): array
+    {
+        $rows = [];
+        foreach (self::normalizePanelIds($targetPanelIds) as $pid) {
+            $rows[] = self::previewRow($pid, $outbound, $encryption);
+        }
+
+        return $rows;
+    }
+
+    /** @return array<string, mixed> */
+    private static function previewRow(int $panelId, object $outbound, Encryption $encryption): array
     {
         $panel = PanelService::findById($panelId);
         $name = (string) ($panel['name'] ?? '');
@@ -133,7 +200,7 @@ final class BulkOutboundService
             ];
         }
 
-        $tag = XrayOutbounds::tagOf($outbound);
+        $tag = OutboundJsonTree::tag($outbound);
         $class = PanelOutboundService::classifyTagOnConfig($snapshot['raw'], $tag, $outbound);
         $statusMap = [
             'ready' => ['status' => 'ready', 'message' => 'آماده افزودن'],
@@ -146,8 +213,7 @@ final class BulkOutboundService
         return ['panel_id' => $panelId, 'panel_name' => $name] + $row;
     }
 
-    /** @return array<string, mixed>|null Full outbound (server-side only; never logged). */
-    private static function loadSourceOutbound(int $sourcePanelId, string $sourceTag, Encryption $encryption): ?array
+    private static function loadSourceOutbound(int $sourcePanelId, string $sourceTag, Encryption $encryption): ?object
     {
         $panel = PanelService::findById($sourcePanelId);
         if ($panel === null) {
@@ -158,18 +224,8 @@ final class BulkOutboundService
         if ($snapshot === null) {
             return null;
         }
-        try {
-            $root = XraySettingJson::decodeRoot($snapshot['raw']);
-        } catch (\Throwable) {
-            return null;
-        }
-        foreach (XrayOutbounds::outboundsFromRoot($root) as $ob) {
-            if (XrayOutbounds::tagOf($ob) === $sourceTag) {
-                return $ob;
-            }
-        }
 
-        return null;
+        return PanelOutboundService::loadTemplateOutboundNode($snapshot['raw'], trim($sourceTag));
     }
 
     /** @param list<int|string> $ids @return list<int> */

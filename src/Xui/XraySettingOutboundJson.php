@@ -7,15 +7,11 @@ namespace App\Xui;
 /** Type-safe append to xraySetting.outbounds only. */
 final class XraySettingOutboundJson
 {
-    /**
-     * @param array<string, mixed> $newOutbound
-     */
-    public static function appendOutbound(string $originalRaw, array $newOutbound): string
+    public static function appendOutbound(string $originalRaw, object $newOutbound): string
     {
         $root = XraySettingJson::decodeRoot($originalRaw);
         $nodes = self::outboundNodes($root);
-        $newNode = self::arrayToNode($newOutbound);
-        $nodes[] = $newNode;
+        $nodes[] = OutboundJsonTree::cloneNode($newOutbound);
         $root->outbounds = $nodes;
 
         $encoded = json_encode($root, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -23,7 +19,7 @@ final class XraySettingOutboundJson
             throw new \RuntimeException('سریال‌سازی xraySetting ناموفق بود');
         }
 
-        $violation = self::assertOnlyAppendedOutbound($originalRaw, $encoded, XrayOutbounds::tagOf($newOutbound));
+        $violation = self::assertOnlyAppendedOutbound($originalRaw, $encoded, OutboundJsonTree::tag($newOutbound));
         if ($violation !== null) {
             throw new \RuntimeException($violation);
         }
@@ -63,8 +59,7 @@ final class XraySettingOutboundJson
         }
 
         $last = $afterNodes[count($afterNodes) - 1] ?? null;
-        $lastTag = self::nodeTag($last);
-        if ($lastTag !== $appendedTag) {
+        if (OutboundJsonTree::tagFromNode($last) !== $appendedTag) {
             return 'outbound افزوده‌شده tag موردانتظار را ندارد';
         }
 
@@ -86,6 +81,21 @@ final class XraySettingOutboundJson
         return XraySettingJson::compareStructurePublic($before, $after, '');
     }
 
+    public static function assertRoutingRulesUnchanged(string $originalRaw, string $newRaw): ?string
+    {
+        try {
+            $before = XraySettingJson::decodeRoot($originalRaw);
+            $after = XraySettingJson::decodeRoot($newRaw);
+        } catch (\Throwable $e) {
+            return 'JSON نامعتبر: ' . $e->getMessage();
+        }
+
+        $br = $before->routing->rules ?? null;
+        $ar = $after->routing->rules ?? null;
+
+        return XraySettingJson::compareStructurePublic($br, $ar, 'routing.rules');
+    }
+
     /** @return list<mixed> */
     private static function outboundNodes(object $root): array
     {
@@ -94,34 +104,5 @@ final class XraySettingOutboundJson
         }
 
         return $root->outbounds;
-    }
-
-    private static function nodeTag(mixed $node): string
-    {
-        if (!is_object($node) && !is_array($node)) {
-            return '';
-        }
-        $json = json_encode($node, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            return '';
-        }
-        $arr = json_decode($json, true);
-
-        return is_array($arr) ? XrayOutbounds::tagOf($arr) : '';
-    }
-
-    /** @param array<string, mixed> $outbound */
-    private static function arrayToNode(array $outbound): mixed
-    {
-        $json = json_encode($outbound, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            throw new \RuntimeException('سریال‌سازی outbound جدید ناموفق بود');
-        }
-        $node = json_decode($json, false);
-        if (!is_object($node) && !is_array($node)) {
-            throw new \RuntimeException('outbound JSON نامعتبر است');
-        }
-
-        return $node;
     }
 }

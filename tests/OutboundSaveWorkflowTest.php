@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Services\OutboundSaveWorkflow;
 use App\Services\XrayHealthVerifier;
+use App\Xui\OutboundJsonTree;
 use App\Xui\XraySettingOutboundJson;
 use PHPUnit\Framework\TestCase;
 
@@ -48,8 +49,7 @@ final class OutboundSaveWorkflowTest extends TestCase
     public function testSuccessfulAppendDoesNotRollback(): void
     {
         $original = (string) file_get_contents(__DIR__ . '/fixtures/xray-outbound-append-base.json');
-        $newOb = json_decode('{"tag":"added","protocol":"freedom","settings":{}}', true);
-        self::assertIsArray($newOb);
+        $newOb = OutboundJsonTree::decodeOutboundString('{"tag":"added","protocol":"freedom","settings":{}}');
         $expected = XraySettingOutboundJson::appendOutbound($original, $newOb);
 
         $mock = new MockXrayPanelClient();
@@ -65,7 +65,8 @@ final class OutboundSaveWorkflowTest extends TestCase
     public function testFailedUpdateWithoutDriftSkipsRollback(): void
     {
         $original = '{"routing":{"rules":[]},"outbounds":[]}';
-        $expected = XraySettingOutboundJson::appendOutbound($original, ['tag' => 'n', 'protocol' => 'freedom']);
+        $newOb = OutboundJsonTree::decodeOutboundString('{"tag":"n","protocol":"freedom","settings":{}}');
+        $expected = XraySettingOutboundJson::appendOutbound($original, $newOb);
         $mock = new MockXrayPanelClient();
         $mock->pushUpdate(['ok' => false, 'error' => 'fail']);
         $mock->pushFetch($this->fetchPayload($original));

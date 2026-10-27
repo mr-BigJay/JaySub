@@ -1832,6 +1832,19 @@ HTML;
     </div>
     <div id="outbound-bulk-results" class="routing-bulk-results" hidden></div>
   </section>
+  <section class="card routing-bulk-card">
+    <h2 class="card-title">اعمال JSON جدید روی پنل‌های انتخاب‌شده</h2>
+    <div class="routing-bulk-form stack">
+      <label>Outbound JSON (type-safe)
+        <textarea id="outbound-bulk-json" class="input" rows="8" dir="ltr" placeholder='{"tag":"new-proxy","protocol":"vless","settings":{},"streamSettings":{"wsSettings":{"headers":{}}}}'></textarea>
+      </label>
+      <div class="routing-bulk-actions">
+        <button type="button" class="btn btn-secondary" id="outbound-bulk-json-preview">پیش‌نمایش</button>
+        <button type="button" class="btn btn-primary" id="outbound-bulk-json-apply">اعمال</button>
+      </div>
+    </div>
+    <div id="outbound-bulk-json-results" class="routing-bulk-results" hidden></div>
+  </section>
   <dialog id="outbound-json-dialog" class="routing-dialog">
     <form method="dialog" class="stack" id="outbound-json-form">
       <h3 class="card-title">Outbound جدید (JSON)</h3>

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\Encryption;
-use App\Xui\OutboundRedactor;
+use App\Xui\OutboundJsonTree;
 use App\Xui\XrayOutbounds;
 use App\Xui\XraySettingJson;
 use App\Xui\XraySettingOutboundJson;
@@ -45,15 +45,15 @@ final class PanelOutboundService
         }
 
         $root = XraySettingJson::decodeRoot($parsed['xraySettingRaw']);
-        $rawList = XrayOutbounds::outboundsFromRoot($root);
-        $summaries = [];
-        $prio = 1;
-        foreach ($rawList as $ob) {
-            $summaries[] = XrayOutbounds::summarize($ob, $prio++);
-        }
-
-        $template = array_values(array_filter($summaries, static fn (array $s): bool => ($s['kind'] ?? '') === 'template'));
-        $subscription = array_values(array_filter($summaries, static fn (array $s): bool => ($s['kind'] ?? '') === 'subscription'));
+        $subTags = $parsed['subscriptionOutboundTags'] ?? [];
+        $subObs = $parsed['subscriptionOutbounds'] ?? [];
+        $template = XrayOutbounds::summarizeTemplateRoot($root, $subTags);
+        $subscription = XrayOutbounds::summarizeSubscriptionApiOutbounds(
+            is_array($subObs) ? $subObs : [],
+            is_array($subTags) ? $subTags : [],
+            count($template) + 1,
+        );
+        $summaries = array_merge($template, $subscription);
 
         return [
             'ok' => true,
@@ -67,20 +67,19 @@ final class PanelOutboundService
     }
 
     /**
-     * @param array<string, mixed> $outbound
      * @param array<string, mixed> $config
      * @return array<string, mixed>
      */
     public static function addOutbound(
         int $panelId,
-        array $outbound,
+        object $outbound,
         Encryption $encryption,
         array $config,
         ?int $adminId = null,
     ): array {
         OutboundSaveGuard::assertPersistAllowed();
 
-        $err = XrayOutbounds::validateNewOutbound($outbound);
+        $err = OutboundJsonTree::validateNew($outbound);
         if ($err !== null) {
             return ['ok' => false, 'error' => $err];
         }
@@ -96,7 +95,7 @@ final class PanelOutboundService
             return ['ok' => false, 'error' => 'خواندن xraySetting ناموفق'];
         }
 
-        $tag = XrayOutbounds::tagOf($outbound);
+        $tag = OutboundJsonTree::tag($outbound);
         $conflict = self::classifyTagOnConfig($snapshot['raw'], $tag, $outbound);
         if ($conflict === 'exists') {
             return ['ok' => true, 'skipped' => true, 'status' => 'already_exists', 'msg' => 'Tag از قبل وجود دارد'];
@@ -128,11 +127,8 @@ final class PanelOutboundService
         );
     }
 
-    /**
-     * @param array<string, mixed> $outbound
-     * @return 'ready'|'exists'|'conflict'|'invalid'
-     */
-    public static function classifyTagOnConfig(string $raw, string $tag, array $outbound): string
+    /** @return 'ready'|'exists'|'conflict'|'invalid' */
+    public static function classifyTagOnConfig(string $raw, string $tag, object $outbound): string
     {
         if ($tag === '' || XrayOutbounds::isProtectedTag($tag)) {
             return 'invalid';
@@ -142,11 +138,11 @@ final class PanelOutboundService
         } catch (\Throwable) {
             return 'invalid';
         }
-        foreach (XrayOutbounds::outboundsFromRoot($root) as $existing) {
-            if (XrayOutbounds::tagOf($existing) !== $tag) {
+        foreach (OutboundJsonTree::templateNodesFromRoot($root) as $existing) {
+            if (OutboundJsonTree::tag($existing) !== $tag) {
                 continue;
             }
-            if (XrayOutbounds::fingerprint($existing) === XrayOutbounds::fingerprint($outbound)) {
+            if (OutboundJsonTree::fingerprint($existing) === OutboundJsonTree::fingerprint($outbound)) {
                 return 'exists';
             }
 
@@ -175,6 +171,22 @@ final class PanelOutboundService
         return ['raw' => $raw, 'outboundTestUrl' => $parsed['outboundTestUrl']];
     }
 
+    public static function loadTemplateOutboundNode(string $raw, string $tag): ?object
+    {
+        try {
+            $root = XraySettingJson::decodeRoot($raw);
+        } catch (\Throwable) {
+            return null;
+        }
+        foreach (OutboundJsonTree::templateNodesFromRoot($root) as $node) {
+            if (OutboundJsonTree::tag($node) === $tag) {
+                return OutboundJsonTree::cloneNode($node);
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @param array<string, mixed> $fetchResult
      * @return array<string, mixed>
@@ -189,21 +201,17 @@ final class PanelOutboundService
         );
     }
 
-    /** @param array<string, mixed> $outbound @return array<string, mixed> */
-    public static function parseOutboundJsonInput(mixed $input): array
+    public static function parseOutboundJsonInput(mixed $outboundJson): object
     {
-        if (is_string($input)) {
-            $decoded = json_decode(trim($input), true);
-            if (!is_array($decoded)) {
-                throw new \InvalidArgumentException('JSON outbound نامعتبر است');
-            }
-
-            return $decoded;
+        if (is_array($outboundJson)) {
+            throw new \InvalidArgumentException(
+                'outbound_json باید رشته JSON خام باشد (object/array PHP نوع را حفظ نمی‌کند)',
+            );
         }
-        if (is_array($input)) {
-            return $input;
+        if (!is_string($outboundJson) || trim($outboundJson) === '') {
+            throw new \InvalidArgumentException('outbound_json الزامی است');
         }
 
-        throw new \InvalidArgumentException('outbound باید JSON object باشد');
+        return OutboundJsonTree::decodeOutboundString($outboundJson);
     }
 }

@@ -820,7 +820,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const jsonDialog = document.getElementById('outbound-json-dialog');
     let panels = [];
     let activePanelId = 0;
-    let pendingOutbound = null;
+    let pendingOutboundJson = '';
 
     const fetchJson = (url, options = {}) =>
       fetch(url, { credentials: 'same-origin', ...options }).then((r) => r.json());
@@ -899,7 +899,8 @@ document.addEventListener('DOMContentLoaded', () => {
       ev.preventDefault();
       const raw = document.getElementById('outbound-json-input')?.value || '';
       try {
-        pendingOutbound = JSON.parse(raw);
+        JSON.parse(raw);
+        pendingOutboundJson = raw;
         jsonDialog?.close();
         if (editorStatus) editorStatus.textContent = 'Outbound آماده ذخیره (محلی) — دکمه ذخیره را بزنید';
       } catch {
@@ -911,18 +912,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('outbound-save-one')?.addEventListener('click', () => {
-      if (!activePanelId || !pendingOutbound) {
+      if (!activePanelId || !pendingOutboundJson) {
         alert('پنل و JSON outbound را مشخص کنید');
         return;
       }
       fetchJson('/admin/outbounds/api/panel/' + activePanelId + '/outbounds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ _csrf: csrf, outbound: pendingOutbound }),
+        body: JSON.stringify({ _csrf: csrf, outbound_json: pendingOutboundJson }),
       }).then((res) => {
         if (editorStatus) editorStatus.textContent = res.ok ? res.msg || 'ذخیره شد' : res.error || 'ذخیره ناموفق';
         if (res.ok) {
-          pendingOutbound = null;
+          pendingOutboundJson = '';
           loadOutbounds(activePanelId);
         }
       });
@@ -971,6 +972,39 @@ document.addEventListener('DOMContentLoaded', () => {
         p._checked = !!selectAllEl.checked;
       });
       renderPanelList();
+    });
+
+    const renderBulkJson = (rows, el) => {
+      if (!el) return;
+      el.hidden = false;
+      el.innerHTML = rows
+        .map((r) => `<div class="routing-bulk-row ${r.status}">#${r.panel_id} ${r.panel_name || ''} — ${r.status}: ${r.message || ''}</div>`)
+        .join('');
+    };
+
+    document.getElementById('outbound-bulk-json-preview')?.addEventListener('click', () => {
+      const outbound_json = (document.getElementById('outbound-bulk-json')?.value || '').trim();
+      const panel_ids = selectedPanelIds();
+      if (!outbound_json || !panel_ids.length) {
+        alert('JSON و حداقل یک پنل لازم است');
+        return;
+      }
+      fetchJson('/admin/outbounds/api/bulk/preview-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _csrf: csrf, outbound_json, panel_ids }),
+      }).then((res) => renderBulkJson(res.panels || [], document.getElementById('outbound-bulk-json-results')));
+    });
+
+    document.getElementById('outbound-bulk-json-apply')?.addEventListener('click', () => {
+      const outbound_json = (document.getElementById('outbound-bulk-json')?.value || '').trim();
+      const panel_ids = selectedPanelIds();
+      if (!outbound_json || !panel_ids.length) return;
+      fetchJson('/admin/outbounds/api/bulk/apply-json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _csrf: csrf, outbound_json, panel_ids }),
+      }).then((res) => renderBulkJson(res.results || [], document.getElementById('outbound-bulk-json-results')));
     });
 
     fetchJson('/admin/outbounds/api/panels')

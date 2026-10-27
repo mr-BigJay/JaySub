@@ -11,31 +11,77 @@ final class XrayOutbounds
     public const PROTECTED_TAGS = ['direct', 'block', 'api'];
 
     /**
+     * @param list<string> $subscriptionTagsFromApi tags from obj.subscriptionOutboundTags
      * @return list<array<string, mixed>>
      */
-    public static function outboundsFromRoot(object $root): array
-    {
-        if (!isset($root->outbounds) || !is_array($root->outbounds)) {
-            return [];
-        }
-        $out = [];
-        foreach ($root->outbounds as $item) {
-            if (is_object($item)) {
-                $out[] = self::nodeToArray($item);
-            } elseif (is_array($item)) {
-                $out[] = $item;
-            }
+    public static function summarizeTemplateRoot(
+        object $root,
+        array $subscriptionTagsFromApi = [],
+    ): array {
+        $subs = array_fill_keys($subscriptionTagsFromApi, true);
+        $summaries = [];
+        $prio = 1;
+        foreach (OutboundJsonTree::templateNodesFromRoot($root) as $node) {
+            $tag = OutboundJsonTree::tag($node);
+            $kind = isset($subs[$tag]) ? 'subscription' : 'template';
+            $summaries[] = self::summarizeNode($node, $prio++, $kind);
         }
 
-        return $out;
+        return $summaries;
     }
 
-    /** @param array<string, mixed> $outbound */
-    public static function tagOf(array $outbound): string
-    {
-        $tag = $outbound['tag'] ?? '';
+    /**
+     * @param list<object> $subscriptionOutboundsFromApi from obj.subscriptionOutbounds
+     * @param list<string> $subscriptionTagsFromApi
+     * @return list<array<string, mixed>>
+     */
+    public static function summarizeSubscriptionApiOutbounds(
+        array $subscriptionOutboundsFromApi,
+        array $subscriptionTagsFromApi,
+        int $startPriority = 1,
+    ): array {
+        $summaries = [];
+        $prio = $startPriority;
+        $seenTags = [];
+        foreach ($subscriptionOutboundsFromApi as $node) {
+            if (!is_object($node)) {
+                continue;
+            }
+            $tag = OutboundJsonTree::tag($node);
+            if ($tag === '' || isset($seenTags[$tag])) {
+                continue;
+            }
+            $seenTags[$tag] = true;
+            $summaries[] = self::summarizeNode($node, $prio++, 'subscription');
+        }
+        foreach ($subscriptionTagsFromApi as $tag) {
+            if ($tag === '' || isset($seenTags[$tag])) {
+                continue;
+            }
+            $seenTags[$tag] = true;
+            $placeholder = (object) ['tag' => $tag, 'protocol' => 'subscription'];
+            $summaries[] = self::summarizeNode($placeholder, $prio++, 'subscription');
+        }
 
-        return is_string($tag) ? trim($tag) : '';
+        return $summaries;
+    }
+
+    /** @return array<string, mixed> */
+    public static function summarizeNode(object $node, int $priority, string $kind): array
+    {
+        $tag = OutboundJsonTree::tag($node);
+        $protocol = OutboundJsonTree::protocol($node) ?: '—';
+
+        return [
+            'priority' => $priority,
+            'tag' => $tag,
+            'protocol' => $protocol,
+            'enabled' => true,
+            'protected' => self::isProtectedTag($tag),
+            'kind' => $kind,
+            'fingerprint' => OutboundJsonTree::fingerprint($node),
+            'raw' => OutboundRedactor::redactNode($node),
+        ];
     }
 
     public static function isProtectedTag(string $tag): bool
@@ -45,96 +91,19 @@ final class XrayOutbounds
         return in_array($t, self::PROTECTED_TAGS, true);
     }
 
-    /** @param array<string, mixed> $outbound */
-    public static function isSubscriptionGenerated(array $outbound): bool
+    /** @deprecated use OutboundJsonTree; kept for tests migrating off arrays */
+    public static function tagOf(array $outbound): string
     {
-        $tag = strtolower(self::tagOf($outbound));
-        if ($tag !== '' && (str_starts_with($tag, 'sub-') || str_starts_with($tag, 'sub_') || str_contains($tag, 'subscription'))) {
-            return true;
-        }
-        $settings = $outbound['settings'] ?? null;
-        if (is_array($settings)) {
-            foreach (['subscription', 'subscriptionId', 'fromSubscription'] as $key) {
-                if (array_key_exists($key, $settings)) {
-                    return true;
-                }
-            }
-        }
+        $tag = $outbound['tag'] ?? '';
 
-        return false;
+        return is_string($tag) ? trim($tag) : '';
     }
 
-    /**
-     * @param array<string, mixed> $outbound
-     * @return array<string, mixed>
-     */
-    public static function summarize(array $outbound, int $priority, bool $enabled = true): array
-    {
-        $tag = self::tagOf($outbound);
-        $protocol = is_string($outbound['protocol'] ?? null) ? (string) $outbound['protocol'] : '—';
-        $kind = self::isSubscriptionGenerated($outbound) ? 'subscription' : 'template';
-
-        return [
-            'priority' => $priority,
-            'tag' => $tag,
-            'protocol' => $protocol,
-            'enabled' => $enabled,
-            'protected' => self::isProtectedTag($tag),
-            'kind' => $kind,
-            'fingerprint' => self::fingerprint($outbound),
-            'raw' => OutboundRedactor::redact($outbound),
-        ];
-    }
-
-    /** @param array<string, mixed> $outbound */
+    /** @deprecated */
     public static function fingerprint(array $outbound): string
     {
-        $json = json_encode(self::normalizeForFingerprint($outbound), JSON_UNESCAPED_UNICODE);
+        $json = json_encode($outbound, JSON_UNESCAPED_UNICODE);
 
         return hash('sha256', $json !== false ? $json : '');
-    }
-
-    /** @param array<string, mixed> $outbound */
-    public static function validateNewOutbound(array $outbound): ?string
-    {
-        $tag = self::tagOf($outbound);
-        if ($tag === '') {
-            return 'فیلد tag الزامی است';
-        }
-        if (self::isProtectedTag($tag)) {
-            return 'افزودن یا بازنویسی outbound سیستمی «' . $tag . '» مجاز نیست';
-        }
-        $protocol = $outbound['protocol'] ?? '';
-        if (!is_string($protocol) || trim($protocol) === '') {
-            return 'فیلد protocol الزامی است';
-        }
-
-        return null;
-    }
-
-    /** @param array<string, mixed> $data @return mixed */
-    private static function normalizeForFingerprint(mixed $data): mixed
-    {
-        if (!is_array($data)) {
-            return $data;
-        }
-        ksort($data);
-        foreach ($data as $k => $v) {
-            $data[$k] = self::normalizeForFingerprint($v);
-        }
-
-        return $data;
-    }
-
-    /** @return array<string, mixed> */
-    private static function nodeToArray(object $obj): array
-    {
-        $json = json_encode($obj, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            return [];
-        }
-        $arr = json_decode($json, true);
-
-        return is_array($arr) ? $arr : [];
     }
 }

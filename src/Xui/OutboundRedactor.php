@@ -11,7 +11,6 @@ final class OutboundRedactor
     private const SENSITIVE_KEYS = [
         'password',
         'uuid',
-        'id',
         'privateKey',
         'publicKey',
         'shortId',
@@ -20,6 +19,18 @@ final class OutboundRedactor
         'token',
         'psk',
     ];
+
+    /** @return array<string, mixed> Display-only (not used on save path). */
+    public static function redactNode(object $node): array
+    {
+        $json = json_encode($node, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            return [];
+        }
+        $arr = json_decode($json, true);
+
+        return is_array($arr) ? self::walk($arr) : [];
+    }
 
     /** @param array<string, mixed> $outbound @return array<string, mixed> */
     public static function redact(array $outbound): array

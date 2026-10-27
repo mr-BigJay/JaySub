@@ -2,41 +2,59 @@
 
 declare(strict_types=1);
 
+use App\Xui\OutboundJsonTree;
 use App\Xui\OutboundRedactor;
 use App\Xui\XrayOutbounds;
 use App\Xui\XraySettingJson;
+use App\Xui\XraySettingOutboundJson;
+use App\Xui\XrayTemplateParser;
 use PHPUnit\Framework\TestCase;
 
 final class XrayOutboundsTest extends TestCase
 {
-    public function testRedactsSecrets(): void
+    public function testRedactsSecretsOnDisplayNode(): void
     {
-        $ob = ['tag' => 't', 'protocol' => 'vless', 'settings' => ['uuid' => 'secret-uuid', 'password' => 'p']];
-        $red = OutboundRedactor::redact($ob);
+        $node = OutboundJsonTree::decodeOutboundString(
+            '{"tag":"t","protocol":"vless","settings":{"uuid":"secret-uuid","password":"p"}}',
+        );
+        $red = OutboundRedactor::redactNode($node);
         self::assertSame('••••••••', $red['settings']['uuid']);
         self::assertSame('••••••••', $red['settings']['password']);
     }
 
-    public function testSubscriptionKind(): void
+    public function testSubscriptionKindFromApiTagsNotPrefix(): void
     {
-        $ob = ['tag' => 'sub-main', 'protocol' => 'freedom'];
-        self::assertTrue(XrayOutbounds::isSubscriptionGenerated($ob));
-        self::assertSame('subscription', XrayOutbounds::summarize($ob, 1)['kind']);
+        $body = '{"success":true,"obj":{"xraySetting":{"outbounds":[{"tag":"my-proxy","protocol":"vless"}]},"subscriptionOutboundTags":["my-proxy"],"subscriptionOutbounds":[]}}';
+        $parsed = XrayTemplateParser::parseFromApiJsonString($body);
+        $root = XraySettingJson::decodeRoot($parsed['xraySettingRaw']);
+        $template = XrayOutbounds::summarizeTemplateRoot($root, $parsed['subscriptionOutboundTags']);
+        self::assertSame('subscription', $template[0]['kind']);
+    }
+
+    public function testSubscriptionOutboundsFromApiField(): void
+    {
+        $body = '{"success":true,"obj":{"xraySetting":{"outbounds":[]},"subscriptionOutboundTags":["sub-a"],"subscriptionOutbounds":[{"tag":"sub-a","protocol":"freedom"}]}}';
+        $parsed = XrayTemplateParser::parseFromApiJsonString($body);
+        $subs = XrayOutbounds::summarizeSubscriptionApiOutbounds(
+            $parsed['subscriptionOutbounds'],
+            $parsed['subscriptionOutboundTags'],
+        );
+        self::assertCount(1, $subs);
+        self::assertSame('subscription', $subs[0]['kind']);
     }
 
     public function testProtectedTagValidation(): void
     {
-        self::assertNotNull(XrayOutbounds::validateNewOutbound(['tag' => 'direct', 'protocol' => 'freedom']));
+        $node = OutboundJsonTree::decodeOutboundString('{"tag":"direct","protocol":"freedom"}');
+        self::assertNotNull(OutboundJsonTree::validateNew($node));
     }
 
-    public function testRulesInOutboundAppendFixtureUnchanged(): void
+    public function testRoutingRulesUnchangedAfterAppend(): void
     {
         $raw = (string) file_get_contents(__DIR__ . '/fixtures/xray-outbound-append-base.json');
-        $updated = \App\Xui\XraySettingOutboundJson::appendOutbound($raw, [
-            'tag' => 'new1',
-            'protocol' => 'freedom',
-            'settings' => [],
-        ]);
-        self::assertNull(\App\Xui\XraySettingJson::assertPreservedOutsideRoutingRules($raw, $updated));
+        $node = OutboundJsonTree::decodeOutboundString('{"tag":"new1","protocol":"freedom","settings":{}}');
+        $updated = XraySettingOutboundJson::appendOutbound($raw, $node);
+        self::assertNull(XraySettingOutboundJson::assertRoutingRulesUnchanged($raw, $updated));
+        self::assertNull(XraySettingOutboundJson::assertPreservedOutsideOutbounds($raw, $updated));
     }
 }

@@ -1705,8 +1705,12 @@ if (preg_match('#^/admin/outbounds/api/panel/(\d+)/outbounds$#', $uri, $m) && $m
     requireAdmin();
     $pid = (int) $m[1];
     $payload = requireCsrfJson();
+    $outboundJson = $payload['outbound_json'] ?? null;
+    if (!is_string($outboundJson) && is_string($payload['outbound'] ?? null)) {
+        $outboundJson = $payload['outbound'];
+    }
     try {
-        $outbound = PanelOutboundService::parseOutboundJsonInput($payload['outbound'] ?? null);
+        $outbound = PanelOutboundService::parseOutboundJsonInput($outboundJson);
     } catch (\InvalidArgumentException $e) {
         Response::json(['ok' => false, 'error' => $e->getMessage()], 400);
         exit;
@@ -1754,6 +1758,42 @@ if ($uri === '/admin/outbounds/api/bulk/apply' && $method === 'POST') {
         $config,
         AuthService::adminId(),
     );
+    Response::json(['ok' => true] + $applied);
+}
+
+if ($uri === '/admin/outbounds/api/bulk/preview-json' && $method === 'POST') {
+    requireAdmin();
+    $payload = requireCsrfJson();
+    $panelIds = $payload['panel_ids'] ?? [];
+    if (!is_array($panelIds) || $panelIds === []) {
+        Response::json(['ok' => false, 'error' => 'panel_ids الزامی است'], 400);
+    }
+    try {
+        $outbound = PanelOutboundService::parseOutboundJsonInput($payload['outbound_json'] ?? null);
+    } catch (\InvalidArgumentException $e) {
+        Response::json(['ok' => false, 'error' => $e->getMessage()], 400);
+        exit;
+    }
+    $encryption = app_encryption($config);
+    $preview = BulkOutboundService::previewApplyJson($panelIds, $outbound, $encryption);
+    Response::json(['ok' => true] + $preview);
+}
+
+if ($uri === '/admin/outbounds/api/bulk/apply-json' && $method === 'POST') {
+    requireAdmin();
+    $payload = requireCsrfJson();
+    $panelIds = $payload['panel_ids'] ?? [];
+    if (!is_array($panelIds) || $panelIds === []) {
+        Response::json(['ok' => false, 'error' => 'panel_ids الزامی است'], 400);
+    }
+    try {
+        $outbound = PanelOutboundService::parseOutboundJsonInput($payload['outbound_json'] ?? null);
+    } catch (\InvalidArgumentException $e) {
+        Response::json(['ok' => false, 'error' => $e->getMessage()], 400);
+        exit;
+    }
+    $encryption = app_encryption($config);
+    $applied = BulkOutboundService::applyJson($panelIds, $outbound, $encryption, $config, AuthService::adminId());
     Response::json(['ok' => true] + $applied);
 }
 
