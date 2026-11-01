@@ -76,59 +76,66 @@ final class DashboardService
         return (int) $stmt->fetchColumn();
     }
 
-    /** @return list<array{label:string,bytes:int}> */
+    /**
+     * @return list<array{date:string,label:string,bytes:?int,status:string,detail:string,samples:int}>
+     */
     public static function trafficChartLastDays(int $days = 7): array
     {
         $days = max(1, min(31, $days));
-        $out = [];
-        $today = Format::tehranNow()->setTime(0, 0, 0);
-        for ($i = $days - 1; $i >= 0; --$i) {
-            $ymd = $today->modify('-' . $i . ' days')->format('Y-m-d');
-            $out[] = [
-                'label' => substr($ymd, 5),
-                'bytes' => self::trafficOnCalendarDay($ymd),
-            ];
-        }
+        $today = Format::tehranNow()->setTime(0, 0);
+        $first = $today->modify('-' . ($days - 1) . ' days');
 
-        return $out;
+        return self::trafficSeriesBetween($first, $today);
     }
 
-    public static function trafficOnCalendarDay(string $ymd): int
+    /** Null indicates missing or insufficient measurements. */
+    public static function trafficOnCalendarDay(string $ymd): ?int
     {
-        if ($ymd === Format::tehranNow()->format('Y-m-d')) {
-            return self::trafficSinceDatetime($ymd . ' 00:00:00');
+        $day = \DateTimeImmutable::createFromFormat('!Y-m-d', $ymd, new \DateTimeZone(Format::TZ));
+        if ($day === false || $day->format('Y-m-d') !== $ymd) {
+            return null;
         }
+        $rows = self::trafficSeriesBetween($day, $day);
 
-        $pdo = Database::pdo();
-        $dayStart = $ymd . ' 00:00:00';
-        $day = \DateTimeImmutable::createFromFormat('Y-m-d', $ymd, new \DateTimeZone(Format::TZ));
-        $dayEnd = $day !== false
-            ? $day->modify('+1 day')->format('Y-m-d H:i:s')
-            : $ymd . ' 23:59:59';
-        $stmt = $pdo->prepare(
-            'SELECT COALESCE(SUM(GREATEST(0, COALESCE(e.end_t, 0) - COALESCE(b.start_t, 0))), 0) AS bytes
-             FROM subscriptions s
-             LEFT JOIN (
-                SELECT subscription_id, MAX(total_bytes) AS end_t
-                FROM traffic_snapshots
-                WHERE recorded_at >= :dayStart AND recorded_at < :dayEnd
-                GROUP BY subscription_id
-             ) e ON e.subscription_id = s.id
-             LEFT JOIN (
-                SELECT ts.subscription_id, ts.total_bytes AS start_t
-                FROM traffic_snapshots ts
-                INNER JOIN (
-                    SELECT subscription_id, MAX(recorded_at) AS mr
-                    FROM traffic_snapshots
-                    WHERE recorded_at < :dayStart2
-                    GROUP BY subscription_id
-                ) m ON m.subscription_id = ts.subscription_id AND ts.recorded_at = m.mr
-             ) b ON b.subscription_id = s.id
-             WHERE s.status IN (\'active\', \'exhausted\')'
-        );
-        $stmt->execute(['dayStart' => $dayStart, 'dayEnd' => $dayEnd, 'dayStart2' => $dayStart]);
+        return $rows[0]['bytes'] ?? null;
+    }
 
-        return (int) $stmt->fetchColumn();
+    /**
+     * traffic_snapshots.recorded_at uses MySQL NOW() in session time.
+     * FROM_UNIXTIME / UNIX_TIMESTAMP use that same session timezone, then
+     * we assign instants to Tehran dates in TrafficDailySeries.
+     * Include historical subscriptions and their pre-window baseline.
+     *
+     * @return list<array{date:string,label:string,bytes:?int,status:string,detail:string,samples:int}>
+     */
+    private static function trafficSeriesBetween(\DateTimeImmutable $first, \DateTimeImmutable $last): array
+    {
+        $sql = <<<'SQL'
+SELECT subscription_id, total_bytes, UNIX_TIMESTAMP(recorded_at) AS recorded_ts, id
+FROM traffic_snapshots
+WHERE recorded_at >= FROM_UNIXTIME(:since)
+UNION ALL
+SELECT b.subscription_id, b.total_bytes, UNIX_TIMESTAMP(b.recorded_at) AS recorded_ts, b.id
+FROM traffic_snapshots b
+INNER JOIN (
+    SELECT MAX(t.id) AS baseline_id
+    FROM traffic_snapshots t
+    INNER JOIN (
+        SELECT subscription_id, MAX(recorded_at) AS latest_at
+        FROM traffic_snapshots
+        WHERE recorded_at < FROM_UNIXTIME(:before)
+        GROUP BY subscription_id
+    ) latest ON latest.subscription_id = t.subscription_id AND latest.latest_at = t.recorded_at
+    GROUP BY t.subscription_id
+) baselines ON baselines.baseline_id = b.id
+ORDER BY subscription_id, recorded_ts, id
+SQL;
+        $stmt = Database::pdo()->prepare($sql);
+        $stmt->bindValue(':since', $first->getTimestamp(), \PDO::PARAM_INT);
+        $stmt->bindValue(':before', $first->getTimestamp(), \PDO::PARAM_INT);
+        $stmt->execute();
+
+        return TrafficDailySeries::aggregate($stmt->fetchAll(), $first, $last);
     }
 
     /** @return list<array<string, mixed>> */

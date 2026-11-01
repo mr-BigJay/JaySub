@@ -207,30 +207,40 @@ HTML;
         return '<div class="action-grid hub-grid">' . $tilesHtml . '</div>';
     }
 
-    /** @param list<array{label:string,bytes:int}> $points */
+    /** @param list<array{label:string,bytes:?int,date?:string,status?:string,detail?:string}> $points */
     public static function barChart(array $points): string
     {
         if ($points === []) {
-            return '<p class="muted chart-empty">هنوز دادهٔ مصرف ثبت نشده. پس از sync کارگر، نمودار پر می‌شود.</p>';
+            return '<p class="muted chart-empty">هنوز دادهٔ مصرف ثبت نشده است.</p>';
         }
-        $max = max(array_column($points, 'bytes'));
+
+        $max = 0;
+        foreach ($points as $point) {
+            $max = max($max, max(0, (int) ($point['bytes'] ?? 0)));
+        }
+
         $bars = '';
-        foreach ($points as $p) {
-            $bytes = (int) $p['bytes'];
-            if ($max <= 0 || $bytes <= 0) {
-                $hPx = 0;
-            } else {
-                // Pixel heights are computed vs a fixed plot; CSS flex track scales visually.
-                $hPx = max(4, (int) round(($bytes / $max) * 100));
-            }
-            $barCls = 'chart-bar' . ($hPx <= 0 ? ' chart-bar-zero' : '');
-            $bars .= '<div class="chart-bar-wrap">'
-                . '<div class="chart-bar-track">'
-                . '<div class="' . $barCls . '" style="height:' . $hPx . '%"></div>'
-                . '</div>'
-                . '<span class="chart-lbl">' . htmlspecialchars($p['label'], ENT_QUOTES, 'UTF-8') . '</span>'
+        foreach ($points as $point) {
+            $bytes = isset($point['bytes']) ? max(0, (int) $point['bytes']) : null;
+            $date = (string) ($point['date'] ?? $point['label']);
+            $label = (string) $point['label'];
+            $detail = (string) ($point['detail'] ?? 'مصرف ثبت‌شده');
+            $amount = $bytes === null ? 'داده کافی نیست' : Format::usageVolume($bytes);
+            $tooltip = htmlspecialchars($date . ' — ' . $amount . '؛ ' . $detail, ENT_QUOTES, 'UTF-8');
+            $safeLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+
+            $height = $max > 0 && $bytes !== null && $bytes > 0
+                ? max(4, (int) round(($bytes / $max) * 100))
+                : 0;
+            $classes = 'chart-bar' . ($height <= 0 ? ' chart-bar-zero' : '');
+            $wrap = 'chart-bar-wrap' . ($bytes === null ? ' chart-bar-missing' : '');
+            $bars .= '<div class="' . $wrap . '" tabindex="0" role="img" title="' . $tooltip
+                . '" aria-label="' . $tooltip . '" data-tooltip="' . $tooltip . '">'
+                . '<div class="chart-bar-track"><div class="' . $classes . '" style="height:' . $height . '%"></div></div>'
+                . '<span class="chart-lbl">' . $safeLabel . ($bytes === null ? ' · —' : '') . '</span>'
                 . '</div>';
         }
+
         return '<div class="traffic-chart">' . $bars . '</div>';
     }
 
@@ -614,6 +624,7 @@ HTML;
                     <div class="admin-dash-period active"><span class="adp-label">امروز</span><span class="adp-val">' . htmlspecialchars($todayVal, ENT_QUOTES, 'UTF-8') . '</span></div>
                 </div>
                 ' . $chartHtml . '
+                <p class="admin-dash-chart-note">میله‌ها اختلاف مصرف ثبت‌شده بین نمونه‌های همان روز هستند؛ روزهای ناقص یا بدون داده را با لمس میله ببینید.</p>
             </section>
 
             <div class="admin-dash-stats">

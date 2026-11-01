@@ -520,11 +520,8 @@ if ($uri === '/admin/dashboard' && $method === 'GET') {
     requireAdmin();
     $summary = DashboardService::adminSummary();
     $periods = DashboardService::trafficPeriods();
+    // Dates and labels are already normalized by TrafficDailySeries.
     $chart = DashboardService::trafficChartLastDays(7);
-    foreach ($chart as &$pt) {
-        $pt['label'] = substr($pt['label'], 5);
-    }
-    unset($pt);
 
     $body = Layout::adminDashboardPage($summary, $periods, $chart);
     adminPage('داشبورد', 'dashboard', $body);
