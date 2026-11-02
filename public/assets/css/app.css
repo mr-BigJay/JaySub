@@ -2342,12 +2342,14 @@ body.modal-open { overflow: hidden; }
   font-size: 0.72rem;
 }
 
-/* Routing management */
-.routing-page {
+/* Routing / Outbound management */
+.routing-page,
+.outbound-page {
   overflow-x: clip;
   max-width: 100%;
 }
 .routing-page .routing-intro { margin-top: 0; word-break: break-word; }
+.outbound-page .routing-subtitle { font-size: 0.95rem; margin: 0.75rem 0 0.35rem; }
 .routing-grid {
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;
@@ -2531,4 +2533,114 @@ body.modal-open { overflow: hidden; }
 }
 @media (min-width: 769px) {
   .routing-rules-mobile { display: none !important; }
+}
+
+/* Outbound management & 3x-ui-like creation modal */
+.outbound-page-toolbar {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:1rem; margin-bottom:0.9rem; padding:0.3rem 0;
+}
+.outbound-page-title {font-size:1.16rem; font-weight:700; margin:0 0 0.25rem;}
+.outbound-page-toolbar p {margin:0; font-size:0.8rem;}
+.outbound-create-trigger {
+  flex-shrink:0; direction:ltr; font-weight:600; border-radius:7px;
+  background:#1868db; color:#fff; padding:0.68rem 1.1rem;
+}
+.outbound-safety-hint {margin:0 0 1rem; line-height:1.7; font-size:0.78rem;}
+.outbound-create-dialog {
+  position:fixed; inset:0; margin:auto; box-sizing:border-box; padding:0;
+  width:min(780px, calc(100vw - 22px)); max-width:none;
+  max-height:min(880px, calc(100dvh - 22px));
+  border:1px solid #353b49; border-radius:10px;
+  background:#292c34; color:#e3e6ed; box-shadow:0 28px 90px rgba(0,0,0,0.7);
+  overflow:hidden; direction:ltr; font-family:inherit;
+}
+.outbound-create-dialog::backdrop {background:rgba(0,0,0,0.74); backdrop-filter:blur(2px);}
+.outbound-create-dialog[open] {display:flex; flex-direction:column;}
+.outbound-create-dialog form {display:flex; flex-direction:column; min-height:0; flex:1;}
+.outbound-create-dialog [hidden] {display:none!important;}
+.outbound-modal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 24px 14px; flex-shrink:0;
+}
+.outbound-modal-header h2 {font-size:1rem; font-weight:600; margin:0;}
+.outbound-modal-close {
+  border:0; background:transparent; color:#9399a9; cursor:pointer;
+  padding:0 0.2rem; font-size:1.5rem; line-height:1;
+}
+.outbound-modal-close:hover {color:#fff;}
+.outbound-modal-tabs {
+  display:flex; align-items:center; gap:16px; margin:0 24px;
+  border-bottom:1px solid #41485a; flex-shrink:0;
+}
+.outbound-modal-tab {
+  position:relative; border:0; background:transparent; color:#c1c6d0;
+  cursor:pointer; padding:12px 0 13px; min-width:38px;
+  font:inherit; font-size:0.85rem;
+}
+.outbound-modal-tab.is-active {color:#378cff;}
+.outbound-modal-tab.is-active::after {
+  content:""; position:absolute; bottom:-1px; left:0; right:0;
+  height:2px; background:#277cff;
+}
+.outbound-modal-main {
+  flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+  padding:16px 56px 16px 24px; scrollbar-width:thin;
+}
+.outbound-form-row {
+  display:grid; grid-template-columns:minmax(130px, 200px) minmax(0,1fr);
+  gap:16px; align-items:center; min-height:42px; margin-bottom:14px;
+}
+.outbound-form-row > label:first-child {
+  font-size:0.85rem; text-align:right; color:#e1e5ee;
+}
+.outbound-form-row .ob-required {color:#f56e6e;}
+.outbound-create-dialog .ob-input, .outbound-create-dialog .ob-json-editor {
+  display:block; width:100%; box-sizing:border-box; min-width:0;
+  background:#252830; border:1px solid #535d72; color:#e5e9f4;
+  border-radius:6px; height:33px; padding:6px 11px; font:inherit;
+  font-size:0.86rem; direction:ltr;
+}
+.outbound-create-dialog .ob-input:focus, .outbound-create-dialog .ob-json-editor:focus {
+  outline:none; border-color:#277cff; box-shadow:0 0 0 1px rgba(39,124,255,.22);
+}
+.outbound-create-dialog .ob-input::placeholder {color:#6c7280;}
+.outbound-create-dialog select.ob-input {cursor:pointer; color-scheme:dark;}
+.outbound-create-dialog .ob-json-editor {
+  height:auto; min-height:420px; resize:vertical; line-height:1.6;
+  font-family:ui-monospace, SFMono-Regular, Consolas, monospace; font-size:0.83rem;
+}
+.ob-json-help {text-align:left; color:#a6afc2; font-size:0.74rem; margin:0 0 10px;}
+.ob-switch {display:inline-flex; align-items:center; cursor:pointer; width:45px;}
+.ob-switch input {position:absolute; opacity:0; width:1px; height:1px;}
+.ob-switch span {height:21px; width:43px; background:#60636b; border-radius:18px; position:relative; transition:background .15s;}
+.ob-switch span::before {content:""; position:absolute; left:3px; top:3px; width:15px; height:15px; border-radius:50%; background:#fff; transition:transform .15s;}
+.ob-switch input:checked + span {background:#207aef;}
+.ob-switch input:checked + span::before {transform:translateX(22px);}
+.ob-switch input:focus-visible + span {outline:2px solid #60a5fa; outline-offset:2px;}
+.ob-security-buttons {display:inline-flex; width:max-content; max-width:100%; border:1px solid #586075; border-radius:6px; overflow:hidden;}
+.ob-security-buttons button {font:inherit; font-size:.82rem; color:#d8deec; background:#252830; border:0; border-right:1px solid #586075; padding:6px 16px; cursor:pointer;}
+.ob-security-buttons button:last-child {border-right:0;}
+.ob-security-buttons button.is-active {background:#1868db; color:#fff;}
+.ob-small-plus {width:26px; height:26px; border:0; border-radius:4px; cursor:pointer; font-size:1.1rem; background:#2078f0; color:white;}
+.ob-modal-error {border:1px solid #ff7676; background:#49252c; border-radius:6px; color:#ffe5e9; padding:8px 10px; font-size:0.78rem; margin:1rem 0;}
+.outbound-modal-footer {
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+  border-top:1px solid #3c4352; padding:12px 24px;
+  background:#292c34; flex-shrink:0;
+}
+.outbound-modal-footer .btn {min-height:36px; font-size:0.8rem;}
+.ob-modal-footnote {font-size:0.71rem; color:#aeb8ca; margin-inline-start:auto;}
+@media (max-width:620px) {
+  .outbound-page-toolbar {align-items:stretch; flex-direction:column;}
+  .outbound-create-trigger {align-self:stretch;}
+  .outbound-create-dialog {width:calc(100vw - 12px); max-height:calc(100dvh - 12px);}
+  .outbound-modal-header {padding:13px 14px;}
+  .outbound-modal-tabs {margin:0 14px;}
+  .outbound-modal-main {padding:12px 14px;}
+  .outbound-form-row {grid-template-columns:1fr; gap:5px; margin-bottom:12px;}
+  .outbound-form-row > label:first-child {text-align:left;}
+  .outbound-create-dialog .ob-input {height:39px;}
+  .outbound-modal-footer {padding:12px 14px;}
+  .ob-modal-footnote {flex-basis:100%; text-align:center;}
 }

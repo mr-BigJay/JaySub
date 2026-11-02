@@ -134,6 +134,11 @@ final class XraySettingJson
         }
     }
 
+    public static function compareStructurePublic(mixed $before, mixed $after, string $path): ?string
+    {
+        return self::compareStructure($before, $after, $path);
+    }
+
     private static function compareStructure(mixed $before, mixed $after, string $path): ?string
     {
         if ($before === $after) {
