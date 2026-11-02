@@ -95,13 +95,15 @@
       if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id)) {
         throw new Error('Enter a valid UUID');
       }
-      const user = protocol === 'vless'
-        ? { id, encryption: value('ob-encryption') || 'none' }
-        : { id, alterId: 0, security: value('ob-vmess-security') || 'auto' };
-      if (protocol === 'vless' && value('ob-reverse-tag')) {
-        user.reverseTag = value('ob-reverse-tag');
+      if (protocol === 'vless') {
+        // 3x-ui v3.4 VLESS outbound wire settings are flat; VMess uses vnext.
+        node.settings = { address, port, id, flow: '', encryption: value('ob-encryption') || 'none' };
+        if (value('ob-reverse-tag')) node.settings.reverse = { tag: value('ob-reverse-tag') };
+      } else {
+        node.settings = { vnext: [{ address, port, users: [
+          { id, security: value('ob-vmess-security') || 'auto' }
+        ] }] };
       }
-      node.settings = { vnext: [{ address, port, users: [user] }] };
     } else if (protocol === 'trojan') {
       node.settings = { servers: [{ address, port, password: requireField('ob-password', 'Password') }] };
     } else if (protocol === 'shadowsocks') {
@@ -183,9 +185,9 @@
   const switchTab = (next) => {
     report();
     if (next === 'json' && activeTab === 'basics' && !jsonChanged) {
-      try { jsonEditor.value = jsonStringify(buildBasicOutbound()); } catch (ex) {
-        report(ex.message);
-        return;
+      // Allow opening the JSON tab even if the Basics form is incomplete.
+      try { jsonEditor.value = jsonStringify(buildBasicOutbound()); } catch {
+        jsonEditor.value = '';
       }
     }
     activeTab = next;
