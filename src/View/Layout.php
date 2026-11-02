@@ -104,7 +104,8 @@ final class Layout
         $cssHref = Assets::url('css/app.css');
         $jsSrc = Assets::url('js/app.js');
         $outboundEditorScript = $active === 'outbounds'
-            ? '<script src="' . Assets::url('js/outbound-modal.js') . '" defer></script>'
+            ? '<script src="' . Assets::url('js/outbound-import.js') . '" defer></script>'
+                . '<script src="' . Assets::url('js/outbound-modal.js') . '" defer></script>'
             : '';
         $tehranNow = Format::tehranNow();
         $tehranTime = $tehranNow->format('H:i');
@@ -2003,6 +2004,11 @@ HTML;
           </div>
         </div>
         <div id="outbound-json-tab" role="tabpanel" aria-labelledby="outbound-tab-json" hidden>
+          <div class="ob-import-row" dir="ltr">
+            <input type="text" id="ob-import-link" class="ob-import-link" spellcheck="false" autocomplete="off" aria-label="Connection share link" placeholder="vmess://  vless://  trojan://  ss://  hysteria2://  wireguard://">
+            <button type="button" class="ob-import-button" id="ob-import-button">Import</button>
+          </div>
+          <p class="ob-import-note" id="ob-import-note">Import: VLESS، VMess، Trojan و Shadowsocks. تبدیل لینک روی مرورگر انجام می‌شود و تنظیمات بعد از بررسی قابل ویرایش‌اند.</p>
           <p class="ob-json-help">Xray outbound JSON — اشیای خالی {} بدون تبدیل به [] حفظ می‌شوند.</p>
           <textarea id="ob-json-editor" class="ob-json-editor" spellcheck="false" aria-label="Outbound JSON" dir="ltr" rows="22"></textarea>
         </div>
