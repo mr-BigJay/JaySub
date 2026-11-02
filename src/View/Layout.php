@@ -17,8 +17,8 @@ final class Layout
         'dashboard' => 'داشبورد',
         'users' => 'کاربران',
         'panels' => 'پنل‌های XUI',
-        'routing' => 'مسیریابی',
         'outbounds' => 'اوتباند',
+        'routing' => 'مسیریابی',
         'services' => 'سرویس‌ها',
         'reports' => 'گزارش مصرف',
         'notifications' => 'اعلان‌ها',
@@ -103,6 +103,9 @@ final class Layout
         $criticalCss = self::CRITICAL_CSS;
         $cssHref = Assets::url('css/app.css');
         $jsSrc = Assets::url('js/app.js');
+        $outboundEditorScript = $active === 'outbounds'
+            ? '<script src="' . Assets::url('js/outbound-modal.js') . '" defer></script>'
+            : '';
         $tehranNow = Format::tehranNow();
         $tehranTime = $tehranNow->format('H:i');
         $tehranIso = $tehranNow->format('c');
@@ -144,6 +147,7 @@ final class Layout
 {$menuSheet}
 <nav class="bottom-nav admin-bottom-nav">{$bottom}</nav>
 <script src="{$jsSrc}" defer></script>
+{$outboundEditorScript}
 </body>
 </html>
 HTML;
@@ -1789,27 +1793,33 @@ HTML;
     {
         $csrf = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
         $persistHint = OutboundSaveGuard::PERSIST_ENABLED
-            ? 'ذخیره در Backend فعال است.'
-            : 'ذخیره در Backend غیرفعال است — فقط مشاهده و پیش‌نمایش.';
+            ? 'ذخیره در پنل‌های 3x-ui فعال است.'
+            : 'حالت آزمایشی: مشاهده و پیش‌نمایش فعال است، ذخیره واقعی تا تأیید ایمنی قفل است.';
 
         return <<<HTML
 <div class="outbound-page" dir="rtl" data-csrf="{$csrf}">
-  <p class="muted routing-intro">مدیریت <code>xraySetting.outbounds</code> پنل‌های 3x-ui — {$persistHint}</p>
+  <div class="outbound-page-toolbar">
+    <div>
+      <h2 class="outbound-page-title">مدیریت اوتباند پنل‌های 3x-ui</h2>
+      <p class="muted">ایجاد یک Outbound و ارسال آن به همه یا پنل‌های انتخاب‌شده، با پیش‌نمایش مستقل هر پنل</p>
+    </div>
+    <button type="button" class="btn btn-primary outbound-create-trigger" id="outbound-add-btn">＋ Outbounds</button>
+  </div>
+  <p class="muted routing-intro outbound-safety-hint">{$persistHint}</p>
   <div class="routing-grid">
     <section class="card routing-panels-card">
       <div class="routing-panels-head">
-        <h2 class="card-title">پنل‌ها</h2>
+        <h2 class="card-title">پنل‌های مقصد</h2>
         <label class="routing-select-all"><input type="checkbox" id="outbound-select-all" /> انتخاب همه</label>
       </div>
       <div id="outbound-panel-list" class="routing-panel-list muted">در حال بارگذاری…</div>
     </section>
     <section class="card routing-editor-card">
       <h2 class="card-title">Outboundهای پنل</h2>
-      <div id="outbound-editor-status" class="muted">یک پنل را انتخاب کنید.</div>
+      <div id="outbound-editor-status" class="muted">برای مشاهده Outboundهای فعلی، یک پنل را انتخاب کنید.</div>
       <div id="outbound-list-wrap" class="routing-rules-wrap" hidden>
         <div class="routing-toolbar">
-          <button type="button" class="btn btn-primary btn small routing-toolbar-btn" id="outbound-add-btn">+ افزودن JSON</button>
-          <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="outbound-save-one">ذخیره در 3x-ui</button>
+          <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="outbound-save-one">ذخیره Outbound آماده‌شده روی این پنل</button>
         </div>
         <h3 class="card-title routing-subtitle">قالب (xraySetting)</h3>
         <div class="table-scroll">
@@ -1842,27 +1852,155 @@ HTML;
     <div id="outbound-bulk-results" class="routing-bulk-results" hidden></div>
   </section>
   <section class="card routing-bulk-card">
-    <h2 class="card-title">اعمال JSON جدید روی پنل‌های انتخاب‌شده</h2>
+    <h2 class="card-title">JSON آماده‌شده برای پنل‌های انتخاب‌شده</h2>
     <div class="routing-bulk-form stack">
-      <label>Outbound JSON (type-safe)
-        <textarea id="outbound-bulk-json" class="input" rows="8" dir="ltr" placeholder='{"tag":"new-proxy","protocol":"vless","settings":{},"streamSettings":{"wsSettings":{"headers":{}}}}'></textarea>
+      <label>Outbound JSON (بدون تبدیل نوع {} به [])
+        <textarea id="outbound-bulk-json" class="input" rows="7" dir="ltr" spellcheck="false" placeholder='{"tag":"new-proxy","protocol":"vless","settings":{},"streamSettings":{"wsSettings":{"headers":{}}}}'></textarea>
       </label>
       <div class="routing-bulk-actions">
-        <button type="button" class="btn btn-secondary" id="outbound-bulk-json-preview">پیش‌نمایش</button>
-        <button type="button" class="btn btn-primary" id="outbound-bulk-json-apply">اعمال</button>
+        <button type="button" class="btn btn-secondary" id="outbound-bulk-json-preview">پیش‌نمایش روی همه پنل‌های انتخاب‌شده</button>
+        <button type="button" class="btn btn-primary" id="outbound-bulk-json-apply">اعمال گروهی</button>
       </div>
     </div>
     <div id="outbound-bulk-json-results" class="routing-bulk-results" hidden></div>
   </section>
-  <dialog id="outbound-json-dialog" class="routing-dialog">
-    <form method="dialog" class="stack" id="outbound-json-form">
-      <h3 class="card-title">Outbound جدید (JSON)</h3>
-      <label>JSON Xray
-        <textarea id="outbound-json-input" class="input" rows="10" dir="ltr" placeholder='{"tag":"my-out","protocol":"vless",...}'></textarea>
-      </label>
-      <div class="routing-dialog-actions">
-        <button type="submit" class="btn btn-primary" value="save">افزودن به لیست محلی</button>
-        <button type="button" class="btn btn-secondary" data-close-outbound-dialog>انصراف</button>
+
+  <dialog id="outbound-create-dialog" class="outbound-create-dialog" dir="ltr" aria-labelledby="outbound-modal-title">
+    <form id="outbound-create-form" novalidate>
+      <div class="outbound-modal-header">
+        <h2 id="outbound-modal-title">+ Outbounds</h2>
+        <button type="button" class="outbound-modal-close" id="outbound-modal-close" aria-label="Close dialog">×</button>
+      </div>
+      <div class="outbound-modal-tabs" role="tablist" aria-label="Outbound editor">
+        <button type="button" id="outbound-tab-basics" class="outbound-modal-tab is-active" role="tab" aria-selected="true" aria-controls="outbound-basics">Basics</button>
+        <button type="button" id="outbound-tab-json" class="outbound-modal-tab" role="tab" aria-selected="false" aria-controls="outbound-json-tab">JSON</button>
+      </div>
+      <div class="outbound-modal-main">
+        <div id="outbound-basics" role="tabpanel" aria-labelledby="outbound-tab-basics">
+          <div class="outbound-form-row">
+            <label for="ob-protocol">Protocol</label>
+            <select id="ob-protocol" class="ob-input">
+              <option value="vless">vless</option><option value="vmess">vmess</option>
+              <option value="trojan">trojan</option><option value="shadowsocks">shadowsocks</option>
+              <option value="socks">socks</option><option value="http">http</option>
+              <option value="freedom">freedom</option><option value="blackhole">blackhole</option>
+            </select>
+          </div>
+          <div class="outbound-form-row">
+            <label for="ob-tag"><span class="ob-required">*</span> Tag</label>
+            <input id="ob-tag" class="ob-input" placeholder="unique-tag" required maxlength="120" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-send-through">Send Through</label>
+            <input id="ob-send-through" class="ob-input" placeholder="local IP (optional)" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-address"><span class="ob-required">*</span> Address</label>
+            <input id="ob-address" class="ob-input" placeholder="server.example.com" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-port"><span class="ob-required">*</span> Port</label>
+            <input id="ob-port" class="ob-input" type="number" min="1" max="65535" value="443">
+          </div>
+          <div class="outbound-form-row ob-account-id">
+            <label for="ob-id">ID</label>
+            <input id="ob-id" class="ob-input" placeholder="UUID" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-vless-only">
+            <label for="ob-encryption">Encryption</label>
+            <input id="ob-encryption" class="ob-input" value="none" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-vmess-only" hidden>
+            <label for="ob-vmess-security">Security</label>
+            <select id="ob-vmess-security" class="ob-input"><option value="auto">auto</option><option value="aes-128-gcm">aes-128-gcm</option><option value="chacha20-poly1305">chacha20-poly1305</option><option value="none">none</option></select>
+          </div>
+          <div class="outbound-form-row ob-credential" hidden>
+            <label for="ob-password">Password</label>
+            <input id="ob-password" class="ob-input" autocomplete="new-password" type="password">
+          </div>
+          <div class="outbound-form-row ob-ss-method" hidden>
+            <label for="ob-method">Method</label>
+            <select id="ob-method" class="ob-input"><option>aes-128-gcm</option><option>aes-256-gcm</option><option>chacha20-poly1305</option><option>2022-blake3-aes-128-gcm</option><option>2022-blake3-aes-256-gcm</option></select>
+          </div>
+          <div class="outbound-form-row ob-vless-only">
+            <label for="ob-reverse-tag">Reverse tag</label>
+            <input id="ob-reverse-tag" class="ob-input" placeholder="optional">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-network">Transmission</label>
+            <select id="ob-network" class="ob-input">
+              <option value="tcp">RAW</option><option value="ws">WebSocket (WS)</option>
+              <option value="grpc">gRPC</option><option value="httpupgrade">HTTPUpgrade</option>
+              <option value="xhttp">XHTTP</option>
+            </select>
+          </div>
+          <div class="outbound-form-row ob-tcp-only">
+            <label for="ob-http-obfs">HTTP Obfuscation</label>
+            <label class="ob-switch"><input type="checkbox" id="ob-http-obfs"><span></span></label>
+          </div>
+          <div class="outbound-form-row ob-http-obfs-row" hidden>
+            <label for="ob-obfs-host">HTTP Host</label>
+            <input id="ob-obfs-host" class="ob-input" placeholder="optional host">
+          </div>
+          <div class="outbound-form-row ob-network-options" hidden>
+            <label for="ob-path">Path / Service Name</label>
+            <input id="ob-path" class="ob-input" placeholder="/" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-network-options" hidden>
+            <label for="ob-host">Host / Authority</label>
+            <input id="ob-host" class="ob-input" placeholder="optional">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label>Security</label>
+            <div class="ob-security-buttons" role="group" aria-label="Connection Security">
+              <button type="button" class="is-active" data-security="none" aria-pressed="true">None</button>
+              <button type="button" data-security="tls" aria-pressed="false">TLS</button>
+              <button type="button" data-security="reality" aria-pressed="false">Reality</button>
+            </div>
+          </div>
+          <div class="outbound-form-row ob-security-options" hidden>
+            <label for="ob-sni">SNI / Server Name</label>
+            <input id="ob-sni" class="ob-input" placeholder="example.com">
+          </div>
+          <div class="outbound-form-row ob-security-options" hidden>
+            <label for="ob-fingerprint">Fingerprint</label>
+            <select id="ob-fingerprint" class="ob-input"><option value="chrome">chrome</option><option value="firefox">firefox</option><option value="safari">safari</option><option value="random">random</option></select>
+          </div>
+          <div class="outbound-form-row ob-reality-only" hidden>
+            <label for="ob-public-key">Public Key</label>
+            <input id="ob-public-key" class="ob-input" placeholder="Reality publicKey">
+          </div>
+          <div class="outbound-form-row ob-reality-only" hidden>
+            <label for="ob-short-id">Short ID</label>
+            <input id="ob-short-id" class="ob-input" placeholder="shortId">
+          </div>
+          <div class="outbound-form-row ob-reality-only" hidden>
+            <label for="ob-spider-x">Spider X</label>
+            <input id="ob-spider-x" class="ob-input" value="/">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-sockopts">Sockopts</label>
+            <label class="ob-switch"><input type="checkbox" id="ob-sockopts"><span></span></label>
+          </div>
+          <div class="outbound-form-row ob-sockopts-row" hidden>
+            <label for="ob-tcp-fast-open">TCP Fast Open</label>
+            <label class="ob-switch"><input type="checkbox" id="ob-tcp-fast-open"><span></span></label>
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label>TCP Masks</label>
+            <button type="button" class="ob-small-plus" id="ob-tcp-masks" title="Edit advanced TCP options in JSON">＋</button>
+          </div>
+        </div>
+        <div id="outbound-json-tab" role="tabpanel" aria-labelledby="outbound-tab-json" hidden>
+          <p class="ob-json-help">Xray outbound JSON — اشیای خالی {} بدون تبدیل به [] حفظ می‌شوند.</p>
+          <textarea id="ob-json-editor" class="ob-json-editor" spellcheck="false" aria-label="Outbound JSON" dir="ltr" rows="22"></textarea>
+        </div>
+        <p id="ob-modal-error" class="ob-modal-error" role="alert" hidden></p>
+      </div>
+      <div class="outbound-modal-footer" dir="rtl">
+        <button type="submit" class="btn btn-primary" id="ob-preview-submit">تأیید و پیش‌نمایش برای پنل‌های انتخاب‌شده</button>
+        <button type="button" class="btn btn-secondary" id="ob-modal-cancel">انصراف</button>
+        <span class="ob-modal-footnote">پیش‌نمایش بدون تغییر روی سرورها انجام می‌شود</span>
       </div>
     </form>
   </dialog>
