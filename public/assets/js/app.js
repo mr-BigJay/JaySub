@@ -799,7 +799,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fetchJson('/admin/routing/api/panels')
       .then((res) => {
-        panels = (res.panels || []).map((p) => ({ ...p, _checked: false }));
+        // Default to all connected panels for bulk preview; operators may opt out.
+        panels = (res.panels || []).map((p) => ({ ...p, _checked: true }));
+        if (selectAllEl) selectAllEl.checked = panels.length > 0;
         renderPanelList();
       })
       .catch(() => {
@@ -819,7 +821,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const subscriptionBody = document.getElementById('outbound-subscription-body');
     const subscriptionCards = document.getElementById('outbound-subscription-cards');
     const bulkResults = document.getElementById('outbound-bulk-results');
-    const jsonDialog = document.getElementById('outbound-json-dialog');
     let panels = [];
     let activePanelId = 0;
     let pendingOutboundJson = '';
@@ -958,21 +959,19 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
-    document.getElementById('outbound-add-btn')?.addEventListener('click', () => jsonDialog?.showModal());
-    document.getElementById('outbound-json-form')?.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const raw = document.getElementById('outbound-json-input')?.value || '';
-      try {
-        JSON.parse(raw);
-        pendingOutboundJson = raw;
-        jsonDialog?.close();
-        if (editorStatus) editorStatus.textContent = 'Outbound آماده ذخیره (محلی) — دکمه ذخیره را بزنید';
-      } catch {
-        alert('JSON نامعتبر');
-      }
+    document.getElementById('outbound-add-btn')?.addEventListener('click', () => {
+      window.JaySubOutboundModal?.open();
     });
-    document.querySelectorAll('[data-close-outbound-dialog]').forEach((el) => {
-      el.addEventListener('click', () => jsonDialog?.close());
+    // Dedicated Basics/JSON editor prepares the same raw JSON used by the
+    // existing CSRF-protected preview and guarded multi-panel apply routes.
+    document.addEventListener('jaysub:outbound-built', (event) => {
+      const raw = event.detail?.json;
+      if (typeof raw !== 'string' || !raw.trim()) return;
+      pendingOutboundJson = raw;
+      const bulkInput = document.getElementById('outbound-bulk-json');
+      if (bulkInput) bulkInput.value = raw;
+      if (editorStatus) editorStatus.textContent = 'Outbound آماده شد؛ پیش‌نمایش پنل‌های انتخاب‌شده را ببینید.';
+      document.getElementById('outbound-bulk-json-preview')?.click();
     });
 
     document.getElementById('outbound-save-one')?.addEventListener('click', () => {
