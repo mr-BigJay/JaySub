@@ -2644,3 +2644,64 @@ body.modal-open { overflow: hidden; }
   .outbound-modal-footer {padding:12px 14px;}
   .ob-modal-footnote {flex-basis:100%; text-align:center;}
 }
+
+
+/* Match 3x-ui Outbounds → JSON → Import toolbar. */
+.outbound-create-dialog .ob-import-row {
+  display: flex;
+  gap: 0;
+  width: 100%;
+  margin: 0 0 10px;
+  direction: ltr;
+}
+.outbound-create-dialog .ob-import-link {
+  min-width: 0;
+  flex: 1;
+  box-sizing: border-box;
+  height: 35px;
+  padding: 7px 11px;
+  background: #252830;
+  border: 1px solid #535d72;
+  border-radius: 6px 0 0 6px;
+  color: #e5e9f4;
+  outline: none;
+  direction: ltr;
+  font: inherit;
+  font-size: 0.82rem;
+}
+.outbound-create-dialog .ob-import-link:focus {
+  border-color: #277cff;
+  box-shadow: 0 0 0 1px rgba(39, 124, 255, .2);
+}
+.outbound-create-dialog .ob-import-link::placeholder {
+  color: #848995;
+}
+.outbound-create-dialog .ob-import-button {
+  flex: 0 0 auto;
+  height: 35px;
+  min-width: 76px;
+  border: 1px solid #1868db;
+  border-radius: 0 6px 6px 0;
+  color: #fff;
+  background: #1868db;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.outbound-create-dialog .ob-import-button:hover {
+  background: #287cf7;
+}
+.outbound-create-dialog .ob-import-button:focus-visible {
+  outline: 2px solid #8fc3ff;
+  outline-offset: 2px;
+}
+.outbound-create-dialog .ob-import-note {
+  font-size: 0.72rem;
+  color: #a6afc2;
+  line-height: 1.6;
+  margin: 0 0 9px;
+  text-align: left;
+}
+.outbound-create-dialog .ob-import-failed { color: #ff9494; }
+.outbound-create-dialog .ob-import-success { color: #80e0b3; }
