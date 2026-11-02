@@ -133,7 +133,7 @@
     const stream = {};
     const securityType = query.get('security') || (protocol === 'trojan' ? 'tls' : 'none');
     transport(stream, query.get('type') || query.get('network') || 'tcp', {
-      path: query.get('path'),
+      path: query.get('serviceName') || query.get('path'),
       host: query.get('host'),
       headerType: query.get('headerType')
     });
