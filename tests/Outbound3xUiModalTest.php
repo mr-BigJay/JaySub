@@ -47,6 +47,20 @@ final class Outbound3xUiModalTest extends TestCase
         self::assertStringContainsString('outbound-bulk-json-preview', $appScript);
     }
 
+    public function testJsonTabHasShareLinkImportInputAndButton(): void
+    {
+        $html = Layout::adminOutboundsPage('csrf-test-token');
+        self::assertStringContainsString('id="ob-import-link"', $html);
+        self::assertStringContainsString('id="ob-import-button"', $html);
+        self::assertStringContainsString('>Import</button>', $html);
+
+        $loader = (string) file_get_contents(dirname(__DIR__) . '/src/View/Layout.php');
+        $modal = (string) file_get_contents(dirname(__DIR__) . '/public/assets/js/outbound-modal.js');
+        self::assertStringContainsString("Assets::url('js/outbound-import.js')", $loader);
+        self::assertStringContainsString('JaySubOutboundImport.parse(', $modal);
+        self::assertStringContainsString('jsonEditor.value = validated', $modal);
+    }
+
     public function testNoProductionWriteGateIsEnabled(): void
     {
         self::assertFalse(OutboundSaveGuard::PERSIST_ENABLED);

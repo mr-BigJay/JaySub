@@ -12,6 +12,9 @@
   const checked = (id) => !!byId(id)?.checked;
   const error = byId('ob-modal-error');
   const jsonEditor = byId('ob-json-editor');
+  const importInput = byId('ob-import-link');
+  const importButton = byId('ob-import-button');
+  const importNote = byId('ob-import-note');
   let activeTab = 'basics';
   let security = 'none';
   let jsonChanged = false;
@@ -200,10 +203,50 @@
     }
   };
 
+  const importShareLink = () => {
+    report();
+    importNote?.classList.remove('ob-import-failed', 'ob-import-success');
+    try {
+      if (!window.JaySubOutboundImport?.parse) throw new Error('Import parser is unavailable');
+      const outbound = window.JaySubOutboundImport.parse(importInput?.value || '');
+      const validated = jsonStringify(outbound);
+      validateJson(validated);
+      // Commit editor changes only after the entire import has succeeded.
+      jsonEditor.value = validated;
+      jsonChanged = true;
+      if (importNote) {
+        importNote.textContent = 'Imported ' + outbound.protocol + ' as "' + outbound.tag
+          + '". Review JSON before confirming; no server has been modified.';
+        importNote.classList.add('ob-import-success');
+      }
+      jsonEditor.focus();
+    } catch (ex) {
+      const msg = ex.message || String(ex);
+      if (importNote) {
+        importNote.textContent = msg;
+        importNote.classList.add('ob-import-failed');
+      }
+      report(msg);
+    }
+  };
+
+  importButton?.addEventListener('click', importShareLink);
+  importInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      importShareLink();
+    }
+  });
+
   const open = () => {
     report();
     form.reset();
     jsonEditor.value = '';
+    if (importInput) importInput.value = '';
+    if (importNote) {
+      importNote.textContent = 'Import: VLESS, VMess, Trojan and Shadowsocks links. Conversion runs locally in your browser.';
+      importNote.classList.remove('ob-import-failed', 'ob-import-success');
+    }
     jsonChanged = false;
     security = 'none';
     changeSecurity('none');
