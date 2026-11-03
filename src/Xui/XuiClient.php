@@ -8,7 +8,7 @@ namespace App\Xui;
  * HTTP client for MHSanaei/3x-ui panel API (OpenAPI: /panel/api/*).
  * Auth: Authorization: Bearer <api token>
  */
-final class XuiClient
+final class XuiClient implements XrayPanelClientInterface
 {
     public function __construct(
         private readonly string $baseUrl,
@@ -30,6 +30,43 @@ final class XuiClient
     public function listInbounds(): array
     {
         return $this->request('GET', '/panel/api/inbounds/list');
+    }
+
+    /** POST /panel/api/xray/ — full template + inbound tags (3x-ui v3.4.2). */
+    public function fetchXrayTemplate(): array
+    {
+        $result = $this->requestWithObjectRoot('POST', '/panel/api/xray/', []);
+        if (!($result['ok'] ?? false)) {
+            return $result;
+        }
+
+        return [
+            'ok' => true,
+            'data' => is_array($result['data_array'] ?? null) ? $result['data_array'] : [],
+            'data_object' => $result['data_object'] ?? null,
+            'http_code' => $result['http_code'] ?? null,
+        ];
+    }
+
+    /**
+     * POST /panel/api/xray/update — form-urlencoded xraySetting JSON string.
+     *
+     * @return array{ok: bool, data?: mixed, error?: string, http_code?: int}
+     */
+    public function updateXrayTemplate(string $xraySettingJson, ?string $outboundTestUrl = null): array
+    {
+        $fields = ['xraySetting' => $xraySettingJson];
+        if ($outboundTestUrl !== null && $outboundTestUrl !== '') {
+            $fields['outboundTestUrl'] = $outboundTestUrl;
+        }
+
+        return $this->requestForm('POST', '/panel/api/xray/update', $fields);
+    }
+
+    /** GET /panel/api/xray/getXrayResult — recent Xray process output (startup errors). */
+    public function getXrayResult(): array
+    {
+        return $this->request('GET', '/panel/api/xray/getXrayResult');
     }
 
     /** @return array{ok: bool, data?: mixed, error?: string} */
@@ -204,6 +241,61 @@ final class XuiClient
     }
 
     /**
+     * @param array<string, string> $fields
+     * @return array{ok: bool, data?: mixed, error?: string, http_code?: int}
+     */
+    private function requestForm(string $method, string $path, array $fields): array
+    {
+        $url = rtrim($this->baseUrl, '/') . $path;
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init failed'];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $this->timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $this->apiToken,
+                'X-Requested-With: XMLHttpRequest',
+                'Content-Type: application/x-www-form-urlencoded',
+            ],
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_POSTFIELDS => http_build_query($fields),
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false) {
+            return ['ok' => false, 'error' => $curlError ?: 'Request failed', 'http_code' => $httpCode];
+        }
+
+        $decoded = json_decode($response, true);
+        if (!is_array($decoded)) {
+            return [
+                'ok' => false,
+                'error' => $this->describeNonJsonResponse($httpCode, (string) $response),
+                'http_code' => $httpCode,
+            ];
+        }
+
+        if ($httpCode >= 400 || ($decoded['success'] ?? true) === false) {
+            $msg = is_string($decoded['msg'] ?? null) ? $decoded['msg'] : 'API error';
+
+            return ['ok' => false, 'error' => $msg, 'data' => $decoded, 'http_code' => $httpCode];
+        }
+
+        return ['ok' => true, 'data' => $decoded, 'http_code' => $httpCode];
+    }
+
+    /**
      * @param array<string, mixed>|null $body
      * @return array{ok: bool, data?: mixed, error?: string, http_code?: int}
      */
@@ -263,6 +355,79 @@ final class XuiClient
         }
 
         return ['ok' => true, 'data' => $decoded, 'http_code' => $httpCode];
+    }
+
+    /**
+     * @param array<string, mixed>|null $body
+     * @return array{
+     *   ok: bool,
+     *   data_array?: array<string, mixed>,
+     *   data_object?: object,
+     *   error?: string,
+     *   http_code?: int
+     * }
+     */
+    private function requestWithObjectRoot(string $method, string $path, ?array $body = null): array
+    {
+        $url = rtrim($this->baseUrl, '/') . $path;
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['ok' => false, 'error' => 'curl_init failed'];
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'Authorization: Bearer ' . $this->apiToken,
+            'X-Requested-With: XMLHttpRequest',
+        ];
+        if ($body !== null) {
+            $headers[] = 'Content-Type: application/json';
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $this->timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+        if ($body !== null) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+        }
+
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false) {
+            return ['ok' => false, 'error' => $curlError ?: 'Request failed', 'http_code' => $httpCode];
+        }
+
+        $decodedArray = json_decode($response, true);
+        $decodedObject = json_decode($response, false);
+        if (!is_array($decodedArray) || !is_object($decodedObject)) {
+            return [
+                'ok' => false,
+                'error' => $this->describeNonJsonResponse($httpCode, (string) $response),
+                'http_code' => $httpCode,
+            ];
+        }
+
+        if ($httpCode >= 400 || ($decodedArray['success'] ?? true) === false) {
+            $msg = is_string($decodedArray['msg'] ?? null) ? $decodedArray['msg'] : 'API error';
+
+            return ['ok' => false, 'error' => $msg, 'data_array' => $decodedArray, 'http_code' => $httpCode];
+        }
+
+        return [
+            'ok' => true,
+            'data_array' => $decodedArray,
+            'data_object' => $decodedObject,
+            'http_code' => $httpCode,
+        ];
     }
 
     private function describeNonJsonResponse(int $httpCode, string $response): string

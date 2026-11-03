@@ -6,6 +6,7 @@ namespace App\View;
 
 use App\Core\Csrf;
 use App\Core\Format;
+use App\Services\OutboundSaveGuard;
 
 final class Layout
 {
@@ -16,6 +17,8 @@ final class Layout
         'dashboard' => 'داشبورد',
         'users' => 'کاربران',
         'panels' => 'پنل‌های XUI',
+        'outbounds' => 'اوتباند',
+        'routing' => 'مسیریابی',
         'services' => 'سرویس‌ها',
         'reports' => 'گزارش مصرف',
         'notifications' => 'اعلان‌ها',
@@ -49,6 +52,8 @@ final class Layout
             'dashboard' => '/admin/dashboard',
             'users' => '/admin/customers',
             'panels' => '/admin/panels',
+            'routing' => '/admin/routing',
+            'outbounds' => '/admin/outbounds',
             'services' => '/admin/services',
             'reports' => '/admin/reports',
             'notifications' => '/admin/notifications',
@@ -98,6 +103,10 @@ final class Layout
         $criticalCss = self::CRITICAL_CSS;
         $cssHref = Assets::url('css/app.css');
         $jsSrc = Assets::url('js/app.js');
+        $outboundEditorScript = $active === 'outbounds'
+            ? '<script src="' . Assets::url('js/outbound-import.js') . '" defer></script>'
+                . '<script src="' . Assets::url('js/outbound-modal.js') . '" defer></script>'
+            : '';
         $tehranNow = Format::tehranNow();
         $tehranTime = $tehranNow->format('H:i');
         $tehranIso = $tehranNow->format('c');
@@ -139,6 +148,7 @@ final class Layout
 {$menuSheet}
 <nav class="bottom-nav admin-bottom-nav">{$bottom}</nav>
 <script src="{$jsSrc}" defer></script>
+{$outboundEditorScript}
 </body>
 </html>
 HTML;
@@ -205,30 +215,40 @@ HTML;
         return '<div class="action-grid hub-grid">' . $tilesHtml . '</div>';
     }
 
-    /** @param list<array{label:string,bytes:int}> $points */
+    /** @param list<array{label:string,bytes:?int,date?:string,status?:string,detail?:string}> $points */
     public static function barChart(array $points): string
     {
         if ($points === []) {
-            return '<p class="muted chart-empty">هنوز دادهٔ مصرف ثبت نشده. پس از sync کارگر، نمودار پر می‌شود.</p>';
+            return '<p class="muted chart-empty">هنوز دادهٔ مصرف ثبت نشده است.</p>';
         }
-        $max = max(array_column($points, 'bytes'));
+
+        $max = 0;
+        foreach ($points as $point) {
+            $max = max($max, max(0, (int) ($point['bytes'] ?? 0)));
+        }
+
         $bars = '';
-        foreach ($points as $p) {
-            $bytes = (int) $p['bytes'];
-            if ($max <= 0 || $bytes <= 0) {
-                $hPx = 0;
-            } else {
-                // Pixel heights are computed vs a fixed plot; CSS flex track scales visually.
-                $hPx = max(4, (int) round(($bytes / $max) * 100));
-            }
-            $barCls = 'chart-bar' . ($hPx <= 0 ? ' chart-bar-zero' : '');
-            $bars .= '<div class="chart-bar-wrap">'
-                . '<div class="chart-bar-track">'
-                . '<div class="' . $barCls . '" style="height:' . $hPx . '%"></div>'
-                . '</div>'
-                . '<span class="chart-lbl">' . htmlspecialchars($p['label'], ENT_QUOTES, 'UTF-8') . '</span>'
+        foreach ($points as $point) {
+            $bytes = isset($point['bytes']) ? max(0, (int) $point['bytes']) : null;
+            $date = (string) ($point['date'] ?? $point['label']);
+            $label = (string) $point['label'];
+            $detail = (string) ($point['detail'] ?? 'مصرف ثبت‌شده');
+            $amount = $bytes === null ? 'داده کافی نیست' : Format::usageVolume($bytes);
+            $tooltip = htmlspecialchars($date . ' — ' . $amount . '؛ ' . $detail, ENT_QUOTES, 'UTF-8');
+            $safeLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+
+            $height = $max > 0 && $bytes !== null && $bytes > 0
+                ? max(4, (int) round(($bytes / $max) * 100))
+                : 0;
+            $classes = 'chart-bar' . ($height <= 0 ? ' chart-bar-zero' : '');
+            $wrap = 'chart-bar-wrap' . ($bytes === null ? ' chart-bar-missing' : '');
+            $bars .= '<div class="' . $wrap . '" tabindex="0" role="img" title="' . $tooltip
+                . '" aria-label="' . $tooltip . '" data-tooltip="' . $tooltip . '">'
+                . '<div class="chart-bar-track"><div class="' . $classes . '" style="height:' . $height . '%"></div></div>'
+                . '<span class="chart-lbl">' . $safeLabel . ($bytes === null ? ' · —' : '') . '</span>'
                 . '</div>';
         }
+
         return '<div class="traffic-chart">' . $bars . '</div>';
     }
 
@@ -612,6 +632,7 @@ HTML;
                     <div class="admin-dash-period active"><span class="adp-label">امروز</span><span class="adp-val">' . htmlspecialchars($todayVal, ENT_QUOTES, 'UTF-8') . '</span></div>
                 </div>
                 ' . $chartHtml . '
+                <p class="admin-dash-chart-note">میله‌ها اختلاف مصرف ثبت‌شده بین نمونه‌های همان روز هستند؛ روزهای ناقص یا بدون داده را با لمس میله ببینید.</p>
             </section>
 
             <div class="admin-dash-stats">
@@ -1686,6 +1707,8 @@ HTML;
             'dashboard' => '▣',
             'users' => '👤',
             'panels' => '⬡',
+            'routing' => '↯',
+            'outbounds' => '⎋',
             'services' => '◈',
             'reports' => '📊',
             'notifications' => '🔔',
@@ -1696,6 +1719,288 @@ HTML;
             'settings' => '⚙',
             default => '•',
         };
+    }
+
+    public static function adminRoutingPage(string $csrfToken): string
+    {
+        $csrf = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
+
+        return <<<HTML
+<div class="routing-page" dir="rtl" data-csrf="{$csrf}">
+  <p class="muted routing-intro">مدیریت <code>routing.rules</code> پنل‌های 3x-ui — قوانین API/آمار محافظت می‌شوند؛ قبل از ذخیره بک‌آپ خودکار گرفته می‌شود.</p>
+  <div class="routing-grid">
+    <section class="card routing-panels-card">
+      <div class="routing-panels-head">
+        <h2 class="card-title">پنل‌ها</h2>
+        <label class="routing-select-all"><input type="checkbox" id="routing-select-all" /> انتخاب همه</label>
+      </div>
+      <div id="routing-panel-list" class="routing-panel-list muted">در حال بارگذاری…</div>
+    </section>
+    <section class="card routing-editor-card">
+      <h2 class="card-title">قوانین پنل انتخاب‌شده</h2>
+      <div id="routing-editor-status" class="muted">یک پنل را برای ویرایش انتخاب کنید.</div>
+      <div id="routing-rules-wrap" class="routing-rules-wrap" hidden>
+        <div class="routing-toolbar">
+          <button type="button" class="btn btn-primary btn small routing-toolbar-btn" id="routing-add-rule">+ قانون</button>
+          <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="routing-save-rules">ذخیره در 3x-ui</button>
+        </div>
+        <div class="routing-rules-desktop table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>نوع</th><th>دامنه</th><th>IP</th><th>Inbound</th><th>مقصد</th><th></th></tr></thead>
+            <tbody id="routing-rules-body"></tbody>
+          </table>
+        </div>
+        <div id="routing-rules-cards" class="routing-rules-mobile" hidden></div>
+      </div>
+    </section>
+  </div>
+  <section class="card routing-bulk-card">
+    <h2 class="card-title">مدیریت گروهی</h2>
+    <div class="routing-bulk-form stack">
+      <label>عملیات
+        <select id="routing-bulk-op" class="input">
+          <option value="add">افزودن قانون</option>
+          <option value="remove">حذف قانون (با معیار)</option>
+          <option value="move">تغییر اولویت</option>
+        </select>
+      </label>
+      <div class="routing-bulk-fields grid-2">
+        <label>دامنه <input type="text" id="routing-bulk-domain" class="input" placeholder="example.com" /></label>
+        <label>IP <input type="text" id="routing-bulk-ip" class="input" placeholder="geoip:private" /></label>
+        <label>Inbound Tag <input type="text" id="routing-bulk-inbound" class="input" /></label>
+        <label>Outbound Tag <input type="text" id="routing-bulk-outbound" class="input" /></label>
+        <label>Balancer Tag <input type="text" id="routing-bulk-balancer" class="input" /></label>
+        <label id="routing-bulk-direction-wrap" hidden>جهت
+          <select id="routing-bulk-direction" class="input"><option value="up">بالا</option><option value="down">پایین</option></select>
+        </label>
+      </div>
+      <div class="routing-bulk-actions">
+        <button type="button" class="btn btn-secondary" id="routing-bulk-preview">پیش‌نمایش</button>
+        <button type="button" class="btn btn-primary" id="routing-bulk-apply">اعمال روی پنل‌های انتخاب‌شده</button>
+      </div>
+    </div>
+    <div id="routing-bulk-results" class="routing-bulk-results" hidden></div>
+  </section>
+  <dialog id="routing-rule-dialog" class="routing-dialog">
+    <form method="dialog" class="stack" id="routing-rule-form">
+      <h3 class="card-title">قانون مسیریابی</h3>
+      <input type="hidden" id="routing-rule-index" value="" />
+      <label>نوع <input class="input" id="routing-rule-type" value="field" /></label>
+      <label>دامنه (با کاما) <input class="input" id="routing-rule-domain" /></label>
+      <label>IP (با کاما) <input class="input" id="routing-rule-ip" /></label>
+      <label>Inbound (با کاما) <input class="input" id="routing-rule-inbound" /></label>
+      <label>Outbound Tag <input class="input" id="routing-rule-outbound" /></label>
+      <label>Balancer Tag <input class="input" id="routing-rule-balancer" /></label>
+      <div class="routing-dialog-actions">
+        <button type="submit" class="btn btn-primary" value="save">ذخیره در لیست</button>
+        <button type="button" class="btn btn-secondary" data-close-routing-dialog>انصراف</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+HTML;
+    }
+
+    public static function adminOutboundsPage(string $csrfToken): string
+    {
+        $csrf = htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8');
+        $persistHint = OutboundSaveGuard::PERSIST_ENABLED
+            ? 'ذخیره در پنل‌های 3x-ui فعال است.'
+            : 'حالت آزمایشی: مشاهده و پیش‌نمایش فعال است، ذخیره واقعی تا تأیید ایمنی قفل است.';
+
+        return <<<HTML
+<div class="outbound-page" dir="rtl" data-csrf="{$csrf}">
+  <div class="outbound-page-toolbar">
+    <div>
+      <h2 class="outbound-page-title">مدیریت اوتباند پنل‌های 3x-ui</h2>
+      <p class="muted">ایجاد یک Outbound و ارسال آن به همه یا پنل‌های انتخاب‌شده، با پیش‌نمایش مستقل هر پنل</p>
+    </div>
+    <button type="button" class="btn btn-primary outbound-create-trigger" id="outbound-add-btn">＋ Outbounds</button>
+  </div>
+  <p class="muted routing-intro outbound-safety-hint">{$persistHint}</p>
+  <div class="routing-grid">
+    <section class="card routing-panels-card">
+      <div class="routing-panels-head">
+        <h2 class="card-title">پنل‌های مقصد</h2>
+        <label class="routing-select-all"><input type="checkbox" id="outbound-select-all" /> انتخاب همه</label>
+      </div>
+      <div id="outbound-panel-list" class="routing-panel-list muted">در حال بارگذاری…</div>
+    </section>
+    <section class="card routing-editor-card">
+      <h2 class="card-title">Outboundهای پنل</h2>
+      <div id="outbound-editor-status" class="muted">برای مشاهده Outboundهای فعلی، یک پنل را انتخاب کنید.</div>
+      <div id="outbound-list-wrap" class="routing-rules-wrap" hidden>
+        <h3 class="card-title routing-subtitle">قالب (xraySetting)</h3>
+        <div class="table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>وضعیت</th></tr></thead>
+            <tbody id="outbound-template-body"></tbody>
+          </table>
+        </div>
+        <div id="outbound-template-cards" class="routing-rules-mobile"></div>
+        <h3 class="card-title routing-subtitle">اشتراک (API)</h3>
+        <div class="table-scroll">
+          <table class="data-table routing-rules-table">
+            <thead><tr><th>#</th><th>Tag</th><th>Protocol</th><th>نوع</th></tr></thead>
+            <tbody id="outbound-subscription-body"></tbody>
+          </table>
+        </div>
+        <div id="outbound-subscription-cards" class="routing-rules-mobile"></div>
+      </div>
+    </section>
+  </div>
+  <section id="outbound-action-results" class="card outbound-action-results" hidden aria-live="polite">
+    <h2 class="card-title">نتیجه ایجاد اوتباند روی پنل‌ها</h2>
+    <p id="outbound-action-summary"></p>
+    <div id="outbound-action-rows" class="outbound-action-rows"></div>
+  </section>
+
+  <dialog id="outbound-create-dialog" class="outbound-create-dialog" dir="ltr" aria-labelledby="outbound-modal-title">
+    <form id="outbound-create-form" novalidate>
+      <div class="outbound-modal-header">
+        <h2 id="outbound-modal-title">+ Outbounds</h2>
+        <button type="button" class="outbound-modal-close" id="outbound-modal-close" aria-label="Close dialog">×</button>
+      </div>
+      <div class="outbound-modal-tabs" role="tablist" aria-label="Outbound editor">
+        <button type="button" id="outbound-tab-basics" class="outbound-modal-tab is-active" role="tab" aria-selected="true" aria-controls="outbound-basics">Basics</button>
+        <button type="button" id="outbound-tab-json" class="outbound-modal-tab" role="tab" aria-selected="false" aria-controls="outbound-json-tab">JSON</button>
+      </div>
+      <div class="outbound-modal-main">
+        <div id="outbound-basics" role="tabpanel" aria-labelledby="outbound-tab-basics">
+          <div class="outbound-form-row">
+            <label for="ob-protocol">Protocol</label>
+            <select id="ob-protocol" class="ob-input">
+              <option value="vless">vless</option><option value="vmess">vmess</option>
+              <option value="trojan">trojan</option><option value="shadowsocks">shadowsocks</option>
+              <option value="socks">socks</option><option value="http">http</option>
+              <option value="freedom">freedom</option><option value="blackhole">blackhole</option>
+            </select>
+          </div>
+          <div class="outbound-form-row">
+            <label for="ob-tag"><span class="ob-required">*</span> Tag</label>
+            <input id="ob-tag" class="ob-input" placeholder="unique-tag" required maxlength="120" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-send-through">Send Through</label>
+            <input id="ob-send-through" class="ob-input" placeholder="local IP (optional)" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-address"><span class="ob-required">*</span> Address</label>
+            <input id="ob-address" class="ob-input" placeholder="server.example.com" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-port"><span class="ob-required">*</span> Port</label>
+            <input id="ob-port" class="ob-input" type="number" min="1" max="65535" value="443">
+          </div>
+          <div class="outbound-form-row ob-account-id">
+            <label for="ob-id">ID</label>
+            <input id="ob-id" class="ob-input" placeholder="UUID" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-vless-only">
+            <label for="ob-encryption">Encryption</label>
+            <input id="ob-encryption" class="ob-input" value="none" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-vmess-only" hidden>
+            <label for="ob-vmess-security">Security</label>
+            <select id="ob-vmess-security" class="ob-input"><option value="auto">auto</option><option value="aes-128-gcm">aes-128-gcm</option><option value="chacha20-poly1305">chacha20-poly1305</option><option value="none">none</option></select>
+          </div>
+          <div class="outbound-form-row ob-credential" hidden>
+            <label for="ob-password">Password</label>
+            <input id="ob-password" class="ob-input" autocomplete="new-password" type="password">
+          </div>
+          <div class="outbound-form-row ob-ss-method" hidden>
+            <label for="ob-method">Method</label>
+            <select id="ob-method" class="ob-input"><option>aes-128-gcm</option><option>aes-256-gcm</option><option>chacha20-poly1305</option><option>2022-blake3-aes-128-gcm</option><option>2022-blake3-aes-256-gcm</option></select>
+          </div>
+          <div class="outbound-form-row ob-vless-only">
+            <label for="ob-reverse-tag">Reverse tag</label>
+            <input id="ob-reverse-tag" class="ob-input" placeholder="optional">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-network">Transmission</label>
+            <select id="ob-network" class="ob-input">
+              <option value="tcp">RAW</option><option value="ws">WebSocket (WS)</option>
+              <option value="grpc">gRPC</option><option value="httpupgrade">HTTPUpgrade</option>
+              <option value="xhttp">XHTTP</option>
+            </select>
+          </div>
+          <div class="outbound-form-row ob-tcp-only">
+            <label for="ob-http-obfs">HTTP Obfuscation</label>
+            <label class="ob-switch"><input type="checkbox" id="ob-http-obfs"><span></span></label>
+          </div>
+          <div class="outbound-form-row ob-http-obfs-row" hidden>
+            <label for="ob-obfs-host">HTTP Host</label>
+            <input id="ob-obfs-host" class="ob-input" placeholder="optional host">
+          </div>
+          <div class="outbound-form-row ob-network-options" hidden>
+            <label for="ob-path">Path / Service Name</label>
+            <input id="ob-path" class="ob-input" placeholder="/" autocomplete="off">
+          </div>
+          <div class="outbound-form-row ob-network-options" hidden>
+            <label for="ob-host">Host / Authority</label>
+            <input id="ob-host" class="ob-input" placeholder="optional">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label>Security</label>
+            <div class="ob-security-buttons" role="group" aria-label="Connection Security">
+              <button type="button" class="is-active" data-security="none" aria-pressed="true">None</button>
+              <button type="button" data-security="tls" aria-pressed="false">TLS</button>
+              <button type="button" data-security="reality" aria-pressed="false">Reality</button>
+            </div>
+          </div>
+          <div class="outbound-form-row ob-security-options" hidden>
+            <label for="ob-sni">SNI / Server Name</label>
+            <input id="ob-sni" class="ob-input" placeholder="example.com">
+          </div>
+          <div class="outbound-form-row ob-security-options" hidden>
+            <label for="ob-fingerprint">Fingerprint</label>
+            <select id="ob-fingerprint" class="ob-input"><option value="chrome">chrome</option><option value="firefox">firefox</option><option value="safari">safari</option><option value="random">random</option></select>
+          </div>
+          <div class="outbound-form-row ob-reality-only" hidden>
+            <label for="ob-public-key">Public Key</label>
+            <input id="ob-public-key" class="ob-input" placeholder="Reality publicKey">
+          </div>
+          <div class="outbound-form-row ob-reality-only" hidden>
+            <label for="ob-short-id">Short ID</label>
+            <input id="ob-short-id" class="ob-input" placeholder="shortId">
+          </div>
+          <div class="outbound-form-row ob-reality-only" hidden>
+            <label for="ob-spider-x">Spider X</label>
+            <input id="ob-spider-x" class="ob-input" value="/">
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label for="ob-sockopts">Sockopts</label>
+            <label class="ob-switch"><input type="checkbox" id="ob-sockopts"><span></span></label>
+          </div>
+          <div class="outbound-form-row ob-sockopts-row" hidden>
+            <label for="ob-tcp-fast-open">TCP Fast Open</label>
+            <label class="ob-switch"><input type="checkbox" id="ob-tcp-fast-open"><span></span></label>
+          </div>
+          <div class="outbound-form-row ob-remote-only">
+            <label>TCP Masks</label>
+            <button type="button" class="ob-small-plus" id="ob-tcp-masks" title="Edit advanced TCP options in JSON">＋</button>
+          </div>
+        </div>
+        <div id="outbound-json-tab" role="tabpanel" aria-labelledby="outbound-tab-json" hidden>
+          <div class="ob-import-row" dir="ltr">
+            <input type="text" id="ob-import-link" class="ob-import-link" spellcheck="false" autocomplete="off" aria-label="Connection share link" placeholder="vmess://  vless://  trojan://  ss://  hysteria2://  wireguard://">
+            <button type="button" class="ob-import-button" id="ob-import-button">Import</button>
+          </div>
+          <p class="ob-import-note" id="ob-import-note">Import: VLESS، VMess، Trojan و Shadowsocks. تبدیل لینک روی مرورگر انجام می‌شود و تنظیمات بعد از بررسی قابل ویرایش‌اند.</p>
+          <p class="ob-json-help">Xray outbound JSON — اشیای خالی {} بدون تبدیل به [] حفظ می‌شوند.</p>
+          <textarea id="ob-json-editor" class="ob-json-editor" spellcheck="false" aria-label="Outbound JSON" dir="ltr" rows="22"></textarea>
+        </div>
+        <p id="ob-modal-error" class="ob-modal-error" role="status" aria-live="polite" hidden></p>
+        <div id="ob-create-results" class="ob-create-results" hidden aria-live="polite"></div>
+      </div>
+      <div class="outbound-modal-footer outbound-modal-footer-compact" dir="ltr">
+        <button type="button" class="btn btn-secondary" id="ob-modal-cancel">Close</button>
+        <button type="submit" class="btn btn-primary" id="ob-preview-submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+HTML;
     }
 
     /**
