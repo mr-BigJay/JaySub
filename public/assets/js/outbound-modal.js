@@ -11,6 +11,11 @@
   const value = (id) => (byId(id)?.value || '').trim();
   const checked = (id) => !!byId(id)?.checked;
   const error = byId('ob-modal-error');
+  const createResults = byId('ob-create-results');
+  const submitButton = byId('ob-preview-submit');
+  const cancelButton = byId('ob-modal-cancel');
+  const topCloseButton = byId('outbound-modal-close');
+  let busy = false;
   const jsonEditor = byId('ob-json-editor');
   const importInput = byId('ob-import-link');
   const importButton = byId('ob-import-button');
@@ -24,10 +29,47 @@
       el.hidden = !shouldShow;
     });
   };
-  const report = (message = '') => {
+  const report = (message = '', kind = 'error') => {
     if (!error) return;
     error.textContent = message;
+    error.dataset.kind = kind;
     error.hidden = !message;
+  };
+
+  const renderResults = (rows) => {
+    if (!createResults) return;
+    createResults.replaceChildren();
+    createResults.hidden = !rows?.length;
+    (rows || []).forEach((row) => {
+      const line = document.createElement('div');
+      line.className = 'ob-create-result-row';
+      const name = row.panel_name || ('#' + (row.panel_id || '?'));
+      const statusLabels = {
+        ready: 'آماده', already_exists: 'موجود',
+        tag_conflict: 'تداخل Tag', connection_failed: 'عدم اتصال',
+        invalid: 'نامعتبر', success: 'ایجاد شد', failed: 'ناموفق',
+        critical: 'بحرانی',
+      };
+      line.textContent = name + ': ' + (statusLabels[row.status] || row.status || 'نامشخص')
+        + (row.message ? ' — ' + row.message : '');
+      createResults.appendChild(line);
+    });
+  };
+
+  const setState = (state = {}) => {
+    if (typeof state.busy === 'boolean') {
+      busy = state.busy;
+      if (submitButton) submitButton.disabled = busy;
+      if (cancelButton) cancelButton.disabled = busy;
+      if (topCloseButton) topCloseButton.disabled = busy;
+    }
+    if (Object.prototype.hasOwnProperty.call(state, 'message')) {
+      report(state.message || '', state.kind || 'info');
+    }
+    if (Object.prototype.hasOwnProperty.call(state, 'rows')) {
+      renderResults(state.rows || []);
+    }
+    if (state.close) dialog.close();
   };
   const jsonStringify = (object) => JSON.stringify(object, null, 2);
   const requireField = (id, label) => {
@@ -239,7 +281,7 @@
   });
 
   const open = () => {
-    report();
+    setState({ busy: false, message: '', rows: [] });
     form.reset();
     jsonEditor.value = '';
     if (importInput) importInput.value = '';
@@ -255,10 +297,11 @@
     dialog.showModal();
     byId('ob-tag')?.focus();
   };
-  window.JaySubOutboundModal = { open };
+  window.JaySubOutboundModal = { open, setState };
 
-  byId('outbound-modal-close')?.addEventListener('click', () => dialog.close());
-  byId('ob-modal-cancel')?.addEventListener('click', () => dialog.close());
+  topCloseButton?.addEventListener('click', () => { if (!busy) dialog.close(); });
+  cancelButton?.addEventListener('click', () => { if (!busy) dialog.close(); });
+  dialog.addEventListener('cancel', (event) => { if (busy) event.preventDefault(); });
   byId('outbound-tab-basics')?.addEventListener('click', () => switchTab('basics'));
   byId('outbound-tab-json')?.addEventListener('click', () => switchTab('json'));
   byId('ob-protocol')?.addEventListener('change', updateVisibility);
@@ -273,18 +316,21 @@
   });
   jsonEditor.addEventListener('input', () => { jsonChanged = true; });
   dialog.addEventListener('click', (event) => {
-    if (event.target === dialog) dialog.close();
+    if (event.target === dialog && !busy) dialog.close();
   });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
+    if (busy) return;
     report();
+    renderResults([]);
     try {
       const json = activeTab === 'json'
         ? jsonEditor.value
         : jsonStringify(buildBasicOutbound());
       validateJson(json);
-      document.dispatchEvent(new CustomEvent('jaysub:outbound-built', { detail: { json } }));
-      dialog.close();
+      // Keep the form open until the fleet preflight/application returns.
+      // "Close" is the only unconditional dismissal.
+      document.dispatchEvent(new CustomEvent('jaysub:outbound-create', { detail: { json } }));
     } catch (ex) {
       report(ex.message || String(ex));
     }

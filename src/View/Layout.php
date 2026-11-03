@@ -1830,9 +1830,6 @@ HTML;
       <h2 class="card-title">Outboundهای پنل</h2>
       <div id="outbound-editor-status" class="muted">برای مشاهده Outboundهای فعلی، یک پنل را انتخاب کنید.</div>
       <div id="outbound-list-wrap" class="routing-rules-wrap" hidden>
-        <div class="routing-toolbar">
-          <button type="button" class="btn btn-secondary btn small routing-toolbar-btn" id="outbound-save-one">ذخیره Outbound آماده‌شده روی این پنل</button>
-        </div>
         <h3 class="card-title routing-subtitle">قالب (xraySetting)</h3>
         <div class="table-scroll">
           <table class="data-table routing-rules-table">
@@ -1852,29 +1849,10 @@ HTML;
       </div>
     </section>
   </div>
-  <section class="card routing-bulk-card">
-    <h2 class="card-title">کپی گروهی از پنل مبدأ</h2>
-    <div class="routing-bulk-form stack">
-      <label>Tag در پنل مبدأ <input type="text" id="outbound-copy-tag" class="input" placeholder="proxy-de" /></label>
-      <div class="routing-bulk-actions">
-        <button type="button" class="btn btn-secondary" id="outbound-bulk-preview">پیش‌نمایش</button>
-        <button type="button" class="btn btn-primary" id="outbound-bulk-apply">اعمال روی پنل‌های انتخاب‌شده</button>
-      </div>
-    </div>
-    <div id="outbound-bulk-results" class="routing-bulk-results" hidden></div>
-  </section>
-  <section class="card routing-bulk-card">
-    <h2 class="card-title">JSON آماده‌شده برای پنل‌های انتخاب‌شده</h2>
-    <div class="routing-bulk-form stack">
-      <label>Outbound JSON (بدون تبدیل نوع {} به [])
-        <textarea id="outbound-bulk-json" class="input" rows="7" dir="ltr" spellcheck="false" placeholder='{"tag":"new-proxy","protocol":"vless","settings":{},"streamSettings":{"wsSettings":{"headers":{}}}}'></textarea>
-      </label>
-      <div class="routing-bulk-actions">
-        <button type="button" class="btn btn-secondary" id="outbound-bulk-json-preview">پیش‌نمایش روی همه پنل‌های انتخاب‌شده</button>
-        <button type="button" class="btn btn-primary" id="outbound-bulk-json-apply">اعمال گروهی</button>
-      </div>
-    </div>
-    <div id="outbound-bulk-json-results" class="routing-bulk-results" hidden></div>
+  <section id="outbound-action-results" class="card outbound-action-results" hidden aria-live="polite">
+    <h2 class="card-title">نتیجه ایجاد اوتباند روی پنل‌ها</h2>
+    <p id="outbound-action-summary"></p>
+    <div id="outbound-action-rows" class="outbound-action-rows"></div>
   </section>
 
   <dialog id="outbound-create-dialog" class="outbound-create-dialog" dir="ltr" aria-labelledby="outbound-modal-title">
@@ -2012,12 +1990,12 @@ HTML;
           <p class="ob-json-help">Xray outbound JSON — اشیای خالی {} بدون تبدیل به [] حفظ می‌شوند.</p>
           <textarea id="ob-json-editor" class="ob-json-editor" spellcheck="false" aria-label="Outbound JSON" dir="ltr" rows="22"></textarea>
         </div>
-        <p id="ob-modal-error" class="ob-modal-error" role="alert" hidden></p>
+        <p id="ob-modal-error" class="ob-modal-error" role="status" aria-live="polite" hidden></p>
+        <div id="ob-create-results" class="ob-create-results" hidden aria-live="polite"></div>
       </div>
-      <div class="outbound-modal-footer" dir="rtl">
-        <button type="submit" class="btn btn-primary" id="ob-preview-submit">تأیید و پیش‌نمایش برای پنل‌های انتخاب‌شده</button>
-        <button type="button" class="btn btn-secondary" id="ob-modal-cancel">انصراف</button>
-        <span class="ob-modal-footnote">پیش‌نمایش بدون تغییر روی سرورها انجام می‌شود</span>
+      <div class="outbound-modal-footer outbound-modal-footer-compact" dir="ltr">
+        <button type="button" class="btn btn-secondary" id="ob-modal-cancel">Close</button>
+        <button type="submit" class="btn btn-primary" id="ob-preview-submit">Create</button>
       </div>
     </form>
   </dialog>
