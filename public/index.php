@@ -1686,7 +1686,9 @@ if ($uri === '/admin/outbounds/api/panels' && $method === 'GET') {
     Response::json([
         'ok' => true,
         'panels' => PanelRoutingService::listPanelsSummary($config),
-        'persist_enabled' => \App\Services\OutboundSaveGuard::PERSIST_ENABLED,
+        'persist_enabled' => \App\Services\OutboundSaveGuard::canaryPanelId($config) !== null,
+        'save_mode' => \App\Services\OutboundSaveGuard::canaryPanelId($config) !== null ? 'canary' : 'disabled',
+        'canary_panel_id' => \App\Services\OutboundSaveGuard::canaryPanelId($config),
     ]);
 }
 
@@ -1713,13 +1715,17 @@ if (preg_match('#^/admin/outbounds/api/panel/(\d+)/outbounds$#', $uri, $m) && $m
         exit;
     }
     $encryption = app_encryption($config);
-    $result = PanelOutboundService::addOutbound(
-        $pid,
-        $outbound,
-        $encryption,
-        $config,
-        AuthService::adminId(),
-    );
+    try {
+        $result = PanelOutboundService::addOutbound(
+            $pid,
+            $outbound,
+            $encryption,
+            $config,
+            AuthService::adminId(),
+        );
+    } catch (\RuntimeException $e) {
+        Response::json(['ok' => false, 'error' => $e->getMessage()], 403);
+    }
     Response::json($result, ($result['ok'] ?? false) ? 200 : 502);
 }
 
@@ -1747,14 +1753,18 @@ if ($uri === '/admin/outbounds/api/bulk/apply' && $method === 'POST') {
         Response::json(['ok' => false, 'error' => 'source_panel_id، source_tag و panel_ids الزامی است'], 400);
     }
     $encryption = app_encryption($config);
-    $applied = BulkOutboundService::applyCopy(
-        $sourceId,
-        $panelIds,
-        $tag,
-        $encryption,
-        $config,
-        AuthService::adminId(),
-    );
+    try {
+        $applied = BulkOutboundService::applyCopy(
+            $sourceId,
+            $panelIds,
+            $tag,
+            $encryption,
+            $config,
+            AuthService::adminId(),
+        );
+    } catch (\RuntimeException $e) {
+        Response::json(['ok' => false, 'error' => $e->getMessage()], 403);
+    }
     Response::json(['ok' => true] + $applied);
 }
 
@@ -1790,7 +1800,11 @@ if ($uri === '/admin/outbounds/api/bulk/apply-json' && $method === 'POST') {
         exit;
     }
     $encryption = app_encryption($config);
-    $applied = BulkOutboundService::applyJson($panelIds, $outbound, $encryption, $config, AuthService::adminId());
+    try {
+        $applied = BulkOutboundService::applyJson($panelIds, $outbound, $encryption, $config, AuthService::adminId());
+    } catch (\RuntimeException $e) {
+        Response::json(['ok' => false, 'error' => $e->getMessage()], 403);
+    }
     Response::json(['ok' => true] + $applied);
 }
 
