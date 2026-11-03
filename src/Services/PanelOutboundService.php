@@ -59,7 +59,7 @@ final class PanelOutboundService
             'outbounds' => $summaries,
             'template_outbounds' => $template,
             'subscription_outbounds' => $subscription,
-            'persist_enabled' => OutboundSaveGuard::PERSIST_ENABLED,
+            'persist_enabled' => OutboundSaveGuard::canaryPanelId($config) === $panelId,
         ];
     }
 
@@ -74,7 +74,7 @@ final class PanelOutboundService
         array $config,
         ?int $adminId = null,
     ): array {
-        OutboundSaveGuard::assertPersistAllowed();
+        OutboundSaveGuard::assertPersistAllowed($panelId, $config);
 
         $err = OutboundJsonTree::validateStructure($outbound);
         if ($err !== null) {
