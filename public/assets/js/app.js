@@ -824,6 +824,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let panels = [];
     let activePanelId = 0;
     let persistEnabled = false;
+    let canaryPanelId = null;
     let createBusy = false;
 
     const selectedPanelIds = () => panels.filter((p) => p._checked).map((p) => Number(p.id));
@@ -1028,6 +1029,14 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           return;
         }
+        if (canaryPanelId === null || ids.length !== 1 || ids[0] !== canaryPanelId) {
+          modal()?.setState({
+            kind: 'warning',
+            message: 'ذخیره فقط برای یک پنل آزمایشی مجاز است. انتخاب پنل‌ها را محدود کنید؛ هیچ تغییری اعمال نشد.',
+            rows,
+          });
+          return;
+        }
         if (rows.every((r) => r.status === 'already_exists')) {
           modal()?.setState({ kind: 'info', message: 'این Outbound از قبل روی تمام پنل‌های انتخاب‌شده وجود دارد.', rows });
           return;
@@ -1068,9 +1077,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     fetchJson('/admin/outbounds/api/panels')
       .then((res) => {
-        // Selecting all is the explicit default; unchecked panels are excluded.
-        panels = (res.panels || []).map((p) => ({ ...p, id: Number(p.id), _checked: true }));
         persistEnabled = !!res.persist_enabled;
+        const candidate = Number(res.canary_panel_id);
+        canaryPanelId = persistEnabled && Number.isInteger(candidate) && candidate > 0
+          ? candidate : null;
+        // In locked mode all panels are selected for preview.
+        // In canary mode ONLY the approved non-production target is selected.
+        panels = (res.panels || []).map((p) => ({
+          ...p, id: Number(p.id),
+          _checked: canaryPanelId === null || Number(p.id) === canaryPanelId,
+        }));
+        const hint = outboundPage.querySelector('.outbound-safety-hint');
+        if (hint && canaryPanelId !== null) {
+          hint.textContent = 'حالت Canary: ذخیره فقط روی پنل آزمایشی #' + canaryPanelId
+            + ' مجاز است؛ ایجاد گروهی روی پنل‌های عملیاتی همچنان قفل است.';
+        }
         renderPanelList();
       })
       .catch((error) => {
