@@ -68,7 +68,7 @@ final class BulkOutboundService
         array $config,
         ?int $adminId = null,
     ): array {
-        OutboundSaveGuard::assertPersistAllowed();
+        OutboundSaveGuard::assertTargetsAllowed($targetPanelIds, $config);
 
         $outbound = self::loadSourceOutbound($sourcePanelId, $sourceTag, $encryption);
         if ($outbound === null) {
@@ -94,7 +94,7 @@ final class BulkOutboundService
         array $config,
         ?int $adminId = null,
     ): array {
-        OutboundSaveGuard::assertPersistAllowed();
+        OutboundSaveGuard::assertTargetsAllowed($targetPanelIds, $config);
 
         $err = OutboundJsonTree::validateStructure($outbound);
         if ($err !== null) {
