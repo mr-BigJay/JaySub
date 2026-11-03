@@ -2705,3 +2705,64 @@ body.modal-open { overflow: hidden; }
 }
 .outbound-create-dialog .ob-import-failed { color: #ff9494; }
 .outbound-create-dialog .ob-import-success { color: #80e0b3; }
+
+
+/* The Outbounds create flow uses only Close / Create in the modal.
+ * Preflight statuses are visible inside the dialog, not as duplicate bulk forms.
+ */
+.outbound-modal-footer-compact {
+  justify-content: flex-end;
+  gap: 10px;
+}
+.outbound-modal-footer-compact .btn {
+  min-width: 75px;
+  min-height: 34px;
+  border-radius: 6px;
+  font-size: .82rem;
+}
+.outbound-modal-footer-compact .btn-primary {
+  background: #176be5;
+  color: #fff;
+}
+.outbound-create-dialog .ob-modal-error[data-kind="warning"],
+.outbound-create-dialog .ob-modal-error[data-kind="info"] {
+  border-color: #51617a;
+  color: #dceafe;
+  background: #222e43;
+}
+.outbound-create-dialog .ob-modal-error[data-kind="success"] {
+  border-color: #347a62;
+  color: #ccf5df;
+  background: #18382d;
+}
+.ob-create-results {
+  max-height: 165px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+  border: 1px solid #454e60;
+  border-radius: 7px;
+  background: #22252d;
+}
+.ob-create-result-row {
+  padding: 6px 10px;
+  font-size: .76rem;
+  line-height: 1.65;
+  direction: rtl;
+  text-align: right;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid #383f4e;
+}
+.ob-create-result-row:last-child { border-bottom: 0; }
+.outbound-action-results[hidden] { display: none !important; }
+.outbound-action-results { margin-top: .95rem; }
+.outbound-action-results > p { font-size: .83rem; line-height: 1.7; }
+.outbound-action-row {
+  padding: .55rem .35rem;
+  font-size: .84rem;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.outbound-action-row:last-child { border-bottom: 0; }
+.outbound-status-success, .outbound-status-already_exists { color: var(--success); }
+.outbound-status-failed, .outbound-status-critical,
+.outbound-status-tag_conflict { color: var(--danger); }
