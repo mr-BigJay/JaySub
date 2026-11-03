@@ -32,7 +32,8 @@ final class Outbound3xUiModalTest extends TestCase
             self::assertStringContainsString('id="' . $id . '"', $html);
         }
         self::assertStringContainsString('id="outbound-select-all"', $html);
-        self::assertStringContainsString('id="outbound-bulk-json-preview"', $html);
+        self::assertStringContainsString('id="outbound-action-results"', $html);
+        self::assertStringNotContainsString('id="outbound-bulk-json-preview"', $html);
     }
 
     public function testModalJavascriptBuildsFlatVlessAndSendsToPreview(): void
@@ -42,9 +43,11 @@ final class Outbound3xUiModalTest extends TestCase
         self::assertStringContainsString("node.settings = { address, port, id, flow:", $script);
         self::assertStringContainsString("protocol === 'vmess'", $script);
         self::assertStringContainsString('JSON.stringify(object, null, 2)', $script);
-        self::assertStringContainsString("jaysub:outbound-built", $script);
-        self::assertStringContainsString("jaysub:outbound-built", $appScript);
-        self::assertStringContainsString('outbound-bulk-json-preview', $appScript);
+        self::assertStringContainsString("jaysub:outbound-create", $script);
+        self::assertStringContainsString("jaysub:outbound-create", $appScript);
+        self::assertStringContainsString('/admin/outbounds/api/bulk/preview-json', $appScript);
+        self::assertStringContainsString('/admin/outbounds/api/bulk/apply-json', $appScript);
+        self::assertStringContainsString('!persistEnabled', $appScript);
     }
 
     public function testJsonTabHasShareLinkImportInputAndButton(): void
@@ -59,6 +62,38 @@ final class Outbound3xUiModalTest extends TestCase
         self::assertStringContainsString("Assets::url('js/outbound-import.js')", $loader);
         self::assertStringContainsString('JaySubOutboundImport.parse(', $modal);
         self::assertStringContainsString('jsonEditor.value = validated', $modal);
+    }
+
+    public function testPageRemovesRedundantBulkFormsAndUsesOnlyCloseAndCreate(): void
+    {
+        $html = Layout::adminOutboundsPage('csrf-test-token');
+        self::assertStringNotContainsString('کپی گروهی از پنل مبدأ', $html);
+        self::assertStringNotContainsString('JSON آماده‌شده برای پنل‌های انتخاب‌شده', $html);
+        self::assertStringNotContainsString('id="outbound-save-one"', $html);
+        self::assertStringNotContainsString('id="outbound-bulk-json-apply"', $html);
+        self::assertStringContainsString('id="outbound-select-all"', $html);
+
+        self::assertSame(1, preg_match(
+            '~<div class="outbound-modal-footer outbound-modal-footer-compact"[^>]*>(.*?)</div>~s',
+            $html,
+            $matches,
+        ));
+        self::assertSame(2, preg_match_all('~<button\b~', $matches[1]));
+        self::assertStringContainsString('>Close</button>', $matches[1]);
+        self::assertStringContainsString('>Create</button>', $matches[1]);
+    }
+
+    public function testCreateUsesPreflightAndAllPanelsSelectedByDefault(): void
+    {
+        $appScript = (string) file_get_contents(dirname(__DIR__) . '/public/assets/js/app.js');
+        $modalScript = (string) file_get_contents(dirname(__DIR__) . '/public/assets/js/outbound-modal.js');
+        self::assertStringContainsString("_checked: true", $appScript);
+        self::assertStringContainsString("rows.filter((r) => !['ready', 'already_exists'].includes(r.status))", $appScript);
+        self::assertStringContainsString('if (!persistEnabled)', $appScript);
+        self::assertStringContainsString("window.confirm(", $appScript);
+        self::assertStringContainsString("jaysub:outbound-create", $modalScript);
+        self::assertStringNotContainsString("jaysub:outbound-built", $modalScript);
+        self::assertStringNotContainsString("dialog.close();\n    } catch (ex)", $modalScript);
     }
 
     public function testNoProductionWriteGateIsEnabled(): void
