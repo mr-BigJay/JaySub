@@ -37,7 +37,7 @@ async function setup(options = {}) {
     'outbound-list-wrap', 'outbound-template-body', 'outbound-template-cards',
     'outbound-subscription-body', 'outbound-subscription-cards',
     'outbound-action-results', 'outbound-action-summary', 'outbound-action-rows',
-    'outbound-add-btn'
+    'outbound-add-btn', 'outbound-safety-hint'
   ]) elements[id] = fakeElement();
 
   const panels = options.panels || [
@@ -52,7 +52,13 @@ async function setup(options = {}) {
   }));
   const fakeDocument = {
     querySelector(query) {
-      return query === '.outbound-page' ? { getAttribute: () => 'csrf-test' } : null;
+      return query === '.outbound-page'
+        ? {
+          getAttribute: () => 'csrf-test',
+          querySelector: (child) => child === '.outbound-safety-hint'
+            ? elements['outbound-safety-hint'] : null,
+        }
+        : null;
     },
     getElementById: (id) => elements[id] || null,
     createElement: fakeElement,
@@ -102,6 +108,8 @@ async function setup(options = {}) {
 test('Create defaults to all panels and never writes while backend guard is off', async () => {
   const ctx = await setup({ persist: false });
   assert.equal(ctx.elements['outbound-select-all'].checked, true);
+  assert.equal(ctx.elements['outbound-panel-list'].children.length, 2);
+  assert.equal(ctx.elements['outbound-panel-list'].textContent, '');
   await ctx.create();
   const posts = ctx.calls.filter((c) => c.init.method === 'POST');
   assert.deepEqual(posts.map((p) => p.url), ['/admin/outbounds/api/bulk/preview-json']);
@@ -141,6 +149,7 @@ test('Close/cancel confirmation prevents applying to panels', async () => {
 test('Canary auto-selects only its approved target', async () => {
   const ctx = await setup({ persist: true, canaryId: 2 });
   assert.equal(ctx.elements['outbound-select-all'].checked, false);
+  assert.match(ctx.elements['outbound-safety-hint'].textContent, /#2/);
   await ctx.create();
   const posts = ctx.calls.filter((c) => c.init.method === 'POST');
   assert.deepEqual(JSON.parse(posts[0].init.body).panel_ids, [2]);
