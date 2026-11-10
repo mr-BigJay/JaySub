@@ -61,6 +61,31 @@ final class MigrationHardeningTest extends TestCase
         self::assertStringContainsString('verify_cert_key_match', $script);
     }
 
+    public function testGeneratedSslTransferShellParsesForTarAndZip(): void
+    {
+        if (!is_executable('/bin/bash')) {
+            self::markTestSkipped('bash required for checking generated remote shell scripts');
+        }
+        foreach (['.tar.gz', '.zip'] as $ext) {
+            $script = SslMigrationTransfer::remoteExtractAndVerifyScript(
+                '/root/cert',
+                '/tmp/jaysub-certs' . $ext,
+                $ext,
+                'deadbeefdeadbeefdeadbeefdeadbeef',
+            );
+            $tmp = tempnam(sys_get_temp_dir(), 'jaysub-ssl-syntax-');
+            self::assertNotFalse($tmp);
+            try {
+                self::assertNotFalse(file_put_contents($tmp, $script));
+                exec('/bin/bash -n ' . escapeshellarg($tmp) . ' 2>&1', $output, $code);
+                self::assertSame(0, $code, "SSL $ext generated shell syntax invalid: " . implode("\n", $output));
+                self::assertStringContainsString("rm -rf \"\$d\"\ncert_pubkey_sha256()", $script);
+            } finally {
+                @unlink($tmp);
+            }
+        }
+    }
+
     public function testDbSslVerifyChecksPanelPaths(): void
     {
         $script = SslMigrationTransfer::remoteVerifyDbCertPathsScript('/root/cert');

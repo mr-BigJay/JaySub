@@ -84,3 +84,20 @@ permissions only for `storage/ssl-ssh` and `known_hosts`. Never set
 pinning indiscriminately.
 
 Re-run migration as a **new job**. A failed job is not resumed in place.
+
+## SSL step-3 Bash syntax failure: unexpected '(' on line 12
+
+Older JaySub migration scripts concatenated the extractor and certificate
+verification function without a newline. PHP nowdoc text does not include
+an implicit trailing newline, so generated Bash contained a corrupted command
+(`rm -rf "$d"cert_pubkey_sha256() {`). The migrated certificate files were
+not necessarily invalid. This has been fixed by adding an explicit newline
+between Bash fragments. The regression suite runs `bash -n` against both
+`.tar.gz` and `.zip` generated extract/verify scripts. No SSH operations,
+certificate copying, or file deletions are performed by that syntax test.
+
+Deploy the new JaySub version and create a new migration job. A target with
+an already healthy 3x-ui installation may be verified/skipped in step 2; ensure
+SSL/DB overwrite is explicitly authorized in the migration wizard when that
+is the intended operation. Never delete the existing x-ui or certificates to
+work around a Bash syntax error.
