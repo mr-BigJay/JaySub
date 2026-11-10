@@ -45,10 +45,13 @@ to `raw.githubusercontent.com` and the official release download endpoint.
 
 With the checkbox checked, **offline only**: JaySub transfers the
 SHA-256 checked v3.4.2 archive from its manager-side cache using SCP.
-The target does not contact GitHub. This mode requires tools such as
-`sqlite3` pre-installed on the target, to verify and restore the x-ui DB.
-For Ubuntu/Debian, prepare the target once (if OS package repositories
-are reachable):
+The target does not contact GitHub. SQLite integrity checks, WAL-safe snapshot,
+restore, and DB SSL-path checks use the sqlite3 CLI when available, or the
+standard Python 3 sqlite3 module as a drop-in fallback. No permanent CLI shim
+is installed, no database verification is bypassed, and online mode stays separate.
+
+If neither sqlite3 CLI nor Python 3 with sqlite3 is available, prepare the
+target (if OS package repositories are reachable):
 
 ```bash
 sudo apt-get update && sudo apt-get install -y sqlite3 file openssl tar gzip ca-certificates coreutils

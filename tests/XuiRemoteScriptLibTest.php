@@ -42,6 +42,17 @@ validate_tar_members /dev/null ' . escapeshellarg($listing) . '
         @unlink($path);
     }
 
+    public function testOfflineScriptsIncludePythonFallback(): void
+    {
+        $remote = OfflineXuiInstaller::remotePackagePath(str_repeat('e', 32), 'amd64');
+        $install = OfflineXuiInstaller::remoteInstallScript('amd64', $remote);
+        $restore = XuiMigrationRestore::remoteRestoreScript(XuiMigrationRestore::remoteBackupPath('panel.db'));
+        self::assertStringContainsString('python3 - "$@"', $install);
+        self::assertStringContainsString('python3 - "$@"', $restore);
+        self::assertStringContainsString('source.backup(dest)', $restore);
+        self::assertStringNotContainsString('curl ', $install);
+    }
+
     public function testInstallAndRestoreScriptsPassBashSyntaxCheck(): void
     {
         if (!is_executable('/bin/bash')) {

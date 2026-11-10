@@ -152,7 +152,7 @@ BASH;
 
         $keyMatch = XuiRemoteScriptLib::bashCertKeyPubkeySha256Block();
 
-        $script = $keyMatch . "\n" . <<<'BASH'
+        $script = $keyMatch . "\n" . XuiRemoteScriptLib::bashSqliteFallbackBlock() . "\n" . <<<'BASH'
 set -euo pipefail
 command -v sqlite3 >/dev/null 2>&1 || { echo "sqlite3 required to verify panel cert paths in DB" >&2; exit 1; }
 command -v openssl >/dev/null 2>&1 || { echo "openssl required to verify cert/key pairs" >&2; exit 1; }
