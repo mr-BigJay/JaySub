@@ -2063,7 +2063,7 @@ HTML;
                         <input type="checkbox" id="migration-xui-install-mode" value="offline" aria-describedby="migration-offline-hint">
                         <span>نصب آفلاین 3x-ui نسخه 3.4.2</span>
                     </label>
-                    <p class="muted form-hint migration-offline-choice-hint">پیش‌فرض نصب آنلاین فعلی است. با فعال‌کردن این گزینه، JaySub فایل رسمی را از سرور مدیریت با SCP به VPS مقصد منتقل می‌کند و بدون دانلود از GitHub روی مقصد نصب می‌کند.</p>
+                    <p id="migration-offline-hint" class="muted form-hint migration-offline-choice-hint">حالت آنلاین (پیش‌فرض): نصب‌کننده رسمی از GitHub روی VPS مقصد دریافت می‌شود. حالت آفلاین: بسته تأییدشده از JaySub با SCP منتقل می‌شود و GitHub در مقصد لازم نیست. هیچ‌کدام خودکار به روش دیگر تغییر نمی‌کنند. برای انتقال، ابزار sqlite3 باید از قبل روی مقصد نصب باشد.</p>
                     <p class="muted form-hint migration-offline-cache-status">وضعیت بسته روی JaySub: <strong>amd64:</strong> ' . $amd64Status . '؛ <strong>arm64:</strong> ' . $arm64Status . '</p>
                     <details class="migration-offline-upload" id="xui-offline-upload">
                     <summary class="muted form-hint">آپلود دستی بسته (اختیاری — فقط اگر cache JaySub خالی است)</summary>

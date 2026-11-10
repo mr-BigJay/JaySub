@@ -26,48 +26,6 @@ final class OnlineXuiInstaller
             . '/install.sh';
     }
 
-
-    /**
-     * Short, read-only network probe before attempting the upstream installer.
-     * If either upstream endpoint is unreachable, the migration uses the
-     * manager-side SHA-256 verified offline archive instead of waiting for
-     * three long curl retries on the destination VPS.
-     */
-    public static function remoteConnectivityPreflightScript(): string
-    {
-        $script = <<<'BASH'
-set -euo pipefail
-if ! command -v curl >/dev/null 2>&1; then
-  echo "Online install unavailable: curl is missing on destination" >&2
-  exit 75
-fi
-case "$(uname -m)" in
-  x86_64|amd64) ARCH=amd64 ;;
-  aarch64|arm64|armv8|armv8l) ARCH=arm64 ;;
-  *) echo "Unsupported destination architecture" >&2; exit 1 ;;
-esac
-if ! curl -fsSIL --connect-timeout 5 --max-time 12 __PINNED_INSTALL_URL__ >/dev/null; then
-  echo "Online install unavailable: pinned install.sh cannot be reached" >&2
-  exit 75
-fi
-RELEASE_URL=__RELEASE_BASE__"x-ui-linux-${ARCH}.tar.gz"
-if ! curl -fsSIL --connect-timeout 5 --max-time 12 "$RELEASE_URL" >/dev/null; then
-  echo "Online install unavailable: v3.4.2 release archive cannot be reached" >&2
-  exit 75
-fi
-echo "JaySub online 3x-ui prerequisites reachable"
-BASH;
-
-        return str_replace(
-            ['__PINNED_INSTALL_URL__', '__RELEASE_BASE__'],
-            [
-                escapeshellarg(self::installShRawUrl()),
-                escapeshellarg('https://github.com/MHSanaei/3x-ui/releases/download/' . self::TARGET_VERSION . '/'),
-            ],
-            $script
-        );
-    }
-
     public static function bashFetchPinnedInstallScript(): string
     {
         $url = self::installShRawUrl();
