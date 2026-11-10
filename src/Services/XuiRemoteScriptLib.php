@@ -14,12 +14,78 @@ final class XuiRemoteScriptLib
      */
     public static function bashPrerequisitesBlock(): string
     {
-        return <<<'BASH'
+        $base = <<<'BASH'
 for cmd in tar sha256sum mktemp systemctl install uname od head tr cut readlink file sqlite3; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "Missing local prerequisite: $cmd" >&2; exit 1; }
 done
 XUI_BIN=/usr/local/x-ui/x-ui
 XUI_UNIT=/etc/systemd/system/x-ui.service
+BASH;
+
+        return self::bashSqliteFallbackBlock() . "\n" . $base;
+    }
+
+    /**
+     * A Bash-local sqlite3 compatibility function. The standard Python 3
+     * sqlite3 module provides queries and WAL-safe .backup when the sqlite3
+     * command-line package is missing. No global executable is installed.
+     */
+    public static function bashSqliteFallbackBlock(): string
+    {
+        return <<<'BASH'
+sqlite3() {
+  if type -P sqlite3 >/dev/null 2>&1; then
+    command sqlite3 "$@"
+    return $?
+  fi
+  if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import sqlite3' >/dev/null 2>&1; then
+    echo "SQLite backend unavailable: need sqlite3 CLI or Python 3 sqlite3 module" >&2
+    return 1
+  fi
+  python3 - "$@" <<'PY'
+import pathlib
+import shlex
+import sqlite3 as sqlite
+import sys
+from urllib.parse import quote
+
+def main():
+    args = sys.argv[1:]
+    sep = "|"
+    if len(args) >= 2 and args[0] == "-separator":
+        sep, args = args[1], args[2:]
+    if len(args) != 2:
+        raise ValueError("Unsupported SQLite command arguments")
+    path, statement = args
+    path = str(pathlib.Path(path).resolve(strict=True))
+    uri = "file:" + quote(path, safe="/") + "?mode=ro"
+    source = sqlite.connect(uri, uri=True)
+    try:
+        if statement.startswith(".backup "):
+            tokens = shlex.split(statement)
+            if len(tokens) != 2 or tokens[0] != ".backup":
+                raise ValueError("Unsupported SQLite .backup syntax")
+            dest = sqlite.connect(tokens[1])
+            try:
+                source.backup(dest)
+                result = dest.execute("PRAGMA quick_check;").fetchone()
+                if result is None or result[0] != "ok":
+                    raise ValueError("SQLite snapshot integrity check failed")
+            finally:
+                dest.close()
+        else:
+            for row in source.execute(statement):
+                print(sep.join("" if v is None else str(v) for v in row))
+    finally:
+        source.close()
+
+try:
+    main()
+except (sqlite.Error, OSError, ValueError) as exc:
+    print("JaySub SQLite fallback failed: " + str(exc), file=sys.stderr)
+    sys.exit(1)
+PY
+}
 BASH;
     }
 
@@ -245,22 +311,20 @@ BASH;
         );
     }
 
-    /** Remote SQLite quick_check using sqlite3 CLI when available. */
+    /** SQLite quick_check using the CLI or standard Python SQLite module. */
     public static function bashSqliteQuickCheckBlock(): string
     {
-        return <<<'BASH'
+        $body = <<<'BASH'
 sqlite_quick_check() {
   local db=$1
-  command -v sqlite3 >/dev/null 2>&1 || {
-    echo "sqlite3 CLI is required on the destination VPS for PRAGMA quick_check (install: apt install sqlite3)" >&2
-    return 1
-  }
   local qc
   qc="$(sqlite3 "$db" 'PRAGMA quick_check;' 2>/dev/null || echo fail)"
   [ "$qc" = "ok" ] || { echo "SQLite quick_check failed: $qc" >&2; return 1; }
   return 0
 }
 BASH;
+
+        return self::bashSqliteFallbackBlock() . "\n" . $body;
     }
 
     /** Remove live DB file and SQLite WAL/SHM/journal sidecars before replacing the database. */

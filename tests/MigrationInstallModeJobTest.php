@@ -40,7 +40,8 @@ final class MigrationInstallModeJobTest extends TestCase
     {
         $script = \App\Services\MigrationTargetPrerequisites::remoteOfflineInstallPrerequisiteScript();
         self::assertStringContainsString('sqlite3', $script);
-        self::assertStringContainsString('database integrity checks and restore', $script);
+        self::assertStringContainsString('sqlite3-or-python3-sqlite3', $script);
+        self::assertStringContainsString("python3 -c 'import sqlite3'", $script);
         self::assertStringNotContainsString('eval ', $script);
         self::assertStringNotContainsString('curl ', $script);
         self::assertStringNotContainsString('wget ', $script);
