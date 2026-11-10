@@ -85,6 +85,7 @@ final class PanelMigrationService
         self::beginStep($job, 'install_xui', $config);
         $mode = self::normalizeInstallMode((string) ($job['xui_install_mode'] ?? 'online'));
         $job['xui_install_mode'] = $mode;
+        $job['xui_install_mode_effective'] = $mode;
         self::log($job, 'روش نصب 3x-ui (از Job): ' . ($mode === 'offline' ? 'آفلاین' : 'آنلاین'));
         self::touch($job, $config);
 
@@ -105,64 +106,27 @@ final class PanelMigrationService
         }
         $skipInstall = MigrationExistingInstallProbe::outputIndicatesHealthyExisting($probeOut);
         $job['target_had_healthy_xui'] = $skipInstall;
+        if (!$skipInstall && $mode === 'online') {
+            // A network-only preflight: no installation files or services are modified.
+            $probeCommand = 'bash -lc ' . escapeshellarg(
+                OnlineXuiInstaller::remoteConnectivityPreflightScript()
+            );
+            $network = self::runRemoteChecked(
+                $job, $target, $encryption, $probeCommand, 45, $config, 'بررسی دسترسی نصب آنلاین GitHub'
+            );
+            if (!($network['ok'] ?? false)) {
+                self::logRemoteOutput($job, $network);
+                self::log($job, 'GitHub از مقصد در دسترس نیست؛ تغییر خودکار به بسته آفلاین تأییدشده روی JaySub.');
+                $mode = 'offline';
+                $job['xui_install_mode_effective'] = 'offline';
+                self::touch($job, $config);
+            }
+        }
         if ($skipInstall) {
             self::log($job, 'نصب رد شد: x-ui سالم از قبل روی مقصد است (بدون حذف، بازنویسی یا اجرای install.sh).');
             self::touch($job, $config);
         } elseif ($mode === 'offline') {
-            self::log($job, 'نصب آفلاین v3.4.2؛ بسته از cache JaySub (بدون GitHub روی مقصد).');
-            self::touch($job, $config);
-            $pre = 'bash -lc ' . escapeshellarg(MigrationTargetPrerequisites::remoteOfflineInstallPrerequisiteScript());
-            $preFlight = self::runRemoteChecked($job, $target, $encryption, $pre, 60, $config, 'پیش‌نیاز نصب آفلاین');
-            self::logRemoteOutput($job, $preFlight);
-            self::assertRemoteShellSuccess($preFlight, 'پیش‌نیازهای Ubuntu/Debian برای نصب آفلاین');
-            $archProbe = SshRemoteZip::runRemoteShell(
-                $target, $encryption, 'uname -m', 30, self::storageBase($config)
-            );
-            if (!$archProbe['ok']) {
-                throw new \RuntimeException('تشخیص معماری VPS مقصد: ' . ($archProbe['error'] ?? 'ناموفق'));
-            }
-            $arch = OfflineXuiInstaller::normalizeArchitecture((string) ($archProbe['stdout'] ?? ''));
-            if ($arch === null) {
-                throw new \RuntimeException('نصب آفلاین فقط برای amd64 و arm64 پشتیبانی می‌شود.');
-            }
-            $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
-            $remoteArchive = OfflineXuiInstaller::remoteArchivePath($arch);
-            $job['xui_remote_archive'] = $remoteArchive;
-            self::log($job, 'مسیر SCP مقصد: ' . $remoteArchive);
-            self::log($job, 'SHA-256 تأیید شد؛ SCP به مقصد...');
-            self::touch($job, $config);
-            $transfer = SshRemoteZip::uploadLocalFile(
-                $target, $encryption, $archive['path'], $remoteArchive, self::storageBase($config)
-            );
-            if (!$transfer['ok']) {
-                throw new \RuntimeException('انتقال بسته آفلاین: ' . ($transfer['error'] ?? 'ناموفق'));
-            }
-            $shaCheck = 'bash -lc ' . escapeshellarg(
-                'printf \'%s  %s\\n\' ' . escapeshellarg($archive['sha256']) . ' ' . escapeshellarg($remoteArchive)
-                . ' | sha256sum -c -'
-            );
-            $shaRemote = self::runRemoteChecked($job, $target, $encryption, $shaCheck, 60, $config, 'تأیید SHA-256 بسته روی مقصد');
-            self::assertRemoteShellSuccess($shaRemote, 'تأیید SHA-256 بسته آفلاین روی مقصد');
-            $installCmd = 'bash -lc ' . escapeshellarg(
-                OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
-            );
-            $install = self::runRemoteChecked(
-                $job,
-                $target,
-                $encryption,
-                $installCmd,
-                1200,
-                $config,
-                'نصب 3x-ui'
-            );
-            self::logRemoteOutput($job, $install);
-            self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
-            $installOut = self::remoteCombinedOutput($install);
-            if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
-                throw new \RuntimeException(
-                    'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
-                );
-            }
+            self::installOfflineXui($job, $target, $encryption, $config);
         } else {
             self::log($job, 'نصب آنلاین: install.sh پین‌شده + آرگومان v3.4.2؛ تأیید checksum بسته در لاگ upstream.');
             self::touch($job, $config);
@@ -177,12 +141,18 @@ final class PanelMigrationService
                 'نصب 3x-ui'
             );
             self::logRemoteOutput($job, $install);
-            self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
             $installOut = self::remoteCombinedOutput($install);
-            if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
-                throw new \RuntimeException(
-                    'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
-                );
+            if (!($install['ok'] ?? false) && str_contains($installOut, 'Could not download verified install.sh')) {
+                // install.sh did not run; a fallback cannot overwrite a partial installation.
+                self::log($job, 'دانلود install.sh شکست خورد؛ تلاش امن از cache آفلاین تأییدشده JaySub.');
+                self::installOfflineXui($job, $target, $encryption, $config);
+            } else {
+                self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
+                if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
+                    throw new \RuntimeException(
+                        'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
+                    );
+                }
             }
         }
         $verifyScript = $skipInstall
@@ -350,6 +320,77 @@ final class PanelMigrationService
      * @param array<string, mixed> $job
      * @return array<string, mixed>
      */
+    /**
+     * Use only a verified manager-side archive and the existing guarded
+     * installer (no curl, wget or apt on the destination).
+     * @param array<string, mixed> $job
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $config
+     */
+    private static function installOfflineXui(
+        array &$job,
+        array $target,
+        Encryption $encryption,
+        array $config,
+    ): void {
+        $job['xui_install_mode_effective'] = 'offline';
+        self::touch($job, $config);
+            self::log($job, 'نصب آفلاین v3.4.2؛ بسته از cache JaySub (بدون GitHub روی مقصد).');
+            self::touch($job, $config);
+            $pre = 'bash -lc ' . escapeshellarg(MigrationTargetPrerequisites::remoteOfflineInstallPrerequisiteScript());
+            $preFlight = self::runRemoteChecked($job, $target, $encryption, $pre, 60, $config, 'پیش‌نیاز نصب آفلاین');
+            self::logRemoteOutput($job, $preFlight);
+            self::assertRemoteShellSuccess($preFlight, 'پیش‌نیازهای Ubuntu/Debian برای نصب آفلاین');
+            $archProbe = SshRemoteZip::runRemoteShell(
+                $target, $encryption, 'uname -m', 30, self::storageBase($config)
+            );
+            if (!$archProbe['ok']) {
+                throw new \RuntimeException('تشخیص معماری VPS مقصد: ' . ($archProbe['error'] ?? 'ناموفق'));
+            }
+            $arch = OfflineXuiInstaller::normalizeArchitecture((string) ($archProbe['stdout'] ?? ''));
+            if ($arch === null) {
+                throw new \RuntimeException('نصب آفلاین فقط برای amd64 و arm64 پشتیبانی می‌شود.');
+            }
+            $archive = OfflineXuiInstaller::ensureArchive($config, $arch);
+            $remoteArchive = OfflineXuiInstaller::remoteArchivePath($arch);
+            $job['xui_remote_archive'] = $remoteArchive;
+            self::log($job, 'مسیر SCP مقصد: ' . $remoteArchive);
+            self::log($job, 'SHA-256 تأیید شد؛ SCP به مقصد...');
+            self::touch($job, $config);
+            $transfer = SshRemoteZip::uploadLocalFile(
+                $target, $encryption, $archive['path'], $remoteArchive, self::storageBase($config)
+            );
+            if (!$transfer['ok']) {
+                throw new \RuntimeException('انتقال بسته آفلاین: ' . ($transfer['error'] ?? 'ناموفق'));
+            }
+            $shaCheck = 'bash -lc ' . escapeshellarg(
+                'printf \'%s  %s\\n\' ' . escapeshellarg($archive['sha256']) . ' ' . escapeshellarg($remoteArchive)
+                . ' | sha256sum -c -'
+            );
+            $shaRemote = self::runRemoteChecked($job, $target, $encryption, $shaCheck, 60, $config, 'تأیید SHA-256 بسته روی مقصد');
+            self::assertRemoteShellSuccess($shaRemote, 'تأیید SHA-256 بسته آفلاین روی مقصد');
+            $installCmd = 'bash -lc ' . escapeshellarg(
+                OfflineXuiInstaller::remoteInstallScript($arch, $remoteArchive)
+            );
+            $install = self::runRemoteChecked(
+                $job,
+                $target,
+                $encryption,
+                $installCmd,
+                1200,
+                $config,
+                'نصب 3x-ui'
+            );
+            self::logRemoteOutput($job, $install);
+            self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
+            $installOut = self::remoteCombinedOutput($install);
+            if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
+                throw new \RuntimeException(
+                    'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
+                );
+            }
+    }
+
     private static function targetServerFromJob(array $job, Encryption $encryption): array
     {
         $secretEnc = (string) ($job['target_secret_encrypted'] ?? '');

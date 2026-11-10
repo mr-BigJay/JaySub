@@ -45,13 +45,30 @@ final class SshRemoteZip
     {
         $base = $storageBase ?? dirname(__DIR__, 2) . '/storage';
         $dir = rtrim($base, '/') . '/ssl-ssh';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0700, true);
-        }
         $known = $dir . '/known_hosts';
-        if (!is_file($known)) {
-            file_put_contents($known, '');
-            chmod($known, 0600);
+        if (is_link($dir) || is_link($known)) {
+            throw new \RuntimeException('SSH state paths must not be symbolic links.');
+        }
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            throw new \RuntimeException('Cannot create JaySub SSH state directory: ' . $dir);
+        }
+        if (!is_writable($dir)) {
+            throw new \RuntimeException(
+                'JaySub SSH directory is not writable: ' . $dir
+                . '. As root, run: bash scripts/repair-ssh-known-hosts.sh'
+            );
+        }
+        if (!file_exists($known)) {
+            if (@file_put_contents($known, '', LOCK_EX) === false) {
+                throw new \RuntimeException('Cannot create JaySub SSH known_hosts file: ' . $known);
+            }
+            @chmod($known, 0600);
+        }
+        if (!is_file($known) || !is_readable($known) || !is_writable($known)) {
+            throw new \RuntimeException(
+                'JaySub SSH known_hosts must be readable and writable: ' . $known
+                . '. As root, run: bash scripts/repair-ssh-known-hosts.sh'
+            );
         }
 
         return $dir;
