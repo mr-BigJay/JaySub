@@ -13,6 +13,12 @@ if (!is_file($dir . '/known_hosts')) {
     fwrite(STDERR, "FAIL: known_hosts not created\n");
     exit(1);
 }
+file_put_contents($dir . '/known_hosts', "test.example ssh-ed25519 TEST\n");
+SshRemoteZip::sshStateDirectory($tmp);
+if (file_get_contents($dir . '/known_hosts') !== "test.example ssh-ed25519 TEST\n") {
+    fwrite(STDERR, "FAIL: existing known_hosts was overwritten\n");
+    exit(1);
+}
 
 $ref = new ReflectionClass(SshRemoteZip::class);
 $detect = $ref->getMethod('detectArchive');

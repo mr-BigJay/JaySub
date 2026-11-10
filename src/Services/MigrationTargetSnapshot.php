@@ -39,7 +39,7 @@ final class MigrationTargetSnapshot
         $snapRoot = self::snapshotDirForJob($jid);
         $manifest = self::manifestPathForJob($jid);
 
-        return <<<BASH
+        $script = <<<BASH
 set -euo pipefail
 umask 077
 JOB_ID={$jidEsc}
@@ -86,6 +86,8 @@ chmod 600 "\$MANIFEST"
 echo "JaySub migration snapshot ready job=\$JOB_ID manifest=\$MANIFEST"
 exit 0
 BASH;
+
+        return XuiRemoteScriptLib::bashSqliteFallbackBlock() . "\n" . $script;
     }
 
     public static function remoteRollbackSnapshotScript(string $jobId): string

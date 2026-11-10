@@ -142,7 +142,11 @@ BASH;
         $verify = str_replace('__MANIFEST__', $manifest, $verify);
         $verify = str_replace('__CERT_ROLLBACK__', $certRollback, $verify);
 
-        return 'set -euo pipefail; umask 077; mkdir -p ' . $certEsc . '; ' . $extract . $verify;
+        // PHP nowdocs do not preserve a terminal newline. Without this boundary,
+        // the extractor's last `rm -rf "$d"` is glued to `cert_pubkey_sha256()`,
+        // making the generated bash invalid before any SSL validation runs.
+        return 'set -euo pipefail; umask 077; mkdir -p ' . $certEsc . '; '
+            . $extract . "\n" . $verify . "\n";
     }
 
     /** After DB restore: paths referenced by x-ui settings must exist and cert/key must match. */
@@ -152,7 +156,7 @@ BASH;
 
         $keyMatch = XuiRemoteScriptLib::bashCertKeyPubkeySha256Block();
 
-        $script = $keyMatch . "\n" . <<<'BASH'
+        $script = $keyMatch . "\n" . XuiRemoteScriptLib::bashSqliteFallbackBlock() . "\n" . <<<'BASH'
 set -euo pipefail
 command -v sqlite3 >/dev/null 2>&1 || { echo "sqlite3 required to verify panel cert paths in DB" >&2; exit 1; }
 command -v openssl >/dev/null 2>&1 || { echo "openssl required to verify cert/key pairs" >&2; exit 1; }
