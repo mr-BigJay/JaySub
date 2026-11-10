@@ -86,7 +86,7 @@ final class PanelMigrationService
         $mode = self::normalizeInstallMode((string) ($job['xui_install_mode'] ?? 'online'));
         $job['xui_install_mode'] = $mode;
         $job['xui_install_mode_effective'] = $mode;
-        self::log($job, 'روش نصب 3x-ui (از Job): ' . ($mode === 'offline' ? 'آفلاین' : 'آنلاین'));
+        self::log($job, 'روش نصب 3x-ui (از Job): ' . ($mode === 'offline' ? 'آفلاین (فقط بسته روی JaySub)' : 'آنلاین (فقط نصب‌کننده رسمی روی VPS مقصد)'));
         self::touch($job, $config);
 
         $probeCmd = 'bash -lc ' . escapeshellarg(MigrationExistingInstallProbe::remoteProbeScript());
@@ -106,22 +106,6 @@ final class PanelMigrationService
         }
         $skipInstall = MigrationExistingInstallProbe::outputIndicatesHealthyExisting($probeOut);
         $job['target_had_healthy_xui'] = $skipInstall;
-        if (!$skipInstall && $mode === 'online') {
-            // A network-only preflight: no installation files or services are modified.
-            $probeCommand = 'bash -lc ' . escapeshellarg(
-                OnlineXuiInstaller::remoteConnectivityPreflightScript()
-            );
-            $network = self::runRemoteChecked(
-                $job, $target, $encryption, $probeCommand, 45, $config, 'بررسی دسترسی نصب آنلاین GitHub'
-            );
-            if (!($network['ok'] ?? false)) {
-                self::logRemoteOutput($job, $network);
-                self::log($job, 'GitHub از مقصد در دسترس نیست؛ تغییر خودکار به بسته آفلاین تأییدشده روی JaySub.');
-                $mode = 'offline';
-                $job['xui_install_mode_effective'] = 'offline';
-                self::touch($job, $config);
-            }
-        }
         if ($skipInstall) {
             self::log($job, 'نصب رد شد: x-ui سالم از قبل روی مقصد است (بدون حذف، بازنویسی یا اجرای install.sh).');
             self::touch($job, $config);
@@ -143,16 +127,18 @@ final class PanelMigrationService
             self::logRemoteOutput($job, $install);
             $installOut = self::remoteCombinedOutput($install);
             if (!($install['ok'] ?? false) && str_contains($installOut, 'Could not download verified install.sh')) {
-                // install.sh did not run; a fallback cannot overwrite a partial installation.
-                self::log($job, 'دانلود install.sh شکست خورد؛ تلاش امن از cache آفلاین تأییدشده JaySub.');
-                self::installOfflineXui($job, $target, $encryption, $config);
-            } else {
-                self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
-                if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
-                    throw new \RuntimeException(
-                        'نصب 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). دوباره با روش نصب صحیح (آنلاین/آفلاین) تلاش کنید.'
-                    );
-                }
+                throw new \RuntimeException(
+                    'نصب آنلاین v3.4.2: دانلود install.sh از GitHub روی VPS مقصد ناموفق بود. '
+                    . 'روش انتخابی بدون اجازه به آفلاین تغییر نمی‌کند. '
+                    . 'دسترسی سرور مقصد به raw.githubusercontent.com را بررسی کنید، '
+                    . 'یا یک عملیات انتقال جدید با گزینه «نصب آفلاین» بسازید.'
+                );
+            }
+            self::assertRemoteShellSuccess($install, 'نصب 3x-ui');
+            if (self::remoteOutputIndicatesXuiInstallFailure($installOut)) {
+                throw new \RuntimeException(
+                    'نصب آنلاین 3x-ui روی سرور مقصد کامل نشد (خروجی خطا در لاگ). نصب آفلاین اجرا نشده است.'
+                );
             }
         }
         $verifyScript = $skipInstall

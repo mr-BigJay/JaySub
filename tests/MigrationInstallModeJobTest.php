@@ -36,6 +36,16 @@ final class MigrationInstallModeJobTest extends TestCase
         }
     }
 
+    public function testOfflinePreflightChecksSqliteWithoutInstallingPackages(): void
+    {
+        $script = \App\Services\MigrationTargetPrerequisites::remoteOfflineInstallPrerequisiteScript();
+        self::assertStringContainsString('sqlite3', $script);
+        self::assertStringContainsString('database integrity checks and restore', $script);
+        self::assertStringNotContainsString('eval ', $script);
+        self::assertStringNotContainsString('curl ', $script);
+        self::assertStringNotContainsString('wget ', $script);
+    }
+
     public function testConfirmTargetOverwriteRequiresExplicitJobFlag(): void
     {
         self::assertFalse(PanelMigrationService::confirmTargetOverwrite([]));

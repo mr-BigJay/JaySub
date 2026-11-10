@@ -37,21 +37,33 @@ If `/usr/local/x-ui/x-ui` and `systemctl is-active x-ui` are healthy, JaySub **s
 Changing DNS is manual; JaySub does not modify DNS records.
 
 
-## GitHub timeout during online 3x-ui installation
+## Online vs offline install mode (strictly separate)
 
-JaySub now performs a short reachability check from the target VPS for
-the pinned upstream install script and official v3.4.2 release. When either
-cannot be accessed, it automatically uses the SHA-256 checked archive in the
-**management server's** `storage/xui-offline/v3.4.2/` directory. An additional
-fallback is allowed if the pinned install.sh could not be downloaded **before
-it was executed**. Other install failures remain fail-closed to avoid modifying
-a partially installed or existing x-ui instance.
+In the migration wizard, unchecked **offline** checkbox means **online only**:
+the destination runs the pinned upstream `install.sh` for v3.4.2 and needs access
+to `raw.githubusercontent.com` and the official release download endpoint.
 
-The migration log records requested `xui_install_mode` and effective
-`xui_install_mode_effective`. If the archive is not yet cached, stage the
-verified release on the manager with `php scripts/cache-xui-offline.php amd64`
-(architecture of destination) or the existing admin upload form; the VPN
-destination itself never needs GitHub for offline installation.
+With the checkbox checked, **offline only**: JaySub transfers the
+SHA-256 checked v3.4.2 archive from its manager-side cache using SCP.
+The target does not contact GitHub. This mode requires tools such as
+`sqlite3` pre-installed on the target, to verify and restore the x-ui DB.
+For Ubuntu/Debian, prepare the target once (if OS package repositories
+are reachable):
+
+```bash
+sudo apt-get update && sudo apt-get install -y sqlite3 file openssl tar gzip ca-certificates coreutils
+```
+
+If the target is fully isolated, stage these OS packages via your own
+approved package mirror or offline media before starting migration.
+Offline 3x-ui install does not run apt, use curl, or automatically switch
+from online. A failed online job stays failed with the GitHub error and
+does not execute offline prerequisites. Start a **new job** after changing
+the install mode.
+
+The migration job keeps `xui_install_mode` and
+`xui_install_mode_effective` equal to the selected mode. An already-healthy
+x-ui target is detected and skipped without running either installer.
 
 ## SSH known_hosts permission warning
 
